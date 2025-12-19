@@ -3,6 +3,155 @@
  * Logic adapted from audio-processor.js (Copyright 2015 Google Inc.)
  */
 
+const TunerDefaults = {
+    FFTSIZE: 2048,
+    SmoothingWindow: 5
+};
+
+/**
+ * Strategy Interface for Pitch Detection
+ */
+class PitchDetector {
+    getPitch(buffer, sampleRate) {
+        throw new Error("Method 'getPitch()' must be implemented.");
+    }
+}
+
+/**
+ * YIN Algorithm Implementation
+ */
+class YinDetector extends PitchDetector {
+    constructor(threshold = 0.1) {
+        super();
+        this.threshold = threshold;
+    }
+
+    getPitch(float32AudioBuffer, sampleRate) {
+        const bufferSize = float32AudioBuffer.length;
+        const yinBufferLength = Math.floor(bufferSize / 2);
+        const yinBuffer = new Float32Array(yinBufferLength);
+
+        // Step 1: Difference Function
+        // d(tau) = sum((x[i] - x[i+tau])^2)
+        for (let tau = 0; tau < yinBufferLength; tau++) {
+            yinBuffer[tau] = 0;
+        }
+
+        for (let tau = 1; tau < yinBufferLength; tau++) {
+            for (let i = 0; i < yinBufferLength; i++) {
+                const delta = float32AudioBuffer[i] - float32AudioBuffer[i + tau];
+                yinBuffer[tau] += delta * delta;
+            }
+        }
+
+        // Step 2: Cumulative Mean Normalized Difference Function
+        // d'(tau) = d(tau) / (1/tau * sum(d(j)))
+        yinBuffer[0] = 1;
+        let runningSum = 0;
+        for (let tau = 1; tau < yinBufferLength; tau++) {
+            runningSum += yinBuffer[tau];
+            yinBuffer[tau] *= tau / runningSum;
+        }
+
+        // Step 3: Absolute Threshold
+        let tau = -1;
+        for (let i = 1; i < yinBufferLength; i++) {
+            if (yinBuffer[i] < this.threshold) {
+                // Found a dip below threshold
+                while (i + 1 < yinBufferLength && yinBuffer[i + 1] < yinBuffer[i]) {
+                    i++;
+                }
+                tau = i;
+                break;
+            }
+        }
+
+        // If no pitch found below threshold, look for global minimum
+        if (tau === -1) {
+            let minVal = 100; // Arbitrary high
+            for (let i = 1; i < yinBufferLength; i++) {
+                if (yinBuffer[i] < minVal) {
+                    minVal = yinBuffer[i];
+                    tau = i;
+                }
+            }
+        }
+
+        // Step 4: Parabolic Interpolation
+        if (tau > 1 && tau < yinBufferLength - 1) {
+            const s0 = yinBuffer[tau - 1];
+            const s1 = yinBuffer[tau];
+            const s2 = yinBuffer[tau + 1];
+            // Peak position adjustment
+            let adjustment = (s2 - s0) / (2 * (2 * s1 - s2 - s0));
+            tau += adjustment;
+        }
+
+        const probability = 1 - yinBuffer[Math.floor(tau)];
+
+        // Noise gate
+        if (probability < 0.6) return -1;
+
+        return sampleRate / tau;
+    }
+}
+
+/**
+ * Autocorrelation Algorithm (Legacy)
+ */
+class AutocorrelationDetector extends PitchDetector {
+    getPitch(buffer, sampleRate) {
+        let SIZE = buffer.length;
+        let rms = 0;
+
+        for (let i = 0; i < SIZE; i++) {
+            const val = buffer[i];
+            rms += val * val;
+        }
+        rms = Math.sqrt(rms / SIZE);
+
+        if (rms < 0.01) return -1;
+
+        let r1 = 0, r2 = SIZE - 1;
+        const thres = 0.2;
+        for (let i = 0; i < SIZE / 2; i++) {
+            if (Math.abs(buffer[i]) < thres) { r1 = i; break; }
+        }
+        for (let i = 1; i < SIZE / 2; i++) {
+            if (Math.abs(buffer[SIZE - i]) < thres) { r2 = SIZE - i; break; }
+        }
+
+        const subBuffer = buffer.slice(r1, r2);
+        SIZE = subBuffer.length;
+        const c = new Array(SIZE).fill(0);
+
+        for (let i = 0; i < SIZE; i++) {
+            for (let j = 0; j < SIZE - i; j++) {
+                c[i] = c[i] + subBuffer[j] * subBuffer[j + i];
+            }
+        }
+
+        let d = 0;
+        while (c[d] > c[d + 1]) d++;
+
+        let maxval = -1, maxpos = -1;
+        for (let i = d; i < SIZE; i++) {
+            if (c[i] > maxval) {
+                maxval = c[i];
+                maxpos = i;
+            }
+        }
+
+        let T0 = maxpos;
+        const x1 = c[T0 - 1], x2 = c[T0], x3 = c[T0 + 1];
+        const a = (x1 + x3 - 2 * x2) / 2;
+        const b = (x3 - x1) / 2;
+        if (a) T0 = T0 - b / (2 * a);
+
+        return sampleRate / T0;
+    }
+}
+
 class Tuner {
     constructor() {
         this.audioContext = null;
@@ -10,13 +159,16 @@ class Tuner {
         this.mediaStreamSource = null;
         this.isPlaying = false;
 
-        // Configuration
-        this.FFTSIZE = 2048;
-        this.frequencyBuffer = new Float32Array(this.FFTSIZE);
+        this.detectors = {
+            yin: new YinDetector(),
+            autocorr: new AutocorrelationDetector()
+        };
+        this.currentDetector = this.detectors.yin;
 
-        // Smoothing buffer
+        // Configuration
+        this.frequencyBuffer = new Float32Array(TunerDefaults.FFTSIZE);
         this.smoothingBuffer = [];
-        this.smoothingWindow = 5; // buffer size
+        this.smoothingWindow = TunerDefaults.SmoothingWindow;
 
         // Notes mapping
         this.noteStrings = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -29,6 +181,7 @@ class Tuner {
         this.startBtn = document.getElementById('start-btn');
         this.flatEl = document.getElementById('flat-indicator');
         this.sharpEl = document.getElementById('sharp-indicator');
+        this.algoSelect = document.getElementById('algorithm-select');
 
         this.bindEvents();
     }
@@ -41,6 +194,14 @@ class Tuner {
             } else {
                 this.stop();
                 this.startBtn.textContent = 'Start Tuner';
+            }
+        });
+
+        this.algoSelect.addEventListener('change', (e) => {
+            const algo = e.target.value;
+            if (this.detectors[algo]) {
+                this.currentDetector = this.detectors[algo];
+                console.log(`Switched to ${algo}`);
             }
         });
     }
@@ -57,7 +218,7 @@ class Tuner {
 
             this.mediaStreamSource = this.audioContext.createMediaStreamSource(stream);
             this.analyser = this.audioContext.createAnalyser();
-            this.analyser.fftSize = this.FFTSIZE;
+            this.analyser.fftSize = TunerDefaults.FFTSIZE;
 
             this.mediaStreamSource.connect(this.analyser);
 
@@ -90,9 +251,10 @@ class Tuner {
 
         this.analyser.getFloatTimeDomainData(this.frequencyBuffer);
 
-        const frequency = this.autoCorrelate(this.frequencyBuffer, this.audioContext.sampleRate);
+        // STRATEGY CALL
+        const frequency = this.currentDetector.getPitch(this.frequencyBuffer, this.audioContext.sampleRate);
 
-        if (frequency === -1) {
+        if (frequency === -1 || isNaN(frequency)) {
             return;
         }
 
@@ -107,69 +269,6 @@ class Tuner {
 
         const note = this.getNote(smoothedFreq);
         this.updateUI(note);
-    }
-
-    /**
-     * Autocorrelation algorithm to detect pitch
-     * Based on Chris Wilson's pitch detection code
-     */
-    autoCorrelate(buffer, sampleRate) {
-        let SIZE = buffer.length;
-        let rms = 0;
-
-        // Calculate Root Mean Square (volume)
-        for (let i = 0; i < SIZE; i++) {
-            const val = buffer[i];
-            rms += val * val;
-        }
-        rms = Math.sqrt(rms / SIZE);
-
-        // Threshold to ignore noise
-        if (rms < 0.01) return -1;
-
-        // Trim buffer to meaningful range
-        let r1 = 0, r2 = SIZE - 1;
-        const thres = 0.2;
-        for (let i = 0; i < SIZE / 2; i++) {
-            if (Math.abs(buffer[i]) < thres) { r1 = i; break; }
-        }
-        for (let i = 1; i < SIZE / 2; i++) {
-            if (Math.abs(buffer[SIZE - i]) < thres) { r2 = SIZE - i; break; }
-        }
-
-        const subBuffer = buffer.slice(r1, r2);
-        SIZE = subBuffer.length;
-
-        const c = new Array(SIZE).fill(0);
-
-        // Autocorrelation
-        for (let i = 0; i < SIZE; i++) {
-            for (let j = 0; j < SIZE - i; j++) {
-                c[i] = c[i] + subBuffer[j] * subBuffer[j + i];
-            }
-        }
-
-        let d = 0;
-        // Skip the first peak (which is at index 0)
-        while (c[d] > c[d + 1]) d++;
-
-        let maxval = -1, maxpos = -1;
-        for (let i = d; i < SIZE; i++) {
-            if (c[i] > maxval) {
-                maxval = c[i];
-                maxpos = i;
-            }
-        }
-
-        let T0 = maxpos;
-
-        // Parabolic interpolation for better precision
-        const x1 = c[T0 - 1], x2 = c[T0], x3 = c[T0 + 1];
-        const a = (x1 + x3 - 2 * x2) / 2;
-        const b = (x3 - x1) / 2;
-        if (a) T0 = T0 - b / (2 * a);
-
-        return sampleRate / T0;
     }
 
     getNote(frequency) {
