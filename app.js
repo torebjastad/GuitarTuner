@@ -12,11 +12,11 @@ class Tuner {
 
         // Configuration
         this.FFTSIZE = 2048;
-        // Guitar strings frequencies (Hz) for reference/optimization if needed,
-        // but we'll use the generic note detection as well.
-        // E2: 82.41, A2: 110, D3: 146.83, G3: 196, B3: 246.94, E4: 329.63
-
         this.frequencyBuffer = new Float32Array(this.FFTSIZE);
+
+        // Smoothing buffer
+        this.smoothingBuffer = [];
+        this.smoothingWindow = 5; // buffer size
 
         // Notes mapping
         this.noteStrings = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -27,6 +27,8 @@ class Tuner {
         this.needleEl = document.getElementById('needle');
         this.statusEl = document.getElementById('tuning-status');
         this.startBtn = document.getElementById('start-btn');
+        this.flatEl = document.getElementById('flat-indicator');
+        this.sharpEl = document.getElementById('sharp-indicator');
 
         this.bindEvents();
     }
@@ -77,10 +79,7 @@ class Tuner {
             this.audioContext = null;
         }
         // Reset UI
-        this.noteNameEl.textContent = "-";
-        this.noteNameEl.classList.remove('in-tune');
-        this.frequencyEl.textContent = "0.00 Hz";
-        this.needleEl.style.transform = `translateX(-50%)`;
+        this.updateUI(null);
         this.statusEl.textContent = "Stopped";
     }
 
@@ -94,11 +93,19 @@ class Tuner {
         const frequency = this.autoCorrelate(this.frequencyBuffer, this.audioContext.sampleRate);
 
         if (frequency === -1) {
-            // No signal / too quiet
             return;
         }
 
-        const note = this.getNote(frequency);
+        // Apply smoothing
+        this.smoothingBuffer.push(frequency);
+        if (this.smoothingBuffer.length > this.smoothingWindow) {
+            this.smoothingBuffer.shift();
+        }
+
+        // Use average of buffer for smoother needle
+        const smoothedFreq = this.smoothingBuffer.reduce((a, b) => a + b) / this.smoothingBuffer.length;
+
+        const note = this.getNote(smoothedFreq);
         this.updateUI(note);
     }
 
@@ -173,48 +180,63 @@ class Tuner {
         const octave = Math.floor(midi / 12) - 1;
 
         // Calculate cents off
-        // Frequency of the closest note
         const desiredFreq = 440 * Math.pow(2, (midi - 69) / 12);
-        const cents = Math.floor(1200 * Math.log(frequency / desiredFreq) / Math.log(2));
+        const cents = 1200 * Math.log(frequency / desiredFreq) / Math.log(2);
 
         return { name, octave, frequency, cents, note };
     }
 
     updateUI(noteData) {
+        if (!noteData) {
+            this.noteNameEl.textContent = "-";
+            this.noteNameEl.classList.remove('in-tune');
+            this.frequencyEl.textContent = "0.00 Hz";
+            this.needleEl.style.left = "50%";
+            this.needleEl.style.background = "var(--needle-color)";
+            this.flatEl.classList.remove('visible');
+            this.sharpEl.classList.remove('visible');
+            return;
+        }
+
         this.noteNameEl.textContent = noteData.name;
         this.frequencyEl.textContent = noteData.frequency.toFixed(2) + " Hz";
 
         // Needle movement
-        // Limit cents to +/- 50 for display
-        let centsDisplay = Math.max(-50, Math.min(50, noteData.cents));
-        // Map -50..50 to -45deg..45deg or percentage translation
-        // Using translation: 0% is center, -50% is left, 50% is right relative to container center?
-        // Actually CSS: translateX(-50%) is center because of logic. 
-        // We want to offset from that center.
-        // Let's use left property or transform.
-        // CSS: left: 50% + (cents * scale)
-        const range = 45; // percentage width to cover
-        const percent = (centsDisplay / 50) * range;
+        // Range: -50 cents to +50 cents
+        // -50 cents -> 5%
+        // +50 cents -> 95%
+        const centsDisplay = Math.max(-50, Math.min(50, noteData.cents));
+        // Map [-50, 50] to [5, 95]
+        const percent = 50 + (centsDisplay / 50) * 45;
+        this.needleEl.style.left = `${percent}%`;
 
-        this.needleEl.style.transform = `translateX(calc(-50% + ${percent}%))`;
+        // Status & Indicators
+        const isPerfect = Math.abs(noteData.cents) < 5; // 5 cents tolerance
 
-        // Status styling
-        if (Math.abs(noteData.cents) < 5) {
+        if (isPerfect) {
             this.statusEl.textContent = "Perfect Tune";
             this.statusEl.style.color = "var(--success-color)";
             this.noteNameEl.classList.add('in-tune');
             this.needleEl.style.background = "var(--success-color)";
             this.needleEl.style.boxShadow = "0 0 10px var(--success-color)";
+
+            this.flatEl.classList.remove('visible');
+            this.sharpEl.classList.remove('visible');
         } else {
             this.noteNameEl.classList.remove('in-tune');
             this.needleEl.style.background = "var(--needle-color)";
             this.needleEl.style.boxShadow = "0 0 10px var(--needle-color)";
+
             if (noteData.cents < 0) {
                 this.statusEl.textContent = "Too Flat";
                 this.statusEl.style.color = "var(--warning-color)";
+                this.flatEl.classList.add('visible');
+                this.sharpEl.classList.remove('visible');
             } else {
                 this.statusEl.textContent = "Too Sharp";
                 this.statusEl.style.color = "var(--warning-color)";
+                this.flatEl.classList.remove('visible');
+                this.sharpEl.classList.add('visible');
             }
         }
     }

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,13 +10,18 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
     <div class="tuner-container">
         <h1 class="title">Tuner</h1>
-        
+
         <div class="display-area">
-            <div class="note-name" id="note-name">-</div>
-            <div class="frequency-text" id="frequency">0.00 Hz</div>
+            <div class="direction-indicator flat" id="flat-indicator">♭</div>
+            <div class="note-display-group">
+                <div class="note-name" id="note-name">-</div>
+                <div class="frequency-text" id="frequency">0.00 Hz</div>
+            </div>
+            <div class="direction-indicator sharp" id="sharp-indicator">♯</div>
         </div>
 
         <div class="meter-container">
@@ -26,7 +32,7 @@
             </div>
             <div class="needle" id="needle"></div>
         </div>
-        
+
         <div class="status-indicator" id="tuning-status">Listening...</div>
 
         <button id="start-btn" class="start-btn">Start Tuner</button>
@@ -34,4 +40,5 @@
 
     <script src="app.js"></script>
 </body>
+
 </html>

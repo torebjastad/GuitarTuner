@@ -55,6 +55,37 @@ body {
 
 .display-area {
     margin: 1rem 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 2rem;
+}
+
+.note-display-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.direction-indicator {
+    font-size: 3rem;
+    color: var(--text-secondary);
+    opacity: 0.1;
+    transition: opacity 0.2s, color 0.2s, text-shadow 0.2s;
+}
+
+.direction-indicator.visible {
+    opacity: 1;
+}
+
+.direction-indicator.flat.visible {
+    color: var(--warning-color);
+    text-shadow: 0 0 20px var(--warning-color);
+}
+
+.direction-indicator.sharp.visible {
+    color: var(--warning-color);
+    text-shadow: 0 0 20px var(--warning-color);
 }
 
 .note-name {
@@ -82,7 +113,7 @@ body {
     position: relative;
     width: 100%;
     height: 60px;
-    background: rgba(0, 0, 0, 0.2); 
+    background: rgba(0, 0, 0, 0.2);
     border-radius: 30px;
     overflow: hidden;
     margin-bottom: 1rem;
@@ -124,7 +155,8 @@ body {
     height: 100%;
     background: var(--needle-color);
     transform: translateX(-50%);
-    transition: transform 0.1s cubic-bezier(0.25, 0.46, 0.45, 0.94); /* Smooth transition */
+    transition: left 0.1s linear, background-color 0.2s;
+    /* Smooth transition */
     box-shadow: 0 0 10px var(--needle-color);
     border-radius: 2px;
 }
@@ -164,6 +196,7 @@ body {
     .note-name {
         font-size: 4rem;
     }
+
     .tuner-container {
         padding: 2rem;
     }
