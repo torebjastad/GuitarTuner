@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Professional Guitar Tuner</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="tuner-container">
+        <h1 class="title">Tuner</h1>
+        
+        <div class="display-area">
+            <div class="note-name" id="note-name">-</div>
+            <div class="frequency-text" id="frequency">0.00 Hz</div>
+        </div>
+
+        <div class="meter-container">
+            <div class="meter-scale">
+                <div class="marker center"></div>
+                <div class="marker left-1"></div>
+                <div class="marker right-1"></div>
+            </div>
+            <div class="needle" id="needle"></div>
+        </div>
+        
+        <div class="status-indicator" id="tuning-status">Listening...</div>
+
+        <button id="start-btn" class="start-btn">Start Tuner</button>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
