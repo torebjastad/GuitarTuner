@@ -5,7 +5,9 @@
 
 const TunerDefaults = {
     FFTSIZE: 2048,
-    SmoothingWindow: 5
+    SmoothingWindow: 5,
+    MIN_FREQUENCY: 75,   // Below low E2 (~82 Hz) with margin
+    MAX_FREQUENCY: 1400  // Above high E6 (~1319 Hz) with margin
 };
 
 /**
@@ -214,6 +216,9 @@ class Tuner {
 
         try {
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            if (this.audioContext.state === 'suspended') {
+                await this.audioContext.resume();
+            }
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
             this.mediaStreamSource = this.audioContext.createMediaStreamSource(stream);
@@ -235,6 +240,10 @@ class Tuner {
 
     stop() {
         this.isPlaying = false;
+        if (this.mediaStreamSource) {
+            this.mediaStreamSource.mediaStream.getAudioTracks().forEach(track => track.stop());
+            this.mediaStreamSource = null;
+        }
         if (this.audioContext) {
             this.audioContext.close();
             this.audioContext = null;
@@ -254,7 +263,9 @@ class Tuner {
         // STRATEGY CALL
         const frequency = this.currentDetector.getPitch(this.frequencyBuffer, this.audioContext.sampleRate);
 
-        if (frequency === -1 || isNaN(frequency)) {
+        if (frequency === -1 || isNaN(frequency) ||
+            frequency < TunerDefaults.MIN_FREQUENCY ||
+            frequency > TunerDefaults.MAX_FREQUENCY) {
             return;
         }
 
