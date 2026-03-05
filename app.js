@@ -5,7 +5,7 @@
 
 const TunerDefaults = {
     FFTSIZE: 4096,       // Larger buffer for reliable low-frequency detection
-    SmoothingWindow: 5,
+    SmoothingWindow: 30, // Number of recent readings for median smoothing
     MIN_FREQUENCY: 75,   // Below low E2 (~82 Hz) with margin
     MAX_FREQUENCY: 1400  // Above high E6 (~1319 Hz) with margin
 };
@@ -441,7 +441,7 @@ class Tuner {
             return;
         }
 
-        this.noteNameEl.textContent = noteData.name;
+        this.noteNameEl.textContent = noteData.name + noteData.octave;
         this.frequencyEl.textContent = noteData.frequency.toFixed(2) + " Hz";
 
         // Needle movement
