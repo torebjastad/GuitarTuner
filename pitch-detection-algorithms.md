@@ -40,7 +40,17 @@ Scan `d'(tau)` for the first value that falls below a configurable threshold (de
 
 If no value falls below the threshold, the global minimum of `d'(tau)` is used as a fallback.
 
-#### 4. Parabolic Interpolation
+#### 4. Octave-Error Correction (Sub-harmonic Check)
+
+Guitar low strings (E2, A2) often have a stronger 2nd harmonic than the fundamental, which can cause YIN to lock onto half the true period. To correct this, the algorithm checks whether a valid dip exists at `2 * tau` (the sub-harmonic / true fundamental period):
+
+1. Compute `doubleTau = round(tau * 2)`.
+2. Search a small radius around `doubleTau` (±10% of `tau`, minimum ±4 samples) for the local minimum in the CMND buffer.
+3. If that minimum's CMND value is below `0.3` (a relaxed threshold), accept it as the true fundamental and replace `tau` with `bestTau`.
+
+This step significantly improves accuracy on low E and A strings.
+
+#### 5. Parabolic Interpolation
 
 The selected `tau` is an integer sample index. To get sub-sample accuracy, a parabola is fit through the three points around the minimum (`tau-1`, `tau`, `tau+1`):
 
@@ -51,7 +61,7 @@ tau_refined = tau + adjustment
 
 This typically improves frequency resolution by an order of magnitude.
 
-#### 5. Confidence Check (Noise Gate)
+#### 6. Confidence Check (Noise Gate)
 
 A probability estimate is derived from the CMND value at the detected lag:
 
@@ -61,7 +71,7 @@ probability = 1 - d'(tau)
 
 If `probability < 0.6`, the reading is rejected (returns `-1`). This prevents spurious pitch readings during silence or noise.
 
-#### 6. Frequency Conversion
+#### 7. Frequency Conversion
 
 ```
 frequency = sampleRate / tau_refined
@@ -72,6 +82,7 @@ frequency = sampleRate / tau_refined
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `threshold` | `0.1` | CMND threshold for period detection. Lower = stricter. |
+| Sub-harmonic threshold | `0.3` | CMND threshold for octave-error correction. Accepts fundamental at `2*tau` if below this. |
 | Noise gate | `0.6` | Minimum confidence to accept a reading. |
 
 ### Characteristics

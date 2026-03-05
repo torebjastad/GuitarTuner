@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(xxd \"c:/Users/ToreGrüner/SkyDrive/Code/GuitarTuner/CLAUDE.md\")"
     ]
   }
 }

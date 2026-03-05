@@ -8,10 +8,11 @@ A lightweight, browser-based guitar tuner with no build step or external depende
 
 ```
 GuitarTuner/
-├── index.html          # Single-page UI shell
-├── app.js              # All application logic (pitch detection + tuner UI)
-├── audio-processor.js  # Legacy Google AudioProcessor (Polymer/ES6 module, not loaded by index.html)
-└── style.css           # Full styling with CSS custom properties
+├── index.html                    # Single-page UI shell
+├── app.js                        # All application logic (pitch detection + tuner UI + test tones)
+├── audio-processor.js            # Legacy Google AudioProcessor (Polymer/ES6 module, not loaded by index.html)
+├── style.css                     # Full styling with CSS custom properties
+└── pitch-detection-algorithms.md # Detailed documentation of YIN and Autocorrelation algorithms
 ```
 
 ### File Roles
@@ -19,9 +20,10 @@ GuitarTuner/
 | File | Role |
 |---|---|
 | `index.html` | Markup only — loads `style.css` and `app.js`. No JS frameworks. |
-| `app.js` | Core application: `PitchDetector` base class, `YinDetector`, `AutocorrelationDetector`, and the `Tuner` orchestrator. |
+| `app.js` | Core application: `PitchDetector` base class, `YinDetector`, `AutocorrelationDetector`, `Tuner` orchestrator, and `TestToneGenerator`. |
 | `style.css` | Dark-theme glassmorphism UI using CSS custom properties (no preprocessor). |
 | `audio-processor.js` | Archived legacy source from the original Google Web Starter Kit demo. Uses Polymer and `import` syntax; **not used at runtime** — kept for reference only. |
+| `pitch-detection-algorithms.md` | In-depth documentation of both pitch detection algorithms. |
 
 ## Architecture
 
@@ -47,10 +49,14 @@ getPitch(float32AudioBuffer, sampleRate) -> Hz | -1
 `Tuner` owns the Web Audio API lifecycle and all DOM interaction:
 
 - **`start()`** — requests microphone access, creates `AudioContext`, wires `MediaStreamSource → AnalyserNode`.
-- **`update()`** — RAF loop: reads float time-domain data, calls the active detector, applies a smoothing window (last N readings averaged), then delegates to `updateUI()`.
+- **`update()`** — RAF loop: reads float time-domain data, calls the active detector, rejects octave-jump outliers, applies median smoothing (last N readings), then delegates to `updateUI()`.
 - **`updateUI(noteData)`** — updates note name, frequency display, needle position (mapped ±50 cents → 5–95%), and flat/sharp/in-tune indicators.
 - **`getNote(frequency)`** — converts Hz to MIDI note, name, octave, and cents deviation using A4 = 440 Hz.
 - **`stop()`** — closes `AudioContext`, resets UI.
+
+### TestToneGenerator Class
+
+`TestToneGenerator` produces realistic guitar-like test tones using Web Audio oscillators. It synthesizes harmonics with per-string amplitude profiles, pluck envelopes, vibrato, and noise to simulate each of the six standard-tuning strings (E2–E4). Useful for testing the tuner without a physical guitar.
 
 ### Configuration Constants
 
@@ -58,8 +64,8 @@ Defined in `TunerDefaults` at the top of `app.js`:
 
 | Constant | Value | Meaning |
 |---|---|---|
-| `FFTSIZE` | `2048` | AnalyserNode FFT size (also the time-domain buffer length) |
-| `SmoothingWindow` | `5` | Number of pitch readings averaged for needle smoothing |
+| `FFTSIZE` | `4096` | AnalyserNode FFT size (also the time-domain buffer length). Larger buffer for reliable low-frequency detection. |
+| `SmoothingWindow` | `5` | Number of pitch readings used for median smoothing |
 
 ### CSS Design Tokens
 
@@ -125,3 +131,7 @@ There are no automated tests. Manual testing via a browser with microphone acces
 - Requires `getUserMedia` (microphone) — HTTPS or `localhost` only.
 - Uses `AudioContext` / `webkitAudioContext` (prefixed fallback included).
 - No IE support; modern evergreen browsers only.
+
+## Documentation Convention
+
+Important knowledge — algorithms, architecture decisions, debugging insights — should be documented in an appropriate `.md` file in the repository. When existing documentation becomes outdated or incorrect due to code changes, update or correct it. See `pitch-detection-algorithms.md` for an example.
