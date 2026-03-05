@@ -43,6 +43,21 @@
         <div class="status-indicator" id="tuning-status">Listening...</div>
 
         <button id="start-btn" class="start-btn">Start Tuner</button>
+
+        <div class="test-tone-section">
+            <div class="test-tone-label">Test Tones</div>
+            <div class="test-tone-controls">
+                <select id="test-tone-select" class="algorithm-select">
+                    <option value="E2">E2 — 82.41 Hz</option>
+                    <option value="A2">A2 — 110.00 Hz</option>
+                    <option value="D3">D3 — 146.83 Hz</option>
+                    <option value="G3">G3 — 196.00 Hz</option>
+                    <option value="B3">B3 — 246.94 Hz</option>
+                    <option value="E4">E4 — 329.63 Hz</option>
+                </select>
+                <button id="test-tone-btn" class="test-tone-btn">Play Tone</button>
+            </div>
+        </div>
     </div>
 
     <script src="app.js"></script>
