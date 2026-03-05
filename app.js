@@ -4,7 +4,7 @@
  */
 
 const TunerDefaults = {
-    FFTSIZE: 2048,
+    FFTSIZE: 4096,       // Larger buffer for reliable low-frequency detection
     SmoothingWindow: 5,
     MIN_FREQUENCY: 75,   // Below low E2 (~82 Hz) with margin
     MAX_FREQUENCY: 1400  // Above high E6 (~1319 Hz) with margin
@@ -79,12 +79,37 @@ class YinDetector extends PitchDetector {
             }
         }
 
-        // Step 4: Parabolic Interpolation
+        // Step 4: Octave-error correction
+        // Check if there's a valid dip at 2*tau (the true fundamental).
+        // Guitar low strings often have a stronger 2nd harmonic than the
+        // fundamental, causing YIN to lock onto the harmonic (half the
+        // true period). If the CMND value at 2*tau is below a relaxed
+        // threshold, the fundamental is present and we should prefer it.
+        const doubleTau = Math.round(tau * 2);
+        if (doubleTau > 0 && doubleTau < yinBufferLength - 1) {
+            // Walk to the local minimum near doubleTau
+            let bestTau = doubleTau;
+            let bestVal = yinBuffer[doubleTau];
+            const searchRadius = Math.max(4, Math.round(tau * 0.1));
+            const lo = Math.max(1, doubleTau - searchRadius);
+            const hi = Math.min(yinBufferLength - 2, doubleTau + searchRadius);
+            for (let k = lo; k <= hi; k++) {
+                if (yinBuffer[k] < bestVal) {
+                    bestVal = yinBuffer[k];
+                    bestTau = k;
+                }
+            }
+            // Accept the sub-harmonic if its CMND dip is reasonable
+            if (bestVal < 0.3) {
+                tau = bestTau;
+            }
+        }
+
+        // Step 5: Parabolic Interpolation
         if (tau > 1 && tau < yinBufferLength - 1) {
             const s0 = yinBuffer[tau - 1];
             const s1 = yinBuffer[tau];
             const s2 = yinBuffer[tau + 1];
-            // Peak position adjustment
             let adjustment = (s2 - s0) / (2 * (2 * s1 - s2 - s0));
             tau += adjustment;
         }
@@ -269,14 +294,27 @@ class Tuner {
             return;
         }
 
+        // Octave-jump rejection: if the new reading is ~2x or ~0.5x
+        // the current median, it's almost certainly an octave error
+        if (this.smoothingBuffer.length >= 3) {
+            const sorted = [...this.smoothingBuffer].sort((a, b) => a - b);
+            const median = sorted[Math.floor(sorted.length / 2)];
+            const ratio = frequency / median;
+            // Reject readings that are roughly an octave away (1.8-2.2x or 0.45-0.55x)
+            if ((ratio > 1.8 && ratio < 2.2) || (ratio > 0.45 && ratio < 0.55)) {
+                return; // skip this reading
+            }
+        }
+
         // Apply smoothing
         this.smoothingBuffer.push(frequency);
         if (this.smoothingBuffer.length > this.smoothingWindow) {
             this.smoothingBuffer.shift();
         }
 
-        // Use average of buffer for smoother needle
-        const smoothedFreq = this.smoothingBuffer.reduce((a, b) => a + b) / this.smoothingBuffer.length;
+        // Use median of buffer for robust smoothing (resistant to outliers)
+        const sorted = [...this.smoothingBuffer].sort((a, b) => a - b);
+        const smoothedFreq = sorted[Math.floor(sorted.length / 2)];
 
         const note = this.getNote(smoothedFreq);
         this.updateUI(note);
@@ -352,5 +390,177 @@ class Tuner {
     }
 }
 
+/**
+ * Realistic Guitar Test Tone Generator
+ * Produces guitar-like tones with harmonics, pluck envelope, vibrato, and noise.
+ */
+class TestToneGenerator {
+    constructor(tuner) {
+        this.tuner = tuner;
+        this.isPlaying = false;
+        this.nodes = [];  // track all nodes for cleanup
+
+        // Standard tuning frequencies
+        this.strings = [
+            { name: 'E2', freq: 82.41 },
+            { name: 'A2', freq: 110.00 },
+            { name: 'D3', freq: 146.83 },
+            { name: 'G3', freq: 196.00 },
+            { name: 'B3', freq: 246.94 },
+            { name: 'E4', freq: 329.63 }
+        ];
+
+        // Harmonic amplitude profiles per string (relative to fundamental = 1.0)
+        // Low strings have stronger upper harmonics relative to fundamental
+        this.harmonicProfiles = {
+            'E2': [1.0, 1.8, 1.4, 1.0, 0.7, 0.5, 0.3, 0.2],
+            'A2': [1.0, 1.5, 1.2, 0.8, 0.5, 0.4, 0.2, 0.15],
+            'D3': [1.0, 1.2, 0.9, 0.6, 0.4, 0.3, 0.15, 0.1],
+            'G3': [1.0, 0.9, 0.7, 0.5, 0.3, 0.2, 0.1, 0.05],
+            'B3': [1.0, 0.8, 0.5, 0.3, 0.2, 0.1, 0.05],
+            'E4': [1.0, 0.6, 0.4, 0.2, 0.1, 0.05]
+        };
+
+        this.toneSelect = document.getElementById('test-tone-select');
+        this.toneBtn = document.getElementById('test-tone-btn');
+        if (this.toneBtn) this.bindEvents();
+    }
+
+    bindEvents() {
+        this.toneBtn.addEventListener('click', () => {
+            if (this.isPlaying) {
+                this.stopTone();
+            } else {
+                this.playTone();
+            }
+        });
+    }
+
+    async playTone() {
+        const selectedString = this.strings[this.toneSelect.selectedIndex];
+        if (!selectedString) return;
+
+        // Ensure audioContext exists
+        if (!this.tuner.audioContext || this.tuner.audioContext.state === 'closed') {
+            this.tuner.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (this.tuner.audioContext.state === 'suspended') {
+            await this.tuner.audioContext.resume();
+        }
+
+        const ctx = this.tuner.audioContext;
+
+        // Set up analyser if not connected
+        if (!this.tuner.analyser) {
+            this.tuner.analyser = ctx.createAnalyser();
+            this.tuner.analyser.fftSize = TunerDefaults.FFTSIZE;
+            this.tuner.frequencyBuffer = new Float32Array(TunerDefaults.FFTSIZE);
+        }
+
+        const now = ctx.currentTime;
+        const fundamental = selectedString.freq;
+        const harmonics = this.harmonicProfiles[selectedString.name]
+            || this.harmonicProfiles['G3'];
+
+        // Master gain for overall volume
+        const masterGain = ctx.createGain();
+        masterGain.gain.setValueAtTime(0.3, now);
+        masterGain.connect(this.tuner.analyser);
+        // Also connect to speakers so the user can hear it
+        masterGain.connect(ctx.destination);
+        this.nodes.push(masterGain);
+
+        // Create harmonic oscillators
+        harmonics.forEach((amp, i) => {
+            const harmNum = i + 1;
+            const freq = fundamental * harmNum;
+            if (freq > ctx.sampleRate / 2) return; // skip above Nyquist
+
+            const osc = ctx.createOscillator();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now);
+
+            // Add slight vibrato (more on lower strings, subtle)
+            const vibratoRate = 4.5 + Math.random() * 1.5;  // 4.5-6 Hz
+            const vibratoDepth = fundamental < 150 ? 0.8 : 0.4; // cents-scale
+            const vibratoLfo = ctx.createOscillator();
+            const vibratoGain = ctx.createGain();
+            vibratoLfo.frequency.setValueAtTime(vibratoRate, now);
+            vibratoGain.gain.setValueAtTime(freq * vibratoDepth / 1200, now);
+            vibratoLfo.connect(vibratoGain);
+            vibratoGain.connect(osc.frequency);
+            vibratoLfo.start(now);
+            this.nodes.push(vibratoLfo, vibratoGain);
+
+            // Per-harmonic gain with pluck envelope
+            const harmGain = ctx.createGain();
+            // Normalize amplitude
+            harmGain.gain.setValueAtTime(0, now);
+            // Attack: quick pluck (5ms)
+            harmGain.gain.linearRampToValueAtTime(amp * 0.5, now + 0.005);
+            // Decay: higher harmonics decay faster (realistic string behavior)
+            const decayTime = 3.0 / (1 + harmNum * 0.4);
+            harmGain.gain.exponentialRampToValueAtTime(
+                amp * 0.01, now + decayTime
+            );
+
+            osc.connect(harmGain);
+            harmGain.connect(masterGain);
+            osc.start(now);
+            osc.stop(now + decayTime + 0.1);
+            this.nodes.push(osc, harmGain);
+        });
+
+        // Add a touch of noise (string/fret buzz character)
+        const noiseLength = ctx.sampleRate * 0.5;
+        const noiseBuffer = ctx.createBuffer(1, noiseLength, ctx.sampleRate);
+        const noiseData = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < noiseLength; i++) {
+            noiseData[i] = (Math.random() * 2 - 1) * 0.02;
+        }
+        const noiseSource = ctx.createBufferSource();
+        noiseSource.buffer = noiseBuffer;
+        const noiseGain = ctx.createGain();
+        noiseGain.gain.setValueAtTime(0.15, now);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+        noiseSource.connect(noiseGain);
+        noiseGain.connect(masterGain);
+        noiseSource.start(now);
+        this.nodes.push(noiseSource, noiseGain);
+
+        // Start the tuner's update loop if not already running
+        this.tuner.isPlaying = true;
+        this.tuner.smoothingBuffer = [];
+        this.tuner.statusEl.textContent = `Test: ${selectedString.name} (${selectedString.freq} Hz)`;
+        this.tuner.statusEl.style.color = 'var(--accent-color)';
+        this.tuner.update();
+
+        this.isPlaying = true;
+        this.toneBtn.textContent = 'Stop Tone';
+
+        // Auto-stop after the longest decay
+        this._autoStopTimer = setTimeout(() => this.stopTone(), 4000);
+    }
+
+    stopTone() {
+        clearTimeout(this._autoStopTimer);
+        this.nodes.forEach(node => {
+            try { node.disconnect(); } catch (e) {}
+            try { if (node.stop) node.stop(); } catch (e) {}
+        });
+        this.nodes = [];
+        this.isPlaying = false;
+        this.toneBtn.textContent = 'Play Tone';
+
+        // Don't close the audio context — tuner might still be running
+        if (!this.tuner.mediaStreamSource) {
+            this.tuner.isPlaying = false;
+            this.tuner.updateUI(null);
+            this.tuner.statusEl.textContent = 'Stopped';
+        }
+    }
+}
+
 // Initialize
 const tuner = new Tuner();
+const testTones = new TestToneGenerator(tuner);
