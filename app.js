@@ -26,6 +26,8 @@ class YinDetector extends PitchDetector {
     constructor(threshold = 0.1) {
         super();
         this.threshold = threshold;
+        this.debug = false;
+        this.debugData = null;
     }
 
     getPitch(float32AudioBuffer, sampleRate) {
@@ -57,6 +59,7 @@ class YinDetector extends PitchDetector {
 
         // Step 3: Absolute Threshold
         let tau = -1;
+        let thresholdUsed = true;
         for (let i = 1; i < yinBufferLength; i++) {
             if (yinBuffer[i] < this.threshold) {
                 // Found a dip below threshold
@@ -70,6 +73,7 @@ class YinDetector extends PitchDetector {
 
         // If no pitch found below threshold, look for global minimum
         if (tau === -1) {
+            thresholdUsed = false;
             let minVal = 100; // Arbitrary high
             for (let i = 1; i < yinBufferLength; i++) {
                 if (yinBuffer[i] < minVal) {
@@ -79,12 +83,16 @@ class YinDetector extends PitchDetector {
             }
         }
 
+        const initialTau = tau;
+
         // Step 4: Octave-error correction
         // Check if there's a valid dip at 2*tau (the true fundamental).
         // Guitar low strings often have a stronger 2nd harmonic than the
         // fundamental, causing YIN to lock onto the harmonic (half the
         // true period). If the CMND value at 2*tau is below a relaxed
-        // threshold, the fundamental is present and we should prefer it.
+        // threshold AND is better (lower) than the value at tau, the
+        // fundamental is present and we should prefer it.
+        let octaveCorrected = false;
         const doubleTau = Math.round(tau * 2);
         if (doubleTau > 0 && doubleTau < yinBufferLength - 1) {
             // Walk to the local minimum near doubleTau
@@ -99,27 +107,67 @@ class YinDetector extends PitchDetector {
                     bestTau = k;
                 }
             }
-            // Accept the sub-harmonic if its CMND dip is reasonable
-            if (bestVal < 0.3) {
+            // Accept the sub-harmonic only if its CMND dip is reasonable
+            // AND the dip at 2*tau is at least as good as at tau.
+            // This prevents false corrections on mid/high strings (G3, B3, E4)
+            // where the 2*tau dip is a sub-harmonic artifact, not the fundamental.
+            if (bestVal < 0.3 && bestVal <= yinBuffer[tau]) {
                 tau = bestTau;
+                octaveCorrected = true;
             }
         }
 
+        const correctedTau = tau;
+
         // Step 5: Parabolic Interpolation
-        if (tau > 1 && tau < yinBufferLength - 1) {
+        // Use 5-point least-squares quadratic fit when possible (more robust
+        // for broad or asymmetric dips), fall back to 3-point fit near edges.
+        let interpolatedTau = tau;
+        if (tau > 2 && tau < yinBufferLength - 2) {
+            // 5-point least-squares: fit y = a*x^2 + b*x + c at x = {-2,-1,0,1,2}
+            const sm2 = yinBuffer[tau - 2];
+            const sm1 = yinBuffer[tau - 1];
+            const s0  = yinBuffer[tau];
+            const s1  = yinBuffer[tau + 1];
+            const s2  = yinBuffer[tau + 2];
+            const a = (2 * sm2 - sm1 - 2 * s0 - s1 + 2 * s2) / 14;
+            const b = (-2 * sm2 - sm1 + s1 + 2 * s2) / 10;
+            if (a > 0) {
+                const adjustment = -b / (2 * a);
+                if (Math.abs(adjustment) < 2) interpolatedTau = tau + adjustment;
+            }
+        } else if (tau > 1 && tau < yinBufferLength - 1) {
+            // 3-point fallback near buffer edges
             const s0 = yinBuffer[tau - 1];
             const s1 = yinBuffer[tau];
             const s2 = yinBuffer[tau + 1];
-            let adjustment = (s2 - s0) / (2 * (2 * s1 - s2 - s0));
-            tau += adjustment;
+            const adjustment = (s2 - s0) / (2 * (2 * s1 - s2 - s0));
+            if (Math.abs(adjustment) < 1) interpolatedTau = tau + adjustment;
         }
 
-        const probability = 1 - yinBuffer[Math.floor(tau)];
+        const probability = 1 - yinBuffer[Math.floor(interpolatedTau)];
+
+        // Capture debug data if enabled
+        if (this.debug) {
+            this.debugData = {
+                cmnd: new Float32Array(yinBuffer),
+                threshold: this.threshold,
+                initialTau,
+                thresholdUsed,
+                octaveCorrected,
+                correctedTau,
+                interpolatedTau,
+                probability,
+                frequency: probability >= 0.6 ? sampleRate / interpolatedTau : -1,
+                sampleRate,
+                bufferLength: yinBufferLength
+            };
+        }
 
         // Noise gate
         if (probability < 0.6) return -1;
 
-        return sampleRate / tau;
+        return sampleRate / interpolatedTau;
     }
 }
 
@@ -127,6 +175,12 @@ class YinDetector extends PitchDetector {
  * Autocorrelation Algorithm (Legacy)
  */
 class AutocorrelationDetector extends PitchDetector {
+    constructor() {
+        super();
+        this.debug = false;
+        this.debugData = null;
+    }
+
     getPitch(buffer, sampleRate) {
         let SIZE = buffer.length;
         let rms = 0;
@@ -137,7 +191,10 @@ class AutocorrelationDetector extends PitchDetector {
         }
         rms = Math.sqrt(rms / SIZE);
 
-        if (rms < 0.01) return -1;
+        if (rms < 0.01) {
+            if (this.debug) this.debugData = null;
+            return -1;
+        }
 
         let r1 = 0, r2 = SIZE - 1;
         const thres = 0.2;
@@ -173,9 +230,26 @@ class AutocorrelationDetector extends PitchDetector {
         const x1 = c[T0 - 1], x2 = c[T0], x3 = c[T0 + 1];
         const a = (x1 + x3 - 2 * x2) / 2;
         const b = (x3 - x1) / 2;
-        if (a) T0 = T0 - b / (2 * a);
+        const interpolatedT0 = a ? T0 - b / (2 * a) : T0;
+        const frequency = sampleRate / interpolatedT0;
 
-        return sampleRate / T0;
+        if (this.debug) {
+            this.debugData = {
+                autocorr: new Float64Array(c),
+                r1,
+                r2,
+                trimmedSize: SIZE,
+                firstDip: d,
+                peakPos: maxpos,
+                peakVal: maxval,
+                interpolatedT0,
+                rms,
+                frequency,
+                sampleRate
+            };
+        }
+
+        return frequency;
     }
 }
 
@@ -209,6 +283,8 @@ class Tuner {
         this.flatEl = document.getElementById('flat-indicator');
         this.sharpEl = document.getElementById('sharp-indicator');
         this.algoSelect = document.getElementById('algorithm-select');
+        this.debugToggle = document.getElementById('debug-toggle');
+        this.debugPlot = new DebugPlot('debug-canvas');
 
         this.bindEvents();
     }
@@ -231,6 +307,16 @@ class Tuner {
                 console.log(`Switched to ${algo}`);
             }
         });
+
+        if (this.debugToggle) {
+            this.debugToggle.addEventListener('change', (e) => {
+                const on = e.target.checked;
+                this.debugPlot.toggle(on);
+                // Enable debug on both detectors
+                this.detectors.yin.debug = on;
+                this.detectors.autocorr.debug = on;
+            });
+        }
     }
 
     async start() {
@@ -318,6 +404,15 @@ class Tuner {
 
         const note = this.getNote(smoothedFreq);
         this.updateUI(note);
+
+        // Draw debug plot if enabled
+        if (this.currentDetector.debug && this.currentDetector.debugData) {
+            if (this.currentDetector === this.detectors.yin) {
+                this.debugPlot.draw(this.currentDetector.debugData);
+            } else {
+                this.debugPlot.drawAutocorrelation(this.currentDetector.debugData);
+            }
+        }
     }
 
     getNote(frequency) {
@@ -387,6 +482,490 @@ class Tuner {
                 this.sharpEl.classList.add('visible');
             }
         }
+    }
+}
+
+/**
+ * Debug Visualization for YIN pitch detection.
+ * Draws the CMND function on a canvas with annotated algorithm steps.
+ */
+class DebugPlot {
+    constructor(canvasId) {
+        this.canvas = document.getElementById(canvasId);
+        if (!this.canvas) return;
+        this.ctx = this.canvas.getContext('2d');
+        this.visible = false;
+    }
+
+    toggle(show) {
+        this.visible = show;
+        if (this.canvas) {
+            this.canvas.parentElement.style.display = show ? 'block' : 'none';
+        }
+        if (!show) this.clear();
+    }
+
+    clear() {
+        if (!this.ctx) return;
+        const { width, height } = this.canvas;
+        this.ctx.clearRect(0, 0, width, height);
+    }
+
+    draw(debugData) {
+        if (!this.visible || !this.ctx || !debugData) return;
+
+        const canvas = this.canvas;
+        const ctx = this.ctx;
+        const dpr = window.devicePixelRatio || 1;
+
+        // Size canvas to container
+        const rect = canvas.parentElement.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        canvas.style.width = rect.width + 'px';
+        canvas.style.height = rect.height + 'px';
+        ctx.scale(dpr, dpr);
+
+        const W = rect.width;
+        const H = rect.height;
+        const pad = { top: 25, bottom: 35, left: 50, right: 15 };
+        const plotW = W - pad.left - pad.right;
+        const plotH = H - pad.top - pad.bottom;
+
+        ctx.clearRect(0, 0, W, H);
+
+        const { cmnd, threshold, initialTau, correctedTau, interpolatedTau,
+                octaveCorrected, probability, frequency, sampleRate, bufferLength } = debugData;
+
+        // Determine visible range: show around the interesting tau region
+        // Show from tau=0 up to 1.5x the corrected tau (or at least 200 samples)
+        const maxTauDisplay = Math.min(
+            bufferLength,
+            Math.max(200, Math.ceil(correctedTau * 1.5))
+        );
+
+        // Find Y range (CMND values typically 0–2, but clamp for display)
+        const yMax = 2.0;
+        const yMin = 0;
+
+        // Helper: data coords to pixel coords
+        const toX = (tau) => pad.left + (tau / maxTauDisplay) * plotW;
+        const toY = (val) => pad.top + (1 - (val - yMin) / (yMax - yMin)) * plotH;
+
+        // Background
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+        ctx.fillRect(0, 0, W, H);
+
+        // Grid lines
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.15)';
+        ctx.lineWidth = 1;
+        for (let v = 0; v <= yMax; v += 0.5) {
+            const y = toY(v);
+            ctx.beginPath();
+            ctx.moveTo(pad.left, y);
+            ctx.lineTo(W - pad.right, y);
+            ctx.stroke();
+        }
+
+        // Y-axis labels
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '11px Outfit, sans-serif';
+        ctx.textAlign = 'right';
+        for (let v = 0; v <= yMax; v += 0.5) {
+            ctx.fillText(v.toFixed(1), pad.left - 6, toY(v) + 4);
+        }
+
+        // X-axis tick labels
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '11px Outfit, sans-serif';
+        ctx.textAlign = 'center';
+        const xStep = maxTauDisplay <= 300 ? 50
+                     : maxTauDisplay <= 600 ? 100
+                     : 200;
+        for (let t = xStep; t < maxTauDisplay; t += xStep) {
+            const x = toX(t);
+            // Tick mark
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.3)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(x, pad.top + plotH);
+            ctx.lineTo(x, pad.top + plotH + 5);
+            ctx.stroke();
+            // Label
+            ctx.fillText(t, x, pad.top + plotH + 17);
+        }
+        ctx.fillText('lag (samples)', pad.left + plotW / 2, H - 4);
+
+        // Draw CMND curve
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        for (let i = 1; i < maxTauDisplay; i++) {
+            const x = toX(i);
+            const y = toY(Math.min(cmnd[i], yMax));
+            if (i === 1) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        // Draw threshold line
+        ctx.strokeStyle = 'rgba(251, 191, 36, 0.6)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(pad.left, toY(threshold));
+        ctx.lineTo(W - pad.right, toY(threshold));
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Label threshold
+        ctx.fillStyle = '#fbbf24';
+        ctx.font = '10px Outfit, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(`threshold = ${threshold}`, pad.left + 4, toY(threshold) - 5);
+
+        // Draw octave-correction threshold line (0.3)
+        ctx.strokeStyle = 'rgba(251, 191, 36, 0.3)';
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(pad.left, toY(0.3));
+        ctx.lineTo(W - pad.right, toY(0.3));
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(251, 191, 36, 0.5)';
+        ctx.fillText('octave corr. = 0.3', pad.left + 4, toY(0.3) - 5);
+
+        // Mark initial tau (Step 3 result)
+        if (initialTau > 0 && initialTau < maxTauDisplay) {
+            const ix = toX(initialTau);
+            const iy = toY(Math.min(cmnd[initialTau], yMax));
+
+            // Vertical line
+            ctx.strokeStyle = octaveCorrected ? 'rgba(248, 113, 113, 0.4)' : 'rgba(74, 222, 128, 0.4)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(ix, pad.top);
+            ctx.lineTo(ix, pad.top + plotH);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Dot
+            ctx.fillStyle = octaveCorrected ? '#f87171' : '#4ade80';
+            ctx.beginPath();
+            ctx.arc(ix, iy, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Label
+            ctx.font = '10px Outfit, sans-serif';
+            ctx.textAlign = 'center';
+            const initFreq = sampleRate / initialTau;
+            ctx.fillText(
+                `Step 3: τ=${initialTau} (${initFreq.toFixed(1)} Hz)`,
+                ix, pad.top - 5
+            );
+        }
+
+        // Mark corrected tau (Step 4 result) if octave correction applied
+        if (octaveCorrected && correctedTau > 0 && correctedTau < maxTauDisplay) {
+            const cx = toX(correctedTau);
+            const cy = toY(Math.min(cmnd[correctedTau], yMax));
+
+            // Vertical line
+            ctx.strokeStyle = 'rgba(74, 222, 128, 0.5)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(cx, pad.top);
+            ctx.lineTo(cx, pad.top + plotH);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Arrow from initial to corrected
+            ctx.strokeStyle = '#fbbf24';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            const ix = toX(initialTau);
+            const midY = pad.top + 14;
+            ctx.moveTo(ix, midY);
+            ctx.lineTo(cx, midY);
+            // Arrowhead
+            ctx.lineTo(cx - 6, midY - 4);
+            ctx.moveTo(cx, midY);
+            ctx.lineTo(cx - 6, midY + 4);
+            ctx.stroke();
+
+            // Dot
+            ctx.fillStyle = '#4ade80';
+            ctx.beginPath();
+            ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Label
+            ctx.font = '10px Outfit, sans-serif';
+            ctx.textAlign = 'center';
+            const corrFreq = sampleRate / correctedTau;
+            ctx.fillText(
+                `Step 4: τ=${correctedTau} (${corrFreq.toFixed(1)} Hz)`,
+                cx, cy - 10
+            );
+        }
+
+        // Mark final interpolated tau (Step 5)
+        if (interpolatedTau > 0 && interpolatedTau < maxTauDisplay) {
+            const fx = toX(interpolatedTau);
+
+            // Vertical line — final result
+            ctx.strokeStyle = 'rgba(74, 222, 128, 0.8)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(fx, pad.top + plotH - 20);
+            ctx.lineTo(fx, pad.top + plotH);
+            ctx.stroke();
+
+            // Triangle marker at bottom
+            ctx.fillStyle = '#4ade80';
+            ctx.beginPath();
+            ctx.moveTo(fx, pad.top + plotH - 20);
+            ctx.lineTo(fx - 5, pad.top + plotH - 12);
+            ctx.lineTo(fx + 5, pad.top + plotH - 12);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        // Info box — final result
+        ctx.fillStyle = 'rgba(30, 41, 59, 0.9)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.lineWidth = 1;
+        const boxX = W - pad.right - 190;
+        const boxY = pad.top + 5;
+        ctx.fillRect(boxX, boxY, 185, 80);
+        ctx.strokeRect(boxX, boxY, 185, 80);
+
+        ctx.fillStyle = '#f8fafc';
+        ctx.font = '11px Outfit, sans-serif';
+        ctx.textAlign = 'left';
+        const lines = [
+            `Frequency: ${frequency > 0 ? frequency.toFixed(2) + ' Hz' : 'rejected'}`,
+            `τ (interpolated): ${interpolatedTau.toFixed(2)}`,
+            `Confidence: ${(probability * 100).toFixed(1)}%`,
+            `Octave corrected: ${octaveCorrected ? 'yes' : 'no'}`,
+        ];
+        lines.forEach((line, i) => {
+            ctx.fillText(line, boxX + 8, boxY + 16 + i * 16);
+        });
+    }
+
+    drawAutocorrelation(debugData) {
+        if (!this.visible || !this.ctx || !debugData) return;
+
+        const canvas = this.canvas;
+        const ctx = this.ctx;
+        const dpr = window.devicePixelRatio || 1;
+
+        const rect = canvas.parentElement.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        canvas.style.width = rect.width + 'px';
+        canvas.style.height = rect.height + 'px';
+        ctx.scale(dpr, dpr);
+
+        const W = rect.width;
+        const H = rect.height;
+        const pad = { top: 25, bottom: 35, left: 50, right: 15 };
+        const plotW = W - pad.left - pad.right;
+        const plotH = H - pad.top - pad.bottom;
+
+        ctx.clearRect(0, 0, W, H);
+
+        const { autocorr, r1, r2, trimmedSize, firstDip, peakPos, peakVal,
+                interpolatedT0, rms, frequency, sampleRate } = debugData;
+
+        // Display range: show up to 1.5x the peak position (at least 200)
+        const maxLagDisplay = Math.min(
+            trimmedSize,
+            Math.max(200, Math.ceil(peakPos * 1.5))
+        );
+
+        // Y range: autocorrelation from min to max in the visible range
+        let yMin = 0, yMax = 0;
+        for (let i = 0; i < maxLagDisplay && i < autocorr.length; i++) {
+            if (autocorr[i] > yMax) yMax = autocorr[i];
+            if (autocorr[i] < yMin) yMin = autocorr[i];
+        }
+        // Add some padding
+        const yRange = yMax - yMin || 1;
+        yMax += yRange * 0.05;
+        yMin -= yRange * 0.05;
+
+        const toX = (lag) => pad.left + (lag / maxLagDisplay) * plotW;
+        const toY = (val) => pad.top + (1 - (val - yMin) / (yMax - yMin)) * plotH;
+
+        // Background
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+        ctx.fillRect(0, 0, W, H);
+
+        // Grid lines (horizontal)
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.15)';
+        ctx.lineWidth = 1;
+        const yStep = Math.pow(10, Math.floor(Math.log10(yRange / 4)));
+        const yGridStep = yRange / 4 < yStep * 2.5 ? yStep : yStep * 2.5;
+        const yGridStart = Math.ceil(yMin / yGridStep) * yGridStep;
+        for (let v = yGridStart; v <= yMax; v += yGridStep) {
+            const y = toY(v);
+            ctx.beginPath();
+            ctx.moveTo(pad.left, y);
+            ctx.lineTo(W - pad.right, y);
+            ctx.stroke();
+        }
+
+        // Y-axis labels
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '11px Outfit, sans-serif';
+        ctx.textAlign = 'right';
+        for (let v = yGridStart; v <= yMax; v += yGridStep) {
+            const label = Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + 'k' : v.toFixed(0);
+            ctx.fillText(label, pad.left - 6, toY(v) + 4);
+        }
+
+        // Zero line
+        if (yMin < 0) {
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.3)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(pad.left, toY(0));
+            ctx.lineTo(W - pad.right, toY(0));
+            ctx.stroke();
+        }
+
+        // X-axis tick labels
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '11px Outfit, sans-serif';
+        ctx.textAlign = 'center';
+        const xStep = maxLagDisplay <= 300 ? 50
+                     : maxLagDisplay <= 600 ? 100
+                     : 200;
+        for (let t = xStep; t < maxLagDisplay; t += xStep) {
+            const x = toX(t);
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.3)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(x, pad.top + plotH);
+            ctx.lineTo(x, pad.top + plotH + 5);
+            ctx.stroke();
+            ctx.fillText(t, x, pad.top + plotH + 17);
+        }
+        ctx.fillText('lag (samples)', pad.left + plotW / 2, H - 4);
+
+        // Draw autocorrelation curve
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        for (let i = 0; i < maxLagDisplay && i < autocorr.length; i++) {
+            const x = toX(i);
+            const y = toY(autocorr[i]);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        // Mark first-dip point (Step 4: where autocorrelation stops decreasing)
+        if (firstDip > 0 && firstDip < maxLagDisplay) {
+            const dx = toX(firstDip);
+            const dy = toY(autocorr[firstDip]);
+
+            ctx.strokeStyle = 'rgba(251, 191, 36, 0.5)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(dx, pad.top);
+            ctx.lineTo(dx, pad.top + plotH);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            ctx.fillStyle = '#fbbf24';
+            ctx.beginPath();
+            ctx.arc(dx, dy, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.font = '10px Outfit, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(`First dip: ${firstDip}`, dx, pad.top - 5);
+        }
+
+        // Mark detected peak (Step 4: argmax after first dip)
+        if (peakPos > 0 && peakPos < maxLagDisplay) {
+            const px = toX(peakPos);
+            const py = toY(autocorr[peakPos]);
+
+            ctx.strokeStyle = 'rgba(248, 113, 113, 0.5)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(px, pad.top);
+            ctx.lineTo(px, pad.top + plotH);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            ctx.fillStyle = '#f87171';
+            ctx.beginPath();
+            ctx.arc(px, py, 5, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.font = '10px Outfit, sans-serif';
+            ctx.textAlign = 'center';
+            const peakFreq = sampleRate / peakPos;
+            ctx.fillText(
+                `Peak: T₀=${peakPos} (${peakFreq.toFixed(1)} Hz)`,
+                px, py - 10
+            );
+        }
+
+        // Mark interpolated T0 (Step 5: parabolic refinement)
+        if (interpolatedT0 > 0 && interpolatedT0 < maxLagDisplay) {
+            const fx = toX(interpolatedT0);
+
+            ctx.strokeStyle = 'rgba(74, 222, 128, 0.8)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(fx, pad.top + plotH - 20);
+            ctx.lineTo(fx, pad.top + plotH);
+            ctx.stroke();
+
+            // Triangle marker
+            ctx.fillStyle = '#4ade80';
+            ctx.beginPath();
+            ctx.moveTo(fx, pad.top + plotH - 20);
+            ctx.lineTo(fx - 5, pad.top + plotH - 12);
+            ctx.lineTo(fx + 5, pad.top + plotH - 12);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        // Info box
+        ctx.fillStyle = 'rgba(30, 41, 59, 0.9)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.lineWidth = 1;
+        const boxX = W - pad.right - 200;
+        const boxY = pad.top + 5;
+        ctx.fillRect(boxX, boxY, 195, 80);
+        ctx.strokeRect(boxX, boxY, 195, 80);
+
+        ctx.fillStyle = '#f8fafc';
+        ctx.font = '11px Outfit, sans-serif';
+        ctx.textAlign = 'left';
+        const lines = [
+            `Frequency: ${frequency.toFixed(2)} Hz`,
+            `T₀ (interpolated): ${interpolatedT0.toFixed(2)}`,
+            `RMS: ${rms.toFixed(4)}`,
+            `Trimmed: [${r1}..${r2}] (${trimmedSize} samples)`,
+        ];
+        lines.forEach((line, i) => {
+            ctx.fillText(line, boxX + 8, boxY + 16 + i * 16);
+        });
     }
 }
 
@@ -470,6 +1049,14 @@ class TestToneGenerator {
         masterGain.connect(ctx.destination);
         this.nodes.push(masterGain);
 
+        // Single shared vibrato LFO for all harmonics (realistic: one string = one vibrato)
+        const vibratoRate = 4.5 + Math.random() * 1.5;  // 4.5-6 Hz
+        const vibratoDepth = fundamental < 150 ? 0.8 : 0.4; // cents-scale
+        const vibratoLfo = ctx.createOscillator();
+        vibratoLfo.frequency.setValueAtTime(vibratoRate, now);
+        vibratoLfo.start(now);
+        this.nodes.push(vibratoLfo);
+
         // Create harmonic oscillators
         harmonics.forEach((amp, i) => {
             const harmNum = i + 1;
@@ -480,17 +1067,12 @@ class TestToneGenerator {
             osc.type = 'sine';
             osc.frequency.setValueAtTime(freq, now);
 
-            // Add slight vibrato (more on lower strings, subtle)
-            const vibratoRate = 4.5 + Math.random() * 1.5;  // 4.5-6 Hz
-            const vibratoDepth = fundamental < 150 ? 0.8 : 0.4; // cents-scale
-            const vibratoLfo = ctx.createOscillator();
+            // Connect shared vibrato LFO scaled for this harmonic's frequency
             const vibratoGain = ctx.createGain();
-            vibratoLfo.frequency.setValueAtTime(vibratoRate, now);
             vibratoGain.gain.setValueAtTime(freq * vibratoDepth / 1200, now);
             vibratoLfo.connect(vibratoGain);
             vibratoGain.connect(osc.frequency);
-            vibratoLfo.start(now);
-            this.nodes.push(vibratoLfo, vibratoGain);
+            this.nodes.push(vibratoGain);
 
             // Per-harmonic gain with pluck envelope
             const harmGain = ctx.createGain();

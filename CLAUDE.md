@@ -20,7 +20,7 @@ GuitarTuner/
 | File | Role |
 |---|---|
 | `index.html` | Markup only — loads `style.css` and `app.js`. No JS frameworks. |
-| `app.js` | Core application: `PitchDetector` base class, `YinDetector`, `AutocorrelationDetector`, `Tuner` orchestrator, and `TestToneGenerator`. |
+| `app.js` | Core application: `PitchDetector` base class, `YinDetector`, `AutocorrelationDetector`, `Tuner` orchestrator, `DebugPlot`, and `TestToneGenerator`. |
 | `style.css` | Dark-theme glassmorphism UI using CSS custom properties (no preprocessor). |
 | `audio-processor.js` | Archived legacy source from the original Google Web Starter Kit demo. Uses Polymer and `import` syntax; **not used at runtime** — kept for reference only. |
 | `pitch-detection-algorithms.md` | In-depth documentation of both pitch detection algorithms. |
@@ -56,7 +56,18 @@ getPitch(float32AudioBuffer, sampleRate) -> Hz | -1
 
 ### TestToneGenerator Class
 
-`TestToneGenerator` produces realistic guitar-like test tones using Web Audio oscillators. It synthesizes harmonics with per-string amplitude profiles, pluck envelopes, vibrato, and noise to simulate each of the six standard-tuning strings (E2–E4). Useful for testing the tuner without a physical guitar.
+`TestToneGenerator` produces realistic guitar-like test tones using Web Audio oscillators. It synthesizes harmonics with per-string amplitude profiles, pluck envelopes, a shared vibrato LFO, and noise to simulate each of the six standard-tuning strings (E2–E4). All harmonics share a single vibrato oscillator (realistic: one string = one vibrato source). Useful for testing the tuner without a physical guitar.
+
+### DebugPlot Class
+
+`DebugPlot` renders a real-time canvas visualization of the YIN CMND function when the "Show Algorithm Debug" checkbox is enabled. It annotates:
+- The CMND curve with threshold lines (step 3 threshold at 0.1, octave-correction threshold at 0.3).
+- The initial tau detected in step 3 (red dot if octave-corrected, green if final).
+- The octave-corrected tau from step 4, with an arrow showing the correction.
+- The parabolic-interpolated final tau (green triangle at bottom).
+- An info box showing final frequency, interpolated tau, confidence, and whether octave correction was applied.
+
+Debug data capture is gated behind `YinDetector.debug = true` to avoid overhead when not in use.
 
 ### Configuration Constants
 

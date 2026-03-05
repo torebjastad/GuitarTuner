@@ -50,16 +50,28 @@ Guitar low strings (E2, A2) often have a stronger 2nd harmonic than the fundamen
 
 This step significantly improves accuracy on low E and A strings.
 
-#### 5. Parabolic Interpolation
+#### 5. Sub-sample Interpolation
 
-The selected `tau` is an integer sample index. To get sub-sample accuracy, a parabola is fit through the three points around the minimum (`tau-1`, `tau`, `tau+1`):
+The selected `tau` is an integer sample index. To get sub-sample accuracy, a **5-point least-squares quadratic fit** is used (falling back to 3-point near buffer edges).
+
+**5-point fit** — fits `y = ax² + bx + c` to `tau-2` through `tau+2` via least squares:
+
+```
+a = (2*s_{-2} - s_{-1} - 2*s_0 - s_1 + 2*s_2) / 14
+b = (-2*s_{-2} - s_{-1} + s_1 + 2*s_2) / 10
+tau_refined = tau - b / (2*a)
+```
+
+The 5-point fit is more robust than the traditional 3-point parabolic interpolation because it averages over a wider region, reducing sensitivity to asymmetric or noisy CMND dips (common when harmonics are strong relative to the fundamental).
+
+**3-point fallback** (near buffer edges):
 
 ```
 adjustment = (s2 - s0) / (2 * (2*s1 - s2 - s0))
 tau_refined = tau + adjustment
 ```
 
-This typically improves frequency resolution by an order of magnitude.
+Both fits include a sanity check: the adjustment is rejected if it exceeds the expected range (±2 samples for 5-point, ±1 for 3-point).
 
 #### 6. Confidence Check (Noise Gate)
 
