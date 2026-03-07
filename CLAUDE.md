@@ -13,6 +13,7 @@ GuitarTuner/
 ├── yin-detector.js               # YIN pitch detection algorithm
 ├── autocorrelation-detector.js   # Autocorrelation pitch detection algorithm
 ├── mcleod-detector.js            # McLeod Pitch Method (MPM) algorithm
+├── hps-detector.js               # Harmonic Product Spectrum (FFT-based) algorithm
 ├── debug-plot.js                 # Debug visualization (canvas plots for all algorithms)
 ├── tuner.js                      # Tuner orchestrator (Web Audio API, UI, smoothing)
 ├── test-tone-generator.js        # Realistic guitar test tone synthesis
@@ -30,7 +31,8 @@ GuitarTuner/
 | `yin-detector.js` | `YinDetector` — YIN algorithm with CMND, octave correction, 5-point interpolation. |
 | `autocorrelation-detector.js` | `AutocorrelationDetector` — Classic autocorrelation with RMS gate and signal trimming. |
 | `mcleod-detector.js` | `McLeodDetector` — McLeod MPM with NSDF, key maxima, relative threshold. |
-| `debug-plot.js` | `DebugPlot` — Canvas-based real-time visualization for all three algorithms. |
+| `hps-detector.js` | `HpsDetector` — Harmonic Product Spectrum with FFT, log-domain product, octave-error check. |
+| `debug-plot.js` | `DebugPlot` — Canvas-based real-time visualization for all four algorithms. |
 | `tuner.js` | `Tuner` — Main orchestrator: Web Audio API, microphone, smoothing, UI updates. |
 | `test-tone-generator.js` | `TestToneGenerator` — Guitar-like test tones with harmonics, vibrato, noise. |
 | `app.js` | Entry point — instantiates `Tuner` and `TestToneGenerator`. |
@@ -47,7 +49,8 @@ The codebase uses the Strategy design pattern for swappable pitch detection:
 PitchDetector (abstract base)
 ├── YinDetector              — YIN algorithm (accurate, CMND-based)
 ├── McLeodDetector           — McLeod MPM (default, adaptive threshold)
-└── AutocorrelationDetector  — Autocorrelation (faster, simpler)
+├── AutocorrelationDetector  — Autocorrelation (faster, simpler)
+└── HpsDetector              — Harmonic Product Spectrum (FFT-based, frequency domain)
 ```
 
 All implement a single method:

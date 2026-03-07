@@ -1,6 +1,6 @@
 # Pitch Detection Algorithms
 
-This document describes the three pitch detection algorithms used in the Guitar Tuner application. All are time-domain methods that estimate the fundamental frequency (F0) of a periodic signal.
+This document describes the four pitch detection algorithms used in the Guitar Tuner application. Three are time-domain methods and one (HPS) is frequency-domain.
 
 ---
 
@@ -291,16 +291,105 @@ frequency = sampleRate / tau_refined
 
 ---
 
+## Harmonic Product Spectrum (`HpsDetector`)
+
+**Source:** First described by A. Michael Noll (1969), widely used in speech and music analysis.
+
+### Overview
+
+HPS is a **frequency-domain** method, fundamentally different from the three time-domain algorithms above. It computes the FFT of the signal, then multiplies the magnitude spectrum with downsampled copies of itself. Because harmonics of a periodic signal appear at integer multiples of the fundamental (F0, 2×F0, 3×F0, ...), downsampling by factor *k* aligns the *k*-th harmonic with the fundamental. The product of all downsampled spectra therefore peaks sharply at the fundamental frequency.
+
+### Steps
+
+#### 1. Windowing
+
+A Hanning window is applied to the input buffer to reduce spectral leakage:
+
+```
+w(n) = 0.5 * (1 - cos(2π * n / (N-1)))
+x_windowed[n] = x[n] * w(n)
+```
+
+#### 2. Zero-Padded FFT
+
+The windowed signal is zero-padded to 16384 samples (at 48kHz this gives ~2.93 Hz/bin resolution) and transformed using a radix-2 Cooley-Tukey FFT. Only the first half of the output (positive frequencies) is used.
+
+```
+X[k] = FFT(x_windowed, padded to 16384)
+mag[k] = |X[k]| = sqrt(Re[k]² + Im[k]²)
+```
+
+#### 3. Harmonic Product Spectrum (Log Domain)
+
+Instead of multiplying magnitude spectra directly (which causes overflow), the algorithm sums their logarithms:
+
+```
+HPS[k] = log(mag[k]) + log(mag[2k]) + log(mag[3k]) + log(mag[4k]) + log(mag[5k])
+```
+
+For a signal with fundamental at bin `k₀`:
+- `mag[k₀]` — fundamental (strong)
+- `mag[2k₀]` — 2nd harmonic (strong)
+- `mag[3k₀]` — 3rd harmonic (moderate)
+- etc.
+
+All these contribute to `HPS[k₀]`, making it the dominant peak. At any non-fundamental bin, the downsampled copies don't align with harmonics, so their contribution is just noise.
+
+#### 4. Peak Detection
+
+The algorithm finds the maximum of the HPS in the valid frequency range (`MIN_FREQUENCY` to `MAX_FREQUENCY`).
+
+#### 5. Octave-Error Correction
+
+HPS can occasionally lock onto the octave above the fundamental (especially for low strings with weak fundamentals). The algorithm checks if a valid peak exists near `peakBin / 2`:
+
+- Search a small neighborhood around the half-frequency bin
+- If the sub-harmonic's HPS value is within 1.5 (log domain) of the main peak, prefer it
+- This corresponds to the sub-harmonic being at least ~22% of the main peak's power
+
+#### 6. Parabolic Interpolation
+
+Same principle as the other algorithms — fit a parabola through the peak and its neighbors to achieve sub-bin frequency resolution:
+
+```
+δ = (HPS[k-1] - HPS[k+1]) / (2 * (2*HPS[k] - HPS[k-1] - HPS[k+1]))
+interpolated_bin = k + δ
+frequency = interpolated_bin * sampleRate / N_fft
+```
+
+#### 7. SNR Noise Gate
+
+The peak must be significantly above the noise floor (measured as the median HPS value). In log domain, a difference of ≥4 means the peak is exp(4) ≈ 55× stronger than median noise.
+
+### Parameters
+
+| Parameter | Default | Purpose |
+|-----------|---------|-------------|
+| `numHarmonics` | `5` | Number of downsampling factors (2..5). More = better harmonic rejection but narrows the usable frequency range. |
+| `fftSize` | `16384` | Zero-padded FFT size. Larger = finer frequency resolution but more computation. |
+| SNR threshold | `4` | Minimum log-domain SNR (peak vs median). |
+| RMS threshold | `0.01` | Same RMS noise gate as Autocorrelation. |
+
+### Characteristics
+
+- **Accuracy:** Good — zero-padding + parabolic interpolation gives ~0.3 Hz effective resolution. Slightly less precise than time-domain methods for sub-cent accuracy.
+- **Latency:** Low — O(N log N) for FFT, compared to O(N²) for YIN/McLeod. Significantly faster.
+- **Octave errors:** Moderate — the harmonic product naturally prefers the fundamental, but can occasionally jump up an octave (mitigated by the sub-harmonic check).
+- **Best for:** Fast, lightweight pitch detection. Good for scenarios where computational budget is tight.
+
+---
+
 ## Comparison
 
-| Property | YIN | McLeod (MPM) | Autocorrelation |
-|----------|-----|--------------|-----------------|
-| Core function | Difference (finds **minima**) | NSDF (finds **maxima**) | Autocorrelation (finds **maxima**) |
-| Normalization | Cumulative mean (CMNDF) | Per-lag `m(tau)` (NSDF) | None |
-| Threshold type | Absolute (`0.1`) | Relative (`k * nmax`) | None (argmax) |
-| Octave error resistance | High (CMND + correction step) | High (relative threshold) | Low |
-| Noise rejection | Confidence-based (probability > 0.6) | Clarity-based (NSDF value > 0.5) | RMS threshold (> 0.01) |
-| Sub-sample interpolation | Yes (5-point least-squares) | Yes (3-point parabolic) | Yes (3-point parabolic) |
-| Computational cost | O(N^2) | O(N^2) | O(N^2) |
-| Default in tuner | No | **Yes** | No |
-| Explicit octave correction | Yes (sub-harmonic check) | No (not needed) | No |
+| Property | YIN | McLeod (MPM) | Autocorrelation | HPS |
+|----------|-----|--------------|-----------------|-----|
+| Domain | Time | Time | Time | Frequency |
+| Core function | Difference (finds **minima**) | NSDF (finds **maxima**) | Autocorrelation (finds **maxima**) | Magnitude product (finds **maxima** in FFT) |
+| Normalization | Cumulative mean (CMNDF) | Per-lag `m(tau)` (NSDF) | None | Log-domain sum |
+| Threshold type | Absolute (`0.1`) | Relative (`k * nmax`) | None (argmax) | SNR vs median |
+| Octave error resistance | High (CMND + correction step) | High (relative threshold) | Low | Moderate (sub-harmonic check) |
+| Noise rejection | Confidence-based (probability > 0.6) | Clarity-based (NSDF value > 0.5) | RMS threshold (> 0.01) | RMS + SNR gate |
+| Sub-sample interpolation | Yes (5-point least-squares) | Yes (3-point parabolic) | Yes (3-point parabolic) | Yes (3-point parabolic on HPS) |
+| Computational cost | O(N²) | O(N²) | O(N²) | O(N log N) |
+| Default in tuner | No | **Yes** | No | No |
+| Explicit octave correction | Yes (sub-harmonic check) | No (not needed) | No | Yes (half-frequency check) |

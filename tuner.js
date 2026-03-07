@@ -1,7 +1,7 @@
 /**
  * Tuner — Main orchestrator class
  * Depends on: pitch-common.js, yin-detector.js, mcleod-detector.js,
- *             autocorrelation-detector.js, debug-plot.js
+ *             autocorrelation-detector.js, hps-detector.js, debug-plot.js
  */
 class Tuner {
     constructor() {
@@ -13,7 +13,8 @@ class Tuner {
         this.detectors = {
             yin: new YinDetector(),
             mcleod: new McLeodDetector(),
-            autocorr: new AutocorrelationDetector()
+            autocorr: new AutocorrelationDetector(),
+            hps: new HpsDetector()
         };
         this.currentDetector = this.detectors.mcleod;
 
@@ -73,6 +74,7 @@ class Tuner {
                 this.detectors.yin.debug = on;
                 this.detectors.mcleod.debug = on;
                 this.detectors.autocorr.debug = on;
+                this.detectors.hps.debug = on;
             });
         }
 
@@ -224,6 +226,9 @@ class Tuner {
             } else if (this.currentDetector === this.detectors.mcleod) {
                 this.debugPlot.drawMcLeod(dd);
                 this.debugPlot.updateInfo('McLeod', dd, perfMs);
+            } else if (this.currentDetector === this.detectors.hps) {
+                this.debugPlot.drawHps(dd);
+                this.debugPlot.updateInfo('HPS', dd, perfMs);
             } else {
                 this.debugPlot.drawAutocorrelation(dd);
                 this.debugPlot.updateInfo('Autocorr', dd, perfMs);
