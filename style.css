@@ -261,14 +261,14 @@ body {
     font-family: 'Outfit', monospace;
     color: var(--text-secondary);
     background: rgba(15, 23, 42, 0.8);
-    line-height: 1.5;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0 1.2rem;
+    line-height: 1.6;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
 }
 
 .debug-info span {
     white-space: nowrap;
+    font-variant-numeric: tabular-nums;
 }
 
 .debug-info .perf-good { color: var(--success-color); }
