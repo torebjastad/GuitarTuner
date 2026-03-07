@@ -1341,24 +1341,35 @@ class TestToneGenerator {
             'E4': [1.0, 0.6, 0.4, 0.2, 0.1, 0.05]
         };
 
-        this.toneSelect = document.getElementById('test-tone-select');
-        this.toneBtn = document.getElementById('test-tone-btn');
-        if (this.toneBtn) this.bindEvents();
+        this.toneButtons = document.querySelectorAll('.tone-btn');
+        if (this.toneButtons.length > 0) this.bindEvents();
     }
 
     bindEvents() {
-        this.toneBtn.addEventListener('click', () => {
-            if (this.isPlaying) {
-                this.stopTone();
-            } else {
-                this.playTone();
-            }
+        this.toneButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const strIndex = parseInt(btn.getAttribute('data-string'), 10);
+                if (this.isPlaying && this.activeDataString === strIndex) {
+                    this.stopTone();
+                } else {
+                    if (this.isPlaying) {
+                        this.stopTone();
+                    }
+                    this.playTone(strIndex);
+                }
+            });
         });
     }
 
-    async playTone() {
-        const selectedString = this.strings[this.toneSelect.selectedIndex];
+    async playTone(index) {
+        const selectedString = this.strings[index];
         if (!selectedString) return;
+        this.activeDataString = index;
+
+        this.toneButtons.forEach((btn, idx) => {
+            if (idx === index) btn.classList.add('active');
+            else btn.classList.remove('active');
+        });
 
         // Ensure audioContext exists
         if (!this.tuner.audioContext || this.tuner.audioContext.state === 'closed') {
@@ -1459,7 +1470,6 @@ class TestToneGenerator {
         this.tuner.update();
 
         this.isPlaying = true;
-        this.toneBtn.textContent = 'Stop Tone';
 
         // Auto-stop after the longest decay
         this._autoStopTimer = setTimeout(() => this.stopTone(), 4000);
@@ -1473,7 +1483,11 @@ class TestToneGenerator {
         });
         this.nodes = [];
         this.isPlaying = false;
-        this.toneBtn.textContent = 'Play Tone';
+        this.activeDataString = null;
+        
+        if (this.toneButtons) {
+            this.toneButtons.forEach(btn => btn.classList.remove('active'));
+        }
 
         // Don't close the audio context — tuner might still be running
         if (!this.tuner.mediaStreamSource) {

@@ -290,33 +290,59 @@ body {
     margin-bottom: 0.75rem;
 }
 
-.test-tone-controls {
+.test-tone-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+    width: 100%;
+}
+
+.tone-btn {
     display: flex;
-    gap: 0.5rem;
+    flex-direction: column;
     align-items: center;
-}
-
-.test-tone-controls .algorithm-select {
-    flex: 1;
-}
-
-.test-tone-btn {
-    padding: 0.5rem 1rem;
+    justify-content: center;
+    padding: 0.75rem 0.5rem;
     background: rgba(15, 23, 42, 0.6);
     border: 1px solid rgba(255, 255, 255, 0.1);
     color: var(--text-secondary);
-    border-radius: 8px;
-    font-size: 0.9rem;
+    border-radius: 12px;
     cursor: pointer;
     transition: all 0.2s;
     font-family: inherit;
-    white-space: nowrap;
+    min-height: 60px;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
-.test-tone-btn:hover {
+.tone-btn:hover {
     background: rgba(30, 41, 59, 0.8);
-    border-color: var(--accent-color);
+    border-color: rgba(255, 255, 255, 0.2);
     color: var(--text-primary);
+}
+
+.tone-btn.active {
+    background: rgba(56, 189, 248, 0.15);
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+    box-shadow: 0 0 15px rgba(56, 189, 248, 0.2);
+}
+
+.tone-btn.active .tone-freq {
+    color: var(--accent-color);
+    opacity: 0.8;
+}
+
+.tone-name {
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+
+.tone-freq {
+    font-size: 0.7rem;
+    opacity: 0.7;
+    font-variant-numeric: tabular-nums;
 }
 
 /* Responsive adjustments */
