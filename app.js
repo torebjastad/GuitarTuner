@@ -421,6 +421,12 @@ class Tuner {
         this.algoSelect = document.getElementById('algorithm-select');
         this.debugToggle = document.getElementById('debug-toggle');
         this.debugPlot = new DebugPlot('debug-canvas');
+        this.smoothingSlider = document.getElementById('smoothing-slider');
+        this.smoothingVal = document.getElementById('smoothing-val');
+
+        if (this.smoothingSlider && this.smoothingVal) {
+            this.smoothingSlider.value = this.smoothingWindow;
+        }
 
         this.bindEvents();
     }
@@ -452,6 +458,28 @@ class Tuner {
                 this.detectors.yin.debug = on;
                 this.detectors.mcleod.debug = on;
                 this.detectors.autocorr.debug = on;
+            });
+        }
+        
+        if (this.smoothingSlider && this.smoothingVal) {
+            // Function to update the display text in ms
+            const updateDisplay = (frames) => {
+                // ~16.67ms per frame assuming 60fps requestAnimationFrame
+                const ms = Math.round(frames * 16.67);
+                this.smoothingVal.textContent = `${ms} ms`;
+            };
+
+            // Initial display update
+            updateDisplay(this.smoothingWindow);
+
+            this.smoothingSlider.addEventListener('input', (e) => {
+                this.smoothingWindow = parseInt(e.target.value, 10);
+                updateDisplay(this.smoothingWindow);
+                
+                // Shrink buffer immediately if we reduced the window size
+                while (this.smoothingBuffer.length > this.smoothingWindow) {
+                    this.smoothingBuffer.shift();
+                }
             });
         }
     }
