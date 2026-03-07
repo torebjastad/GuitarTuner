@@ -817,12 +817,8 @@ class DebugPlot {
         const { cmnd, threshold, initialTau, correctedTau, interpolatedTau,
             octaveCorrected, probability, frequency, sampleRate, bufferLength } = debugData;
 
-        // Determine visible range: show around the interesting tau region
-        // Show from tau=0 up to 1.5x the corrected tau (or at least 200 samples)
-        const maxTauDisplay = Math.min(
-            bufferLength,
-            Math.max(200, Math.ceil(correctedTau * 1.5))
-        );
+        // Static x-axis: always show the full computed tau range
+        const maxTauDisplay = bufferLength;
 
         // Find Y range (CMND values typically 0–2, but clamp for display)
         const yMax = 2.0;
@@ -1040,11 +1036,8 @@ class DebugPlot {
         const { autocorr, r1, r2, trimmedSize, firstDip, peakPos, peakVal,
             interpolatedT0, rms, frequency, sampleRate } = debugData;
 
-        // Display range: show up to 1.5x the peak position (at least 200)
-        const maxLagDisplay = Math.min(
-            trimmedSize,
-            Math.max(200, Math.ceil(peakPos * 1.5))
-        );
+        // Static x-axis: always show the full computed lag range
+        const maxLagDisplay = autocorr.length;
 
         // Y range: autocorrelation from min to max in the visible range
         let yMin = 0, yMax = 0;
@@ -1227,11 +1220,8 @@ class DebugPlot {
         const { nsdf, keyMaxima, threshold, selectedTau, interpolatedTau,
             clarity, frequency, sampleRate, bufferLength } = debugData;
 
-        // Display range: show around the interesting tau region
-        const maxTauDisplay = Math.min(
-            bufferLength,
-            Math.max(200, Math.ceil((selectedTau > 0 ? selectedTau : 100) * 2.5))
-        );
+        // Static x-axis: always show the full computed tau range
+        const maxTauDisplay = bufferLength;
 
         // NSDF range is [-1, +1]
         const yMax = 1.1;
