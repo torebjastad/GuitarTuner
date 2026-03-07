@@ -272,10 +272,15 @@ class McLeodDetector extends PitchDetector {
         const bufLen = buffer.length;
         const nsdf = this.nsdfBuffer;
 
+        // Limit tau range: max tau = sampleRate / minFreq.
+        // Beyond that we'd be detecting sub-bass below the tuner's range.
+        // Also cap at bufLen/2 so the inner sum has enough samples for a meaningful result.
+        const maxTau = Math.min(Math.floor(bufLen / 2), Math.ceil(sampleRate / TunerDefaults.MIN_FREQUENCY));
+
         // Step 1: Normalized Square Difference Function (NSDF)
         // NSDF(tau) = 2 * r(tau) / m(tau)
         // where r(tau) = sum(x[i]*x[i+tau]) and m(tau) = sum(x[i]^2 + x[i+tau]^2)
-        for (let tau = 0; tau < bufLen; tau++) {
+        for (let tau = 0; tau < maxTau; tau++) {
             let acf = 0;
             let div = 0;
             const limit = bufLen - tau;
@@ -294,7 +299,7 @@ class McLeodDetector extends PitchDetector {
         let currentMaxTau = 0;
         let currentMaxVal = -Infinity;
 
-        for (let tau = 1; tau < bufLen; tau++) {
+        for (let tau = 1; tau < maxTau; tau++) {
             if (nsdf[tau] > 0 && nsdf[tau - 1] <= 0) {
                 // Positive zero crossing (upward)
                 inPositiveRegion = true;
@@ -346,7 +351,7 @@ class McLeodDetector extends PitchDetector {
         // Step 4: Parabolic interpolation around the selected peak
         const tau = selectedPeak.tau;
         let interpolatedTau = tau;
-        if (tau > 0 && tau < bufLen - 1) {
+        if (tau > 0 && tau < maxTau - 1) {
             const s0 = nsdf[tau - 1];
             const s1 = nsdf[tau];
             const s2 = nsdf[tau + 1];
@@ -364,7 +369,7 @@ class McLeodDetector extends PitchDetector {
 
         if (this.debug) {
             this.debugData = {
-                nsdf: new Float32Array(nsdf.subarray(0, bufLen)),
+                nsdf: new Float32Array(nsdf.subarray(0, maxTau)),
                 keyMaxima,
                 nmax,
                 threshold,
@@ -373,7 +378,7 @@ class McLeodDetector extends PitchDetector {
                 clarity,
                 frequency: clarity >= this.smallCutoff ? frequency : -1,
                 sampleRate,
-                bufferLength: bufLen
+                bufferLength: maxTau
             };
         }
 
@@ -503,8 +508,10 @@ class Tuner {
 
         this.analyser.getFloatTimeDomainData(this.frequencyBuffer);
 
-        // STRATEGY CALL
+        // STRATEGY CALL (with performance timing)
+        const t0 = performance.now();
         const frequency = this.currentDetector.getPitch(this.frequencyBuffer, this.audioContext.sampleRate);
+        const perfMs = performance.now() - t0;
 
         if (frequency === -1 || isNaN(frequency) ||
             frequency < TunerDefaults.MIN_FREQUENCY ||
@@ -539,12 +546,16 @@ class Tuner {
 
         // Draw debug plot if enabled
         if (this.currentDetector.debug && this.currentDetector.debugData) {
+            const dd = this.currentDetector.debugData;
             if (this.currentDetector === this.detectors.yin) {
-                this.debugPlot.draw(this.currentDetector.debugData);
+                this.debugPlot.draw(dd);
+                this.debugPlot.updateInfo('YIN', dd, perfMs);
             } else if (this.currentDetector === this.detectors.mcleod) {
-                this.debugPlot.drawMcLeod(this.currentDetector.debugData);
+                this.debugPlot.drawMcLeod(dd);
+                this.debugPlot.updateInfo('McLeod', dd, perfMs);
             } else {
-                this.debugPlot.drawAutocorrelation(this.currentDetector.debugData);
+                this.debugPlot.drawAutocorrelation(dd);
+                this.debugPlot.updateInfo('Autocorr', dd, perfMs);
             }
         }
     }
@@ -628,7 +639,11 @@ class DebugPlot {
         this.canvas = document.getElementById(canvasId);
         if (!this.canvas) return;
         this.ctx = this.canvas.getContext('2d');
+        this.infoEl = document.getElementById('debug-info');
         this.visible = false;
+        // Performance tracking
+        this.perfHistory = [];
+        this.perfHistoryMax = 60;
     }
 
     toggle(show) {
@@ -636,13 +651,73 @@ class DebugPlot {
         if (this.canvas) {
             this.canvas.parentElement.style.display = show ? 'block' : 'none';
         }
-        if (!show) this.clear();
+        if (!show) {
+            this.clear();
+            this.perfHistory = [];
+        }
     }
 
     clear() {
         if (!this.ctx) return;
         const { width, height } = this.canvas;
         this.ctx.clearRect(0, 0, width, height);
+        if (this.infoEl) this.infoEl.innerHTML = '';
+    }
+
+    recordPerf(ms) {
+        this.perfHistory.push(ms);
+        if (this.perfHistory.length > this.perfHistoryMax) this.perfHistory.shift();
+    }
+
+    updateInfo(algoName, debugData, perfMs) {
+        if (!this.infoEl) return;
+        this.recordPerf(perfMs);
+
+        const avg = this.perfHistory.reduce((a, b) => a + b, 0) / this.perfHistory.length;
+        const max = Math.max(...this.perfHistory);
+        const frameBudget = 16.67; // 60fps
+        const loadPct = (avg / frameBudget) * 100;
+
+        // Performance color class
+        const perfClass = loadPct < 15 ? 'perf-good' : loadPct < 50 ? 'perf-ok' : 'perf-bad';
+        const loadLabel = loadPct < 15 ? 'light' : loadPct < 50 ? 'moderate' : 'heavy';
+
+        const s = (label, val) => `<span>${label}: ${val}</span>`;
+
+        let items = [s('Algorithm', algoName)];
+
+        if (algoName === 'YIN' && debugData) {
+            items.push(
+                s('Freq', debugData.frequency > 0 ? debugData.frequency.toFixed(2) + ' Hz' : 'rejected'),
+                s('τ', debugData.interpolatedTau.toFixed(2)),
+                s('Confidence', (debugData.probability * 100).toFixed(1) + '%'),
+                s('Octave corr.', debugData.octaveCorrected ? 'yes' : 'no'),
+            );
+        } else if (algoName === 'McLeod' && debugData) {
+            items.push(
+                s('Freq', debugData.frequency > 0 ? debugData.frequency.toFixed(2) + ' Hz' : 'rejected'),
+                s('τ', debugData.interpolatedTau.toFixed(2)),
+                s('Clarity', (debugData.clarity * 100).toFixed(1) + '%'),
+                s('Key maxima', debugData.keyMaxima.length),
+                s('Threshold', debugData.threshold.toFixed(3)),
+            );
+        } else if (algoName === 'Autocorr' && debugData) {
+            items.push(
+                s('Freq', debugData.frequency.toFixed(2) + ' Hz'),
+                s('T₀', debugData.interpolatedT0.toFixed(2)),
+                s('RMS', debugData.rms.toFixed(4)),
+                s('Trimmed', `[${debugData.r1}..${debugData.r2}]`),
+            );
+        }
+
+        items.push(
+            s('Calc', perfMs.toFixed(2) + ' ms'),
+            s('Avg', avg.toFixed(2) + ' ms'),
+            s('Peak', max.toFixed(2) + ' ms'),
+            `<span class="${perfClass}">CPU: ${loadPct.toFixed(1)}% (${loadLabel})</span>`,
+        );
+
+        this.infoEl.innerHTML = items.join('');
     }
 
     draw(debugData) {
@@ -653,15 +728,13 @@ class DebugPlot {
         const dpr = window.devicePixelRatio || 1;
 
         // Size canvas to container
-        const rect = canvas.parentElement.getBoundingClientRect();
-        canvas.width = rect.width * dpr;
-        canvas.height = rect.height * dpr;
-        canvas.style.width = rect.width + 'px';
-        canvas.style.height = rect.height + 'px';
+        const W = canvas.parentElement.getBoundingClientRect().width;
+        const H = 250;
+        canvas.width = W * dpr;
+        canvas.height = H * dpr;
+        canvas.style.width = W + 'px';
+        canvas.style.height = H + 'px';
         ctx.scale(dpr, dpr);
-
-        const W = rect.width;
-        const H = rect.height;
         const pad = { top: 25, bottom: 35, left: 50, right: 15 };
         const plotW = W - pad.left - pad.right;
         const plotH = H - pad.top - pad.bottom;
@@ -869,27 +942,6 @@ class DebugPlot {
             ctx.fill();
         }
 
-        // Info box — final result
-        ctx.fillStyle = 'rgba(30, 41, 59, 0.9)';
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-        ctx.lineWidth = 1;
-        const boxX = W - pad.right - 190;
-        const boxY = pad.top + 5;
-        ctx.fillRect(boxX, boxY, 185, 80);
-        ctx.strokeRect(boxX, boxY, 185, 80);
-
-        ctx.fillStyle = '#f8fafc';
-        ctx.font = '11px Outfit, sans-serif';
-        ctx.textAlign = 'left';
-        const lines = [
-            `Frequency: ${frequency > 0 ? frequency.toFixed(2) + ' Hz' : 'rejected'}`,
-            `τ (interpolated): ${interpolatedTau.toFixed(2)}`,
-            `Confidence: ${(probability * 100).toFixed(1)}%`,
-            `Octave corrected: ${octaveCorrected ? 'yes' : 'no'}`,
-        ];
-        lines.forEach((line, i) => {
-            ctx.fillText(line, boxX + 8, boxY + 16 + i * 16);
-        });
     }
 
     drawAutocorrelation(debugData) {
@@ -899,15 +951,13 @@ class DebugPlot {
         const ctx = this.ctx;
         const dpr = window.devicePixelRatio || 1;
 
-        const rect = canvas.parentElement.getBoundingClientRect();
-        canvas.width = rect.width * dpr;
-        canvas.height = rect.height * dpr;
-        canvas.style.width = rect.width + 'px';
-        canvas.style.height = rect.height + 'px';
+        const W = canvas.parentElement.getBoundingClientRect().width;
+        const H = 250;
+        canvas.width = W * dpr;
+        canvas.height = H * dpr;
+        canvas.style.width = W + 'px';
+        canvas.style.height = H + 'px';
         ctx.scale(dpr, dpr);
-
-        const W = rect.width;
-        const H = rect.height;
         const pad = { top: 25, bottom: 35, left: 50, right: 15 };
         const plotW = W - pad.left - pad.right;
         const plotH = H - pad.top - pad.bottom;
@@ -1079,27 +1129,6 @@ class DebugPlot {
             ctx.fill();
         }
 
-        // Info box
-        ctx.fillStyle = 'rgba(30, 41, 59, 0.9)';
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-        ctx.lineWidth = 1;
-        const boxX = W - pad.right - 200;
-        const boxY = pad.top + 5;
-        ctx.fillRect(boxX, boxY, 195, 80);
-        ctx.strokeRect(boxX, boxY, 195, 80);
-
-        ctx.fillStyle = '#f8fafc';
-        ctx.font = '11px Outfit, sans-serif';
-        ctx.textAlign = 'left';
-        const lines = [
-            `Frequency: ${frequency.toFixed(2)} Hz`,
-            `T₀ (interpolated): ${interpolatedT0.toFixed(2)}`,
-            `RMS: ${rms.toFixed(4)}`,
-            `Trimmed: [${r1}..${r2}] (${trimmedSize} samples)`,
-        ];
-        lines.forEach((line, i) => {
-            ctx.fillText(line, boxX + 8, boxY + 16 + i * 16);
-        });
     }
 
     drawMcLeod(debugData) {
@@ -1109,15 +1138,13 @@ class DebugPlot {
         const ctx = this.ctx;
         const dpr = window.devicePixelRatio || 1;
 
-        const rect = canvas.parentElement.getBoundingClientRect();
-        canvas.width = rect.width * dpr;
-        canvas.height = rect.height * dpr;
-        canvas.style.width = rect.width + 'px';
-        canvas.style.height = rect.height + 'px';
+        const W = canvas.parentElement.getBoundingClientRect().width;
+        const H = 250;
+        canvas.width = W * dpr;
+        canvas.height = H * dpr;
+        canvas.style.width = W + 'px';
+        canvas.style.height = H + 'px';
         ctx.scale(dpr, dpr);
-
-        const W = rect.width;
-        const H = rect.height;
         const pad = { top: 25, bottom: 35, left: 50, right: 15 };
         const plotW = W - pad.left - pad.right;
         const plotH = H - pad.top - pad.bottom;
@@ -1280,27 +1307,6 @@ class DebugPlot {
             ctx.fill();
         }
 
-        // Info box
-        ctx.fillStyle = 'rgba(30, 41, 59, 0.9)';
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-        ctx.lineWidth = 1;
-        const boxX = W - pad.right - 200;
-        const boxY = pad.top + 5;
-        ctx.fillRect(boxX, boxY, 195, 80);
-        ctx.strokeRect(boxX, boxY, 195, 80);
-
-        ctx.fillStyle = '#f8fafc';
-        ctx.font = '11px Outfit, sans-serif';
-        ctx.textAlign = 'left';
-        const lines = [
-            `Frequency: ${frequency > 0 ? frequency.toFixed(2) + ' Hz' : 'rejected'}`,
-            `τ (interpolated): ${interpolatedTau.toFixed(2)}`,
-            `Clarity: ${(clarity * 100).toFixed(1)}%`,
-            `Key maxima: ${keyMaxima.length}`,
-        ];
-        lines.forEach((line, i) => {
-            ctx.fillText(line, boxX + 8, boxY + 16 + i * 16);
-        });
     }
 }
 
