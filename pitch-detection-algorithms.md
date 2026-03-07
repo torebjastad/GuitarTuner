@@ -10,7 +10,7 @@ This document describes the three pitch detection algorithms used in the Guitar 
 
 ### Overview
 
-YIN is a refined autocorrelation-based method that uses a difference function and cumulative mean normalization to reliably detect the fundamental period of a signal. It is the default algorithm in this tuner due to its superior accuracy.
+YIN is a refined autocorrelation-based method that uses a difference function and cumulative mean normalization to reliably detect the fundamental period of a signal. It offers high accuracy, particularly with its built-in octave-error correction step.
 
 ### Steps
 
@@ -36,7 +36,7 @@ This normalization ensures `d'(0) = 1` and makes the dips at the true period sta
 
 #### 3. Absolute Threshold
 
-Scan `d'(tau)` for the first value that falls below a configurable threshold (default: `0.1`). Once a dip below the threshold is found, continue walking forward to find the local minimum within that dip. This selects the fundamental period rather than a harmonic.
+Scan `d'(tau)` for the first value that falls below a configurable threshold (default: `0.1`). The search begins at `minTau = sampleRate / MAX_FREQUENCY` (to skip impossibly high frequencies) and ends at `maxTau = sampleRate / MIN_FREQUENCY` (capped at `N/2`). Once a dip below the threshold is found, continue walking forward to find the local minimum within that dip. This selects the fundamental period rather than a harmonic.
 
 If no value falls below the threshold, the global minimum of `d'(tau)` is used as a fallback.
 
@@ -100,7 +100,7 @@ frequency = sampleRate / tau_refined
 ### Characteristics
 
 - **Accuracy:** High — the CMND normalization greatly reduces octave errors compared to plain autocorrelation.
-- **Latency:** Moderate — requires O(N^2) operations where N = bufferSize / 2.
+- **Latency:** Moderate — requires O(N²) operations where N = maxTau (restricted by `MIN_FREQUENCY`, capped at bufferSize / 2).
 - **Best for:** General-purpose tuning where accuracy matters more than speed.
 
 ---
@@ -137,7 +137,7 @@ subBuffer = buffer[r1..r2]
 
 #### 3. Autocorrelation
 
-The autocorrelation function is computed for all lags over the trimmed buffer:
+The autocorrelation function is computed for lags up to `maxLag = sampleRate / MIN_FREQUENCY` (capped at the trimmed buffer size):
 
 ```
 c(lag) = sum( subBuffer[j] * subBuffer[j + lag] )   for j = 0..N-lag
@@ -147,12 +147,12 @@ At lag 0, this equals the signal's energy. At the lag matching the fundamental p
 
 #### 4. Find First Dip, Then Peak
 
-To avoid selecting lag 0 (which is always the maximum), the algorithm first walks forward past the initial decline — finding the first index `d` where `c[d] > c[d+1]` stops being true (i.e., the autocorrelation stops decreasing).
+To avoid selecting lag 0 (which is always the maximum), the algorithm first walks forward from `minLag = sampleRate / MAX_FREQUENCY` past the initial decline — finding the first index `d` where `c[d] > c[d+1]` stops being true (i.e., the autocorrelation stops decreasing).
 
-From that point onward, it searches for the maximum value, which corresponds to the fundamental period:
+From that point onward, it searches for the maximum value up to `maxLag`, which corresponds to the fundamental period:
 
 ```
-T0 = argmax( c[i] )   for i = d..N
+T0 = argmax( c[i] )   for i = d..maxLag
 ```
 
 #### 5. Parabolic Interpolation
@@ -181,7 +181,7 @@ frequency = sampleRate / T0_refined
 ### Characteristics
 
 - **Accuracy:** Moderate — susceptible to octave errors (may lock onto harmonics instead of the fundamental).
-- **Latency:** Lower than YIN — simpler computation, though still O(N^2).
+- **Latency:** Lower than YIN — simpler computation, though still O(N²). Search range restricted by `MIN_FREQUENCY` / `MAX_FREQUENCY`.
 - **Best for:** Situations where speed is preferred over precision, or as a quick alternative for comparison.
 
 ---
@@ -287,7 +287,7 @@ frequency = sampleRate / tau_refined
 - **Latency:** Moderate — O(N^2) computation like YIN, where N = buffer length.
 - **Octave errors:** Resistant — the "first peak above relative threshold" strategy inherently prefers the fundamental over harmonics. No explicit octave-correction step needed.
 - **Clarity metric:** Direct — the NSDF value at the peak is a meaningful confidence measure, unlike YIN where `1 - CMND` is an indirect proxy.
-- **Best for:** Musical instrument tuning where adaptive harmonic rejection and a built-in clarity metric are valued.
+- **Best for:** Musical instrument tuning where adaptive harmonic rejection and a built-in clarity metric are valued. **Default algorithm** in this tuner.
 
 ---
 
@@ -302,5 +302,5 @@ frequency = sampleRate / tau_refined
 | Noise rejection | Confidence-based (probability > 0.6) | Clarity-based (NSDF value > 0.5) | RMS threshold (> 0.01) |
 | Sub-sample interpolation | Yes (5-point least-squares) | Yes (3-point parabolic) | Yes (3-point parabolic) |
 | Computational cost | O(N^2) | O(N^2) | O(N^2) |
-| Default in tuner | Yes | No | No |
+| Default in tuner | No | **Yes** | No |
 | Explicit octave correction | Yes (sub-harmonic check) | No (not needed) | No |

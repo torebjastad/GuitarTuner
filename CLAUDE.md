@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-A lightweight, browser-based guitar tuner with no build step or external dependencies. It captures microphone audio via the Web Audio API and performs real-time pitch detection using one of two selectable algorithms.
+A lightweight, browser-based guitar tuner with no build step or external dependencies. It captures microphone audio via the Web Audio API and performs real-time pitch detection using one of three selectable algorithms.
 
 ## Repository Structure
 
@@ -10,9 +10,8 @@ A lightweight, browser-based guitar tuner with no build step or external depende
 GuitarTuner/
 ├── index.html                    # Single-page UI shell
 ├── app.js                        # All application logic (pitch detection + tuner UI + test tones)
-├── audio-processor.js            # Legacy Google AudioProcessor (Polymer/ES6 module, not loaded by index.html)
 ├── style.css                     # Full styling with CSS custom properties
-└── pitch-detection-algorithms.md # Detailed documentation of YIN and Autocorrelation algorithms
+└── pitch-detection-algorithms.md # Detailed documentation of all three pitch detection algorithms
 ```
 
 ### File Roles
@@ -20,10 +19,9 @@ GuitarTuner/
 | File | Role |
 |---|---|
 | `index.html` | Markup only — loads `style.css` and `app.js`. No JS frameworks. |
-| `app.js` | Core application: `PitchDetector` base class, `YinDetector`, `AutocorrelationDetector`, `Tuner` orchestrator, `DebugPlot`, and `TestToneGenerator`. |
+| `app.js` | Core application: `PitchDetector` base class, `YinDetector`, `McLeodDetector`, `AutocorrelationDetector`, `Tuner` orchestrator, `DebugPlot`, and `TestToneGenerator`. |
 | `style.css` | Dark-theme glassmorphism UI using CSS custom properties (no preprocessor). |
-| `audio-processor.js` | Archived legacy source from the original Google Web Starter Kit demo. Uses Polymer and `import` syntax; **not used at runtime** — kept for reference only. |
-| `pitch-detection-algorithms.md` | In-depth documentation of both pitch detection algorithms. |
+| `pitch-detection-algorithms.md` | In-depth documentation of all three pitch detection algorithms. |
 
 ## Architecture
 
@@ -33,11 +31,12 @@ GuitarTuner/
 
 ```
 PitchDetector (abstract base)
-├── YinDetector          — YIN algorithm (default, more accurate)
-└── AutocorrelationDetector — Autocorrelation (faster, simpler)
+├── YinDetector              — YIN algorithm (accurate, CMND-based)
+├── McLeodDetector           — McLeod MPM (default, adaptive threshold)
+└── AutocorrelationDetector  — Autocorrelation (faster, simpler)
 ```
 
-Both implement a single method:
+All implement a single method:
 ```js
 getPitch(float32AudioBuffer, sampleRate) -> Hz | -1
 ```
@@ -49,7 +48,7 @@ getPitch(float32AudioBuffer, sampleRate) -> Hz | -1
 `Tuner` owns the Web Audio API lifecycle and all DOM interaction:
 
 - **`start()`** — requests microphone access, creates `AudioContext`, wires `MediaStreamSource → AnalyserNode`.
-- **`update()`** — RAF loop: reads float time-domain data, calls the active detector, rejects octave-jump outliers, applies median smoothing (last N readings), then delegates to `updateUI()`.
+- **`update()`** — RAF loop: reads float time-domain data, calls the active detector, rejects octave-jump outliers, detects genuine note changes (resets smoothing buffer after 3+ consecutive different-note readings), applies median smoothing (last N readings), then delegates to `updateUI()`.
 - **`updateUI(noteData)`** — updates note name, frequency display, needle position (mapped ±50 cents → 5–95%), and flat/sharp/in-tune indicators.
 - **`getNote(frequency)`** — converts Hz to MIDI note, name, octave, and cents deviation using A4 = 440 Hz.
 - **`stop()`** — closes `AudioContext`, resets UI.
@@ -60,14 +59,15 @@ getPitch(float32AudioBuffer, sampleRate) -> Hz | -1
 
 ### DebugPlot Class
 
-`DebugPlot` renders a real-time canvas visualization of the YIN CMND function when the "Show Algorithm Debug" checkbox is enabled. It annotates:
-- The CMND curve with threshold lines (step 3 threshold at 0.1, octave-correction threshold at 0.3).
-- The initial tau detected in step 3 (red dot if octave-corrected, green if final).
-- The octave-corrected tau from step 4, with an arrow showing the correction.
-- The parabolic-interpolated final tau (green triangle at bottom).
-- An info box showing final frequency, interpolated tau, confidence, and whether octave correction was applied.
+`DebugPlot` renders a real-time canvas visualization for the active algorithm when the "Show Algorithm Debug" checkbox is enabled. It supports three drawing modes:
 
-Debug data capture is gated behind `YinDetector.debug = true` to avoid overhead when not in use.
+- **YIN:** Draws the CMND curve with threshold lines (step 3 threshold at 0.1, octave-correction threshold at 0.3), initial/corrected tau markers with arrows, and the parabolic-interpolated final tau (green triangle).
+- **McLeod MPM:** Draws the NSDF curve with positive/negative lobes, key maxima (orange dots), the selected peak (red dot), relative threshold line, and interpolated tau.
+- **Autocorrelation:** Draws the autocorrelation function, first-dip marker, detected peak, and interpolated T₀.
+
+All modes include an info panel showing algorithm name, frequency, tau, confidence/clarity, and CPU load (avg/peak/percentage).
+
+Debug data capture is gated behind each detector's `.debug = true` flag to avoid overhead when not in use.
 
 ### Configuration Constants
 
@@ -76,7 +76,9 @@ Defined in `TunerDefaults` at the top of `app.js`:
 | Constant | Value | Meaning |
 |---|---|---|
 | `FFTSIZE` | `4096` | AnalyserNode FFT size (also the time-domain buffer length). Larger buffer for reliable low-frequency detection. |
-| `SmoothingWindow` | `5` | Number of pitch readings used for median smoothing |
+| `SmoothingWindow` | `20` | Number of pitch readings used for median smoothing (adjustable via UI slider) |
+| `MIN_FREQUENCY` | `30` | Minimum detectable frequency (Hz). Limits tau search range in all algorithms. |
+| `MAX_FREQUENCY` | `3000` | Maximum detectable frequency (Hz). Filters out-of-range readings and sets minimum tau. |
 
 ### CSS Design Tokens
 
@@ -126,10 +128,10 @@ There are no automated tests. Manual testing via a browser with microphone acces
 2. **Class-based OOP** — new pitch algorithms must extend `PitchDetector` and implement `getPitch(buffer, sampleRate)`.
 3. **Register new detectors in `Tuner`** — add to `this.detectors` map and add a corresponding `<option>` in `index.html`.
 4. **CSS custom properties** — use existing tokens for all colours. Do not hardcode hex/rgb values.
-5. **`audio-processor.js` is reference only** — do not import or load it; it depends on Polymer which is not present.
+5. **Frequency range** — `MIN_FREQUENCY` and `MAX_FREQUENCY` in `TunerDefaults` control both the post-detection filter and the tau search range in all three algorithms. Lowering `MIN_FREQUENCY` increases CPU cost.
 6. **Tuning reference** — A4 = 440 Hz. Cent calculations use standard 12-TET: `cents = 1200 * log2(f / f_target)`.
 7. **In-tune tolerance** — currently ±5 cents (`isPerfect = Math.abs(cents) < 5` in `updateUI`).
-8. **Noise gate** — YIN rejects reads with probability < 0.6; Autocorrelation rejects RMS < 0.01. Keep these gates; removing them causes jitter on silence.
+8. **Noise gate** — YIN rejects reads with probability < 0.6; McLeod rejects clarity < 0.5; Autocorrelation rejects RMS < 0.01. Keep these gates; removing them causes jitter on silence.
 
 ## Branch / Git Conventions
 
