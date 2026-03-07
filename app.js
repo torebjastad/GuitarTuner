@@ -7,7 +7,7 @@ const TunerDefaults = {
     FFTSIZE: 4096,       // Larger buffer for reliable low-frequency detection
     SmoothingWindow: 20, // Number of recent readings for median smoothing
     MIN_FREQUENCY: 30,   // Below low E2 (~82 Hz) with margin
-    MAX_FREQUENCY: 1400  // Above high E6 (~1319 Hz) with margin
+    MAX_FREQUENCY: 3000  // Above high E6 (~1319 Hz) with margin
 };
 
 /**
@@ -32,17 +32,23 @@ class YinDetector extends PitchDetector {
 
     getPitch(float32AudioBuffer, sampleRate) {
         const bufferSize = float32AudioBuffer.length;
-        const yinBufferLength = Math.floor(bufferSize / 2);
-        const yinBuffer = new Float32Array(yinBufferLength);
+        const halfBuffer = Math.floor(bufferSize / 2);
+
+        // Restrict tau range based on frequency limits:
+        // tau = sampleRate / frequency, so low freq → high tau, high freq → low tau
+        const maxTau = Math.min(halfBuffer, Math.ceil(sampleRate / TunerDefaults.MIN_FREQUENCY));
+        const minTau = Math.max(1, Math.floor(sampleRate / TunerDefaults.MAX_FREQUENCY));
+
+        const yinBuffer = new Float32Array(maxTau);
 
         // Step 1: Difference Function
         // d(tau) = sum((x[i] - x[i+tau])^2)
-        for (let tau = 0; tau < yinBufferLength; tau++) {
+        for (let tau = 0; tau < maxTau; tau++) {
             yinBuffer[tau] = 0;
         }
 
-        for (let tau = 1; tau < yinBufferLength; tau++) {
-            for (let i = 0; i < yinBufferLength; i++) {
+        for (let tau = 1; tau < maxTau; tau++) {
+            for (let i = 0; i < halfBuffer; i++) {
                 const delta = float32AudioBuffer[i] - float32AudioBuffer[i + tau];
                 yinBuffer[tau] += delta * delta;
             }
@@ -52,18 +58,18 @@ class YinDetector extends PitchDetector {
         // d'(tau) = d(tau) / (1/tau * sum(d(j)))
         yinBuffer[0] = 1;
         let runningSum = 0;
-        for (let tau = 1; tau < yinBufferLength; tau++) {
+        for (let tau = 1; tau < maxTau; tau++) {
             runningSum += yinBuffer[tau];
             yinBuffer[tau] *= tau / runningSum;
         }
 
-        // Step 3: Absolute Threshold
+        // Step 3: Absolute Threshold (search only within valid frequency range)
         let tau = -1;
         let thresholdUsed = true;
-        for (let i = 1; i < yinBufferLength; i++) {
+        for (let i = minTau; i < maxTau; i++) {
             if (yinBuffer[i] < this.threshold) {
                 // Found a dip below threshold
-                while (i + 1 < yinBufferLength && yinBuffer[i + 1] < yinBuffer[i]) {
+                while (i + 1 < maxTau && yinBuffer[i + 1] < yinBuffer[i]) {
                     i++;
                 }
                 tau = i;
@@ -75,7 +81,7 @@ class YinDetector extends PitchDetector {
         if (tau === -1) {
             thresholdUsed = false;
             let minVal = 100; // Arbitrary high
-            for (let i = 1; i < yinBufferLength; i++) {
+            for (let i = minTau; i < maxTau; i++) {
                 if (yinBuffer[i] < minVal) {
                     minVal = yinBuffer[i];
                     tau = i;
@@ -94,13 +100,13 @@ class YinDetector extends PitchDetector {
         // fundamental is present and we should prefer it.
         let octaveCorrected = false;
         const doubleTau = Math.round(tau * 2);
-        if (doubleTau > 0 && doubleTau < yinBufferLength - 1) {
+        if (doubleTau > 0 && doubleTau < maxTau - 1) {
             // Walk to the local minimum near doubleTau
             let bestTau = doubleTau;
             let bestVal = yinBuffer[doubleTau];
             const searchRadius = Math.max(4, Math.round(tau * 0.1));
             const lo = Math.max(1, doubleTau - searchRadius);
-            const hi = Math.min(yinBufferLength - 2, doubleTau + searchRadius);
+            const hi = Math.min(maxTau - 2, doubleTau + searchRadius);
             for (let k = lo; k <= hi; k++) {
                 if (yinBuffer[k] < bestVal) {
                     bestVal = yinBuffer[k];
@@ -123,20 +129,20 @@ class YinDetector extends PitchDetector {
         // Use 5-point least-squares quadratic fit when possible (more robust
         // for broad or asymmetric dips), fall back to 3-point fit near edges.
         let interpolatedTau = tau;
-        if (tau > 2 && tau < yinBufferLength - 2) {
+        if (tau > 2 && tau < maxTau - 2) {
             // 5-point least-squares: fit y = a*x^2 + b*x + c at x = {-2,-1,0,1,2}
             const sm2 = yinBuffer[tau - 2];
             const sm1 = yinBuffer[tau - 1];
-            const s0  = yinBuffer[tau];
-            const s1  = yinBuffer[tau + 1];
-            const s2  = yinBuffer[tau + 2];
+            const s0 = yinBuffer[tau];
+            const s1 = yinBuffer[tau + 1];
+            const s2 = yinBuffer[tau + 2];
             const a = (2 * sm2 - sm1 - 2 * s0 - s1 + 2 * s2) / 14;
             const b = (-2 * sm2 - sm1 + s1 + 2 * s2) / 10;
             if (a > 0) {
                 const adjustment = -b / (2 * a);
                 if (Math.abs(adjustment) < 2) interpolatedTau = tau + adjustment;
             }
-        } else if (tau > 1 && tau < yinBufferLength - 1) {
+        } else if (tau > 1 && tau < maxTau - 1) {
             // 3-point fallback near buffer edges
             const s0 = yinBuffer[tau - 1];
             const s1 = yinBuffer[tau];
@@ -160,7 +166,7 @@ class YinDetector extends PitchDetector {
                 probability,
                 frequency: probability >= 0.6 ? sampleRate / interpolatedTau : -1,
                 sampleRate,
-                bufferLength: yinBufferLength
+                bufferLength: maxTau
             };
         }
 
@@ -207,23 +213,34 @@ class AutocorrelationDetector extends PitchDetector {
 
         const subBuffer = buffer.slice(r1, r2);
         SIZE = subBuffer.length;
-        const c = new Array(SIZE).fill(0);
 
-        for (let i = 0; i < SIZE; i++) {
+        // Restrict lag range based on frequency limits
+        const maxLag = Math.min(SIZE, Math.ceil(sampleRate / TunerDefaults.MIN_FREQUENCY));
+        const minLag = Math.max(1, Math.floor(sampleRate / TunerDefaults.MAX_FREQUENCY));
+
+        const c = new Array(maxLag).fill(0);
+
+        for (let i = 0; i < maxLag; i++) {
             for (let j = 0; j < SIZE - i; j++) {
                 c[i] = c[i] + subBuffer[j] * subBuffer[j + i];
             }
         }
 
-        let d = 0;
-        while (c[d] > c[d + 1]) d++;
+        // Find first dip (start from minLag to skip impossibly high frequencies)
+        let d = minLag;
+        while (d < maxLag - 1 && c[d] > c[d + 1]) d++;
 
         let maxval = -1, maxpos = -1;
-        for (let i = d; i < SIZE; i++) {
+        for (let i = d; i < maxLag; i++) {
             if (c[i] > maxval) {
                 maxval = c[i];
                 maxpos = i;
             }
+        }
+
+        if (maxpos < 1 || maxpos >= maxLag - 1) {
+            if (this.debug) this.debugData = null;
+            return -1;
         }
 
         let T0 = maxpos;
@@ -460,7 +477,7 @@ class Tuner {
                 this.detectors.autocorr.debug = on;
             });
         }
-        
+
         if (this.smoothingSlider && this.smoothingVal) {
             // Function to update the display text in ms
             const updateDisplay = (frames) => {
@@ -475,7 +492,7 @@ class Tuner {
             this.smoothingSlider.addEventListener('input', (e) => {
                 this.smoothingWindow = parseInt(e.target.value, 10);
                 updateDisplay(this.smoothingWindow);
-                
+
                 // Shrink buffer immediately if we reduced the window size
                 while (this.smoothingBuffer.length > this.smoothingWindow) {
                     this.smoothingBuffer.shift();
@@ -790,7 +807,7 @@ class DebugPlot {
         ctx.clearRect(0, 0, W, H);
 
         const { cmnd, threshold, initialTau, correctedTau, interpolatedTau,
-                octaveCorrected, probability, frequency, sampleRate, bufferLength } = debugData;
+            octaveCorrected, probability, frequency, sampleRate, bufferLength } = debugData;
 
         // Determine visible range: show around the interesting tau region
         // Show from tau=0 up to 1.5x the corrected tau (or at least 200 samples)
@@ -835,8 +852,8 @@ class DebugPlot {
         ctx.font = '11px Outfit, sans-serif';
         ctx.textAlign = 'center';
         const xStep = maxTauDisplay <= 300 ? 50
-                     : maxTauDisplay <= 600 ? 100
-                     : 200;
+            : maxTauDisplay <= 600 ? 100
+                : 200;
         for (let t = xStep; t < maxTauDisplay; t += xStep) {
             const x = toX(t);
             // Tick mark
@@ -1013,7 +1030,7 @@ class DebugPlot {
         ctx.clearRect(0, 0, W, H);
 
         const { autocorr, r1, r2, trimmedSize, firstDip, peakPos, peakVal,
-                interpolatedT0, rms, frequency, sampleRate } = debugData;
+            interpolatedT0, rms, frequency, sampleRate } = debugData;
 
         // Display range: show up to 1.5x the peak position (at least 200)
         const maxLagDisplay = Math.min(
@@ -1077,8 +1094,8 @@ class DebugPlot {
         ctx.font = '11px Outfit, sans-serif';
         ctx.textAlign = 'center';
         const xStep = maxLagDisplay <= 300 ? 50
-                     : maxLagDisplay <= 600 ? 100
-                     : 200;
+            : maxLagDisplay <= 600 ? 100
+                : 200;
         for (let t = xStep; t < maxLagDisplay; t += xStep) {
             const x = toX(t);
             ctx.strokeStyle = 'rgba(148, 163, 184, 0.3)';
@@ -1200,7 +1217,7 @@ class DebugPlot {
         ctx.clearRect(0, 0, W, H);
 
         const { nsdf, keyMaxima, threshold, selectedTau, interpolatedTau,
-                clarity, frequency, sampleRate, bufferLength } = debugData;
+            clarity, frequency, sampleRate, bufferLength } = debugData;
 
         // Display range: show around the interesting tau region
         const maxTauDisplay = Math.min(
@@ -1251,8 +1268,8 @@ class DebugPlot {
         ctx.font = '11px Outfit, sans-serif';
         ctx.textAlign = 'center';
         const xStep = maxTauDisplay <= 300 ? 50
-                     : maxTauDisplay <= 600 ? 100
-                     : 200;
+            : maxTauDisplay <= 600 ? 100
+                : 200;
         for (let t = xStep; t < maxTauDisplay; t += xStep) {
             const x = toX(t);
             ctx.strokeStyle = 'rgba(148, 163, 184, 0.3)';
@@ -1526,13 +1543,13 @@ class TestToneGenerator {
     stopTone() {
         clearTimeout(this._autoStopTimer);
         this.nodes.forEach(node => {
-            try { node.disconnect(); } catch (e) {}
-            try { if (node.stop) node.stop(); } catch (e) {}
+            try { node.disconnect(); } catch (e) { }
+            try { if (node.stop) node.stop(); } catch (e) { }
         });
         this.nodes = [];
         this.isPlaying = false;
         this.activeDataString = null;
-        
+
         if (this.toneButtons) {
             this.toneButtons.forEach(btn => btn.classList.remove('active'));
         }
