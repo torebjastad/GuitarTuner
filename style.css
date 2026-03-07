@@ -162,7 +162,7 @@ body {
 }
 
 .display-area {
-    margin: 0;
+    margin: 0.75rem 0;
     display: flex;
     justify-content: center;
     align-items: center;
