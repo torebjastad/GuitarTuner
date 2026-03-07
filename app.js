@@ -547,15 +547,35 @@ class Tuner {
             return;
         }
 
-        // Octave-jump rejection: if the new reading is ~2x or ~0.5x
-        // the current median, it's almost certainly an octave error
+        // Octave-jump rejection & note-change detection
         if (this.smoothingBuffer.length >= 3) {
             const sorted = [...this.smoothingBuffer].sort((a, b) => a - b);
             const median = sorted[Math.floor(sorted.length / 2)];
             const ratio = frequency / median;
-            // Reject readings that are roughly an octave away (1.8-2.2x or 0.45-0.55x)
-            if ((ratio > 1.8 && ratio < 2.2) || (ratio > 0.45 && ratio < 0.55)) {
-                return; // skip this reading
+
+            // Check if this is a large frequency change (different note entirely)
+            // A semitone ratio is ~1.059, so beyond ~1.3x or below ~0.77x is a different note region
+            const isLargeChange = ratio > 1.3 || ratio < 0.77;
+
+            if (isLargeChange) {
+                // Track consecutive "different note" readings
+                this._noteChangeCount = (this._noteChangeCount || 0) + 1;
+
+                // If we've seen 3+ consecutive readings at a very different frequency,
+                // the player genuinely switched notes — reset the buffer
+                if (this._noteChangeCount >= 3) {
+                    this.smoothingBuffer = [];
+                    this._noteChangeCount = 0;
+                } else {
+                    return; // skip isolated outlier readings
+                }
+            } else {
+                this._noteChangeCount = 0;
+
+                // Standard octave-jump rejection for readings close to the current note
+                if ((ratio > 1.8 && ratio < 2.2) || (ratio > 0.45 && ratio < 0.55)) {
+                    return; // skip this reading
+                }
             }
         }
 
