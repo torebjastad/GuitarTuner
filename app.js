@@ -1412,14 +1412,10 @@ class TestToneGenerator {
         this.toneButtons.forEach(btn => {
             btn.addEventListener('click', () => {
                 const strIndex = parseInt(btn.getAttribute('data-string'), 10);
-                if (this.isPlaying && this.activeDataString === strIndex) {
+                if (this.isPlaying) {
                     this.stopTone();
-                } else {
-                    if (this.isPlaying) {
-                        this.stopTone();
-                    }
-                    this.playTone(strIndex);
                 }
+                this.playTone(strIndex);
             });
         });
     }
