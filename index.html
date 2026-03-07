@@ -39,16 +39,17 @@
             <button id="start-btn" class="start-btn">Start Tuner</button>
 
             <select id="algorithm-select" class="algorithm-select">
-                <option value="yin">YIN (Accurate)</option>
+                <option value="yin">YIN</option>
                 <option value="mcleod" selected>McLeod MPM</option>
-                <option value="autocorr">Autocorrelation (Fast)</option>
+                <option value="autocorr">Autocorrelation</option>
             </select>
 
             <div class="slider-group">
                 <span class="slider-label">Averaging: <span id="smoothing-val">333 ms</span></span>
                 <div class="slider-container">
                     <span class="slider-icon">Snappy</span>
-                    <input type="range" id="smoothing-slider" class="styled-slider" min="1" max="50" value="20" step="1">
+                    <input type="range" id="smoothing-slider" class="styled-slider" min="1" max="50" value="20"
+                        step="1">
                     <span class="slider-icon">Stable</span>
                 </div>
             </div>
