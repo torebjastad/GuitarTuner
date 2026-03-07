@@ -43,7 +43,7 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 2rem;
+    gap: 1.25rem;
 }
 
 .title {
@@ -55,7 +55,7 @@ body {
 }
 
 .controls {
-    margin-bottom: 1.5rem;
+    margin-bottom: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -162,7 +162,7 @@ body {
 }
 
 .display-area {
-    margin: 1rem 0;
+    margin: 0;
     display: flex;
     justify-content: center;
     align-items: center;

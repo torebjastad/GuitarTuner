@@ -15,14 +15,6 @@
     <div class="tuner-container">
         <h1 class="title">Tuner</h1>
 
-        <div class="controls">
-            <select id="algorithm-select" class="algorithm-select">
-                <option value="yin">YIN (Accurate)</option>
-                <option value="mcleod" selected>McLeod MPM</option>
-                <option value="autocorr">Autocorrelation (Fast)</option>
-            </select>
-        </div>
-
         <div class="display-area">
             <div class="direction-indicator flat" id="flat-indicator">♭</div>
             <div class="note-display-group">
@@ -45,6 +37,12 @@
 
         <div class="action-group">
             <button id="start-btn" class="start-btn">Start Tuner</button>
+
+            <select id="algorithm-select" class="algorithm-select">
+                <option value="yin">YIN (Accurate)</option>
+                <option value="mcleod" selected>McLeod MPM</option>
+                <option value="autocorr">Autocorrelation (Fast)</option>
+            </select>
 
             <div class="slider-group">
                 <span class="slider-label">Averaging: <span id="smoothing-val">333 ms</span></span>
