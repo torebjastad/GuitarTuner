@@ -1,6 +1,6 @@
 # Pitch Detection Algorithms
 
-This document describes the two pitch detection algorithms used in the Guitar Tuner application. Both are time-domain methods that estimate the fundamental frequency (F0) of a periodic signal.
+This document describes the three pitch detection algorithms used in the Guitar Tuner application. All are time-domain methods that estimate the fundamental frequency (F0) of a periodic signal.
 
 ---
 
@@ -186,13 +186,121 @@ frequency = sampleRate / T0_refined
 
 ---
 
+## McLeod Pitch Method (`McLeodDetector`)
+
+**Source:** Based on the paper *"A Smarter Way to Find Pitch"* by Philip McLeod and Geoff Wyvill (2005), University of Otago. Further detailed in McLeod's PhD thesis *"Fast, Accurate Pitch Detection Tools for Music Analysis"* (2008).
+
+### Overview
+
+The McLeod Pitch Method (MPM) uses a Normalized Square Difference Function (NSDF) to detect pitch. Unlike YIN which finds **minima** in a cumulative mean normalized difference, MPM finds **maxima** in the NSDF, which produces values in the range [-1, +1]. It uses a **relative threshold** (proportional to the highest peak) rather than an absolute one, making it adaptive to signal characteristics. The NSDF value at the selected peak directly serves as a clarity/confidence metric.
+
+### Steps
+
+#### 1. Normalized Square Difference Function (NSDF)
+
+The NSDF is defined as:
+
+```
+NSDF(tau) = 2 * r(tau) / m(tau)
+```
+
+where:
+- `r(tau) = sum(x[i] * x[i + tau])` for `i = 0..N-tau-1` (autocorrelation at lag tau)
+- `m(tau) = sum(x[i]^2 + x[i + tau]^2)` for `i = 0..N-tau-1` (normalization term)
+
+The normalization by `m(tau)` ensures NSDF values lie in `[-1, +1]`. A value of `+1` indicates perfect periodicity at that lag, `0` indicates no correlation, and `-1` indicates perfect anti-correlation.
+
+**Intuition:** The NSDF can be understood as a normalized version of the autocorrelation. The factor of 2 in the numerator ensures that `NSDF(0) = 1` (since `r(0) = m(0)/2`). The per-lag normalization (as opposed to YIN's cumulative mean) means each lag is evaluated independently, which avoids the bias toward shorter periods that raw autocorrelation exhibits.
+
+**Relationship to SDF:** The Squared Difference Function `d(tau) = sum((x[i] - x[i+tau])^2)` expands to `m(tau) - 2*r(tau)`. Therefore `NSDF(tau) = 1 - d(tau)/m(tau)`, showing that maxima in the NSDF correspond to minima in the normalized SDF.
+
+#### 2. Peak Picking (Key Maxima)
+
+Rather than searching for a single minimum, MPM identifies all "key maxima" — the highest points in each positive lobe of the NSDF:
+
+1. Walk through the NSDF looking for **positive zero crossings** (where the value goes from ≤ 0 to > 0).
+2. Between each positive zero crossing and the next **negative zero crossing** (value goes from > 0 to ≤ 0), find the maximum NSDF value.
+3. Store this maximum as a "key maximum" with its tau position and NSDF value.
+
+This produces a small set of candidate periods (typically 5–15), each corresponding to a potential fundamental period or harmonic.
+
+#### 3. Relative Threshold Selection
+
+The key innovation of MPM is its **relative threshold**:
+
+```
+threshold = k * nmax
+```
+
+where:
+- `nmax` = the highest NSDF value among all key maxima
+- `k` = cutoff constant (default: `0.93` for musical instruments)
+
+The algorithm then selects the **first key maximum** (smallest tau / highest frequency) whose value is ≥ the threshold. This approach is adaptive: for clear, periodic signals, the threshold is high and only the best matches pass; for noisier signals, the threshold lowers automatically.
+
+**Why the first peak?** The fundamental period produces the smallest tau among peaks with similar NSDF values. Harmonics appear at integer multiples of the fundamental's tau but typically have lower NSDF values. By requiring peaks to be close to the global maximum, harmonics are rejected, and by picking the first qualifying peak, the fundamental is preferred over sub-harmonics.
+
+#### 4. Parabolic Interpolation
+
+A 3-point parabolic fit refines the selected tau to sub-sample precision:
+
+```
+a = (s0 + s2 - 2*s1) / 2
+b = (s2 - s0) / 2
+adjustment = -b / (2*a)
+tau_refined = tau + adjustment
+```
+
+where `s0`, `s1`, `s2` are the NSDF values at `tau-1`, `tau`, `tau+1`. The fit is only applied when the parabola is concave down (`a < 0`) and the adjustment is within ±1 sample.
+
+#### 5. Clarity Gate
+
+The NSDF value at the selected peak directly indicates signal clarity:
+
+```
+clarity = NSDF(selectedTau)
+```
+
+Values range from 0 to 1 for positive peaks:
+- Near 1.0: very clear, strongly periodic signal
+- 0.5–0.8: moderately clear pitch
+- Below `smallCutoff` (0.5): rejected as too noisy
+
+If `clarity < smallCutoff`, the reading is rejected (returns `-1`).
+
+#### 6. Frequency Conversion
+
+```
+frequency = sampleRate / tau_refined
+```
+
+### Configuration
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `cutoff` (k) | `0.93` | Relative threshold multiplier. Higher = stricter harmonic rejection. McLeod recommends 0.93 for instruments. |
+| `smallCutoff` | `0.5` | Minimum clarity to accept a reading. Below this, signal is considered noise. |
+
+### Characteristics
+
+- **Accuracy:** High — the relative threshold adapts to signal quality and effectively rejects harmonics without requiring octave-correction heuristics.
+- **Latency:** Moderate — O(N^2) computation like YIN, where N = buffer length.
+- **Octave errors:** Resistant — the "first peak above relative threshold" strategy inherently prefers the fundamental over harmonics. No explicit octave-correction step needed.
+- **Clarity metric:** Direct — the NSDF value at the peak is a meaningful confidence measure, unlike YIN where `1 - CMND` is an indirect proxy.
+- **Best for:** Musical instrument tuning where adaptive harmonic rejection and a built-in clarity metric are valued.
+
+---
+
 ## Comparison
 
-| Property | YIN | Autocorrelation |
-|----------|-----|-----------------|
-| Octave error resistance | High (CMND normalization) | Low |
-| Noise rejection | Confidence-based (probability > 0.6) | RMS threshold (> 0.01) |
-| Sub-sample interpolation | Yes (parabolic) | Yes (parabolic) |
-| Computational cost | Higher | Lower |
-| Default in tuner | Yes | No |
-| Configurable threshold | Yes (`0.1`) | No (hardcoded) |
+| Property | YIN | McLeod (MPM) | Autocorrelation |
+|----------|-----|--------------|-----------------|
+| Core function | Difference (finds **minima**) | NSDF (finds **maxima**) | Autocorrelation (finds **maxima**) |
+| Normalization | Cumulative mean (CMNDF) | Per-lag `m(tau)` (NSDF) | None |
+| Threshold type | Absolute (`0.1`) | Relative (`k * nmax`) | None (argmax) |
+| Octave error resistance | High (CMND + correction step) | High (relative threshold) | Low |
+| Noise rejection | Confidence-based (probability > 0.6) | Clarity-based (NSDF value > 0.5) | RMS threshold (> 0.01) |
+| Sub-sample interpolation | Yes (5-point least-squares) | Yes (3-point parabolic) | Yes (3-point parabolic) |
+| Computational cost | O(N^2) | O(N^2) | O(N^2) |
+| Default in tuner | Yes | No | No |
+| Explicit octave correction | Yes (sub-harmonic check) | No (not needed) | No |

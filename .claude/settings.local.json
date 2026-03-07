@@ -2,7 +2,13 @@
   "permissions": {
     "allow": [
       "Bash(ls:*)",
-      "Bash(xxd \"c:/Users/ToreGrüner/SkyDrive/Code/GuitarTuner/CLAUDE.md\")"
+      "Bash(xxd \"c:/Users/ToreGrüner/SkyDrive/Code/GuitarTuner/CLAUDE.md\")",
+      "WebSearch",
+      "WebFetch(domain:www.cs.otago.ac.nz)",
+      "WebFetch(domain:samyak.me)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:www.researchgate.net)"
     ]
   }
 }

@@ -253,6 +253,136 @@ class AutocorrelationDetector extends PitchDetector {
     }
 }
 
+/**
+ * McLeod Pitch Method (MPM) Implementation
+ * Based on "A Smarter Way to Find Pitch" by Philip McLeod & Geoff Wyvill (2005)
+ */
+class McLeodDetector extends PitchDetector {
+    constructor(cutoff = 0.93, smallCutoff = 0.5) {
+        super();
+        this.cutoff = cutoff;         // Relative threshold k for key maxima selection
+        this.smallCutoff = smallCutoff; // Minimum clarity to accept a reading
+        this.debug = false;
+        this.debugData = null;
+        // Pre-allocate NSDF buffer
+        this.nsdfBuffer = new Float32Array(TunerDefaults.FFTSIZE);
+    }
+
+    getPitch(buffer, sampleRate) {
+        const bufLen = buffer.length;
+        const nsdf = this.nsdfBuffer;
+
+        // Step 1: Normalized Square Difference Function (NSDF)
+        // NSDF(tau) = 2 * r(tau) / m(tau)
+        // where r(tau) = sum(x[i]*x[i+tau]) and m(tau) = sum(x[i]^2 + x[i+tau]^2)
+        for (let tau = 0; tau < bufLen; tau++) {
+            let acf = 0;
+            let div = 0;
+            const limit = bufLen - tau;
+            for (let i = 0; i < limit; i++) {
+                acf += buffer[i] * buffer[i + tau];
+                div += buffer[i] * buffer[i] + buffer[i + tau] * buffer[i + tau];
+            }
+            nsdf[tau] = div > 0 ? 2 * acf / div : 0;
+        }
+
+        // Step 2: Peak Picking — find key maxima
+        // A key maximum is the highest NSDF value between a positive zero crossing
+        // (going up) and a negative zero crossing (going down).
+        const keyMaxima = [];
+        let inPositiveRegion = false;
+        let currentMaxTau = 0;
+        let currentMaxVal = -Infinity;
+
+        for (let tau = 1; tau < bufLen; tau++) {
+            if (nsdf[tau] > 0 && nsdf[tau - 1] <= 0) {
+                // Positive zero crossing (upward)
+                inPositiveRegion = true;
+                currentMaxTau = tau;
+                currentMaxVal = nsdf[tau];
+            } else if (nsdf[tau] <= 0 && nsdf[tau - 1] > 0) {
+                // Negative zero crossing (downward) — end of positive region
+                if (inPositiveRegion) {
+                    keyMaxima.push({ tau: currentMaxTau, val: currentMaxVal });
+                }
+                inPositiveRegion = false;
+            } else if (inPositiveRegion && nsdf[tau] > currentMaxVal) {
+                currentMaxTau = tau;
+                currentMaxVal = nsdf[tau];
+            }
+        }
+        // Handle case where signal ends while still in a positive region
+        if (inPositiveRegion) {
+            keyMaxima.push({ tau: currentMaxTau, val: currentMaxVal });
+        }
+
+        if (keyMaxima.length === 0) {
+            if (this.debug) this.debugData = null;
+            return -1;
+        }
+
+        // Step 3: Relative threshold selection
+        // Find the global maximum among key maxima, then select the first
+        // key maximum whose value is >= cutoff * globalMax
+        let nmax = -Infinity;
+        for (let i = 0; i < keyMaxima.length; i++) {
+            if (keyMaxima[i].val > nmax) nmax = keyMaxima[i].val;
+        }
+        const threshold = this.cutoff * nmax;
+
+        let selectedPeak = null;
+        for (let i = 0; i < keyMaxima.length; i++) {
+            if (keyMaxima[i].val >= threshold) {
+                selectedPeak = keyMaxima[i];
+                break;
+            }
+        }
+
+        if (!selectedPeak) {
+            if (this.debug) this.debugData = null;
+            return -1;
+        }
+
+        // Step 4: Parabolic interpolation around the selected peak
+        const tau = selectedPeak.tau;
+        let interpolatedTau = tau;
+        if (tau > 0 && tau < bufLen - 1) {
+            const s0 = nsdf[tau - 1];
+            const s1 = nsdf[tau];
+            const s2 = nsdf[tau + 1];
+            const a = (s0 + s2 - 2 * s1) / 2;
+            const b = (s2 - s0) / 2;
+            if (a < 0) { // Must be a true maximum (concave down)
+                const adjustment = -b / (2 * a);
+                if (Math.abs(adjustment) < 1) interpolatedTau = tau + adjustment;
+            }
+        }
+
+        // Step 5: Clarity gate
+        const clarity = selectedPeak.val;
+        const frequency = sampleRate / interpolatedTau;
+
+        if (this.debug) {
+            this.debugData = {
+                nsdf: new Float32Array(nsdf.subarray(0, bufLen)),
+                keyMaxima,
+                nmax,
+                threshold,
+                selectedTau: tau,
+                interpolatedTau,
+                clarity,
+                frequency: clarity >= this.smallCutoff ? frequency : -1,
+                sampleRate,
+                bufferLength: bufLen
+            };
+        }
+
+        if (clarity < this.smallCutoff) return -1;
+
+        return frequency;
+    }
+}
+
 class Tuner {
     constructor() {
         this.audioContext = null;
@@ -262,6 +392,7 @@ class Tuner {
 
         this.detectors = {
             yin: new YinDetector(),
+            mcleod: new McLeodDetector(),
             autocorr: new AutocorrelationDetector()
         };
         this.currentDetector = this.detectors.yin;
@@ -312,8 +443,9 @@ class Tuner {
             this.debugToggle.addEventListener('change', (e) => {
                 const on = e.target.checked;
                 this.debugPlot.toggle(on);
-                // Enable debug on both detectors
+                // Enable debug on all detectors
                 this.detectors.yin.debug = on;
+                this.detectors.mcleod.debug = on;
                 this.detectors.autocorr.debug = on;
             });
         }
@@ -409,6 +541,8 @@ class Tuner {
         if (this.currentDetector.debug && this.currentDetector.debugData) {
             if (this.currentDetector === this.detectors.yin) {
                 this.debugPlot.draw(this.currentDetector.debugData);
+            } else if (this.currentDetector === this.detectors.mcleod) {
+                this.debugPlot.drawMcLeod(this.currentDetector.debugData);
             } else {
                 this.debugPlot.drawAutocorrelation(this.currentDetector.debugData);
             }
@@ -962,6 +1096,207 @@ class DebugPlot {
             `T₀ (interpolated): ${interpolatedT0.toFixed(2)}`,
             `RMS: ${rms.toFixed(4)}`,
             `Trimmed: [${r1}..${r2}] (${trimmedSize} samples)`,
+        ];
+        lines.forEach((line, i) => {
+            ctx.fillText(line, boxX + 8, boxY + 16 + i * 16);
+        });
+    }
+
+    drawMcLeod(debugData) {
+        if (!this.visible || !this.ctx || !debugData) return;
+
+        const canvas = this.canvas;
+        const ctx = this.ctx;
+        const dpr = window.devicePixelRatio || 1;
+
+        const rect = canvas.parentElement.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        canvas.style.width = rect.width + 'px';
+        canvas.style.height = rect.height + 'px';
+        ctx.scale(dpr, dpr);
+
+        const W = rect.width;
+        const H = rect.height;
+        const pad = { top: 25, bottom: 35, left: 50, right: 15 };
+        const plotW = W - pad.left - pad.right;
+        const plotH = H - pad.top - pad.bottom;
+
+        ctx.clearRect(0, 0, W, H);
+
+        const { nsdf, keyMaxima, threshold, selectedTau, interpolatedTau,
+                clarity, frequency, sampleRate, bufferLength } = debugData;
+
+        // Display range: show around the interesting tau region
+        const maxTauDisplay = Math.min(
+            bufferLength,
+            Math.max(200, Math.ceil((selectedTau > 0 ? selectedTau : 100) * 2.5))
+        );
+
+        // NSDF range is [-1, +1]
+        const yMax = 1.1;
+        const yMin = -0.5;
+
+        const toX = (tau) => pad.left + (tau / maxTauDisplay) * plotW;
+        const toY = (val) => pad.top + (1 - (val - yMin) / (yMax - yMin)) * plotH;
+
+        // Background
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+        ctx.fillRect(0, 0, W, H);
+
+        // Grid lines
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.15)';
+        ctx.lineWidth = 1;
+        for (let v = -0.5; v <= 1.0; v += 0.25) {
+            const y = toY(v);
+            ctx.beginPath();
+            ctx.moveTo(pad.left, y);
+            ctx.lineTo(W - pad.right, y);
+            ctx.stroke();
+        }
+
+        // Zero line (prominent)
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.4)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(pad.left, toY(0));
+        ctx.lineTo(W - pad.right, toY(0));
+        ctx.stroke();
+
+        // Y-axis labels
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '11px Outfit, sans-serif';
+        ctx.textAlign = 'right';
+        for (let v = -0.5; v <= 1.0; v += 0.5) {
+            ctx.fillText(v.toFixed(1), pad.left - 6, toY(v) + 4);
+        }
+
+        // X-axis tick labels
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '11px Outfit, sans-serif';
+        ctx.textAlign = 'center';
+        const xStep = maxTauDisplay <= 300 ? 50
+                     : maxTauDisplay <= 600 ? 100
+                     : 200;
+        for (let t = xStep; t < maxTauDisplay; t += xStep) {
+            const x = toX(t);
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.3)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(x, pad.top + plotH);
+            ctx.lineTo(x, pad.top + plotH + 5);
+            ctx.stroke();
+            ctx.fillText(t, x, pad.top + plotH + 17);
+        }
+        ctx.fillText('lag (samples)', pad.left + plotW / 2, H - 4);
+
+        // Draw NSDF curve
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        for (let i = 1; i < maxTauDisplay && i < bufferLength; i++) {
+            const x = toX(i);
+            const y = toY(Math.max(yMin, Math.min(nsdf[i], yMax)));
+            if (i === 1) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        // Draw relative threshold line
+        if (threshold > yMin) {
+            ctx.strokeStyle = 'rgba(251, 191, 36, 0.6)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([6, 4]);
+            ctx.beginPath();
+            ctx.moveTo(pad.left, toY(threshold));
+            ctx.lineTo(W - pad.right, toY(threshold));
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            ctx.fillStyle = '#fbbf24';
+            ctx.font = '10px Outfit, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText(`threshold = ${threshold.toFixed(3)}`, pad.left + 4, toY(threshold) - 5);
+        }
+
+        // Mark all key maxima (orange dots)
+        for (let i = 0; i < keyMaxima.length; i++) {
+            const km = keyMaxima[i];
+            if (km.tau >= maxTauDisplay) continue;
+            const kx = toX(km.tau);
+            const ky = toY(Math.min(km.val, yMax));
+
+            ctx.fillStyle = km.tau === selectedTau ? '#f87171' : 'rgba(251, 146, 60, 0.7)';
+            ctx.beginPath();
+            ctx.arc(kx, ky, km.tau === selectedTau ? 5 : 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Mark selected peak with label
+        if (selectedTau > 0 && selectedTau < maxTauDisplay) {
+            const sx = toX(selectedTau);
+            const sy = toY(Math.min(nsdf[selectedTau], yMax));
+
+            // Vertical dashed line
+            ctx.strokeStyle = 'rgba(248, 113, 113, 0.4)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(sx, pad.top);
+            ctx.lineTo(sx, pad.top + plotH);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Label
+            ctx.fillStyle = '#f87171';
+            ctx.font = '10px Outfit, sans-serif';
+            ctx.textAlign = 'center';
+            const peakFreq = sampleRate / selectedTau;
+            ctx.fillText(
+                `Peak: τ=${selectedTau} (${peakFreq.toFixed(1)} Hz)`,
+                sx, pad.top - 5
+            );
+        }
+
+        // Mark interpolated tau (final result)
+        if (interpolatedTau > 0 && interpolatedTau < maxTauDisplay) {
+            const fx = toX(interpolatedTau);
+
+            ctx.strokeStyle = 'rgba(74, 222, 128, 0.8)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(fx, pad.top + plotH - 20);
+            ctx.lineTo(fx, pad.top + plotH);
+            ctx.stroke();
+
+            // Triangle marker
+            ctx.fillStyle = '#4ade80';
+            ctx.beginPath();
+            ctx.moveTo(fx, pad.top + plotH - 20);
+            ctx.lineTo(fx - 5, pad.top + plotH - 12);
+            ctx.lineTo(fx + 5, pad.top + plotH - 12);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        // Info box
+        ctx.fillStyle = 'rgba(30, 41, 59, 0.9)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.lineWidth = 1;
+        const boxX = W - pad.right - 200;
+        const boxY = pad.top + 5;
+        ctx.fillRect(boxX, boxY, 195, 80);
+        ctx.strokeRect(boxX, boxY, 195, 80);
+
+        ctx.fillStyle = '#f8fafc';
+        ctx.font = '11px Outfit, sans-serif';
+        ctx.textAlign = 'left';
+        const lines = [
+            `Frequency: ${frequency > 0 ? frequency.toFixed(2) + ' Hz' : 'rejected'}`,
+            `τ (interpolated): ${interpolatedTau.toFixed(2)}`,
+            `Clarity: ${(clarity * 100).toFixed(1)}%`,
+            `Key maxima: ${keyMaxima.length}`,
         ];
         lines.forEach((line, i) => {
             ctx.fillText(line, boxX + 8, boxY + 16 + i * 16);
