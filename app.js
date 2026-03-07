@@ -533,6 +533,10 @@ class Tuner {
 
     stop() {
         this.isPlaying = false;
+        if (this._rafId) {
+            cancelAnimationFrame(this._rafId);
+            this._rafId = null;
+        }
         if (this.mediaStreamSource) {
             this.mediaStreamSource.mediaStream.getAudioTracks().forEach(track => track.stop());
             this.mediaStreamSource = null;
@@ -549,7 +553,11 @@ class Tuner {
     update() {
         if (!this.isPlaying) return;
 
-        requestAnimationFrame(() => this.update());
+        // Cancel any previously queued frame to prevent duplicate loops
+        if (this._rafId) {
+            cancelAnimationFrame(this._rafId);
+        }
+        this._rafId = requestAnimationFrame(() => this.update());
 
         this.analyser.getFloatTimeDomainData(this.frequencyBuffer);
 
