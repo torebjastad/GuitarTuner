@@ -9,7 +9,14 @@ A lightweight, browser-based guitar tuner with no build step or external depende
 ```
 GuitarTuner/
 ├── index.html                    # Single-page UI shell
-├── app.js                        # All application logic (pitch detection + tuner UI + test tones)
+├── pitch-common.js               # TunerDefaults constants & PitchDetector base class
+├── yin-detector.js               # YIN pitch detection algorithm
+├── autocorrelation-detector.js   # Autocorrelation pitch detection algorithm
+├── mcleod-detector.js            # McLeod Pitch Method (MPM) algorithm
+├── debug-plot.js                 # Debug visualization (canvas plots for all algorithms)
+├── tuner.js                      # Tuner orchestrator (Web Audio API, UI, smoothing)
+├── test-tone-generator.js        # Realistic guitar test tone synthesis
+├── app.js                        # Entry point (initialization only)
 ├── style.css                     # Full styling with CSS custom properties
 └── pitch-detection-algorithms.md # Detailed documentation of all three pitch detection algorithms
 ```
@@ -18,8 +25,15 @@ GuitarTuner/
 
 | File | Role |
 |---|---|
-| `index.html` | Markup only — loads `style.css` and `app.js`. No JS frameworks. |
-| `app.js` | Core application: `PitchDetector` base class, `YinDetector`, `McLeodDetector`, `AutocorrelationDetector`, `Tuner` orchestrator, `DebugPlot`, and `TestToneGenerator`. |
+| `index.html` | Markup — loads `style.css` and all JS files in dependency order. No JS frameworks. |
+| `pitch-common.js` | Shared constants (`TunerDefaults`) and `PitchDetector` abstract base class. Loaded first. |
+| `yin-detector.js` | `YinDetector` — YIN algorithm with CMND, octave correction, 5-point interpolation. |
+| `autocorrelation-detector.js` | `AutocorrelationDetector` — Classic autocorrelation with RMS gate and signal trimming. |
+| `mcleod-detector.js` | `McLeodDetector` — McLeod MPM with NSDF, key maxima, relative threshold. |
+| `debug-plot.js` | `DebugPlot` — Canvas-based real-time visualization for all three algorithms. |
+| `tuner.js` | `Tuner` — Main orchestrator: Web Audio API, microphone, smoothing, UI updates. |
+| `test-tone-generator.js` | `TestToneGenerator` — Guitar-like test tones with harmonics, vibrato, noise. |
+| `app.js` | Entry point — instantiates `Tuner` and `TestToneGenerator`. |
 | `style.css` | Dark-theme glassmorphism UI using CSS custom properties (no preprocessor). |
 | `pitch-detection-algorithms.md` | In-depth documentation of all three pitch detection algorithms. |
 
@@ -27,7 +41,7 @@ GuitarTuner/
 
 ### Pitch Detection (Strategy Pattern)
 
-`app.js` uses the Strategy design pattern for swappable pitch detection:
+The codebase uses the Strategy design pattern for swappable pitch detection:
 
 ```
 PitchDetector (abstract base)
