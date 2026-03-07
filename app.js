@@ -400,7 +400,7 @@ class Tuner {
             mcleod: new McLeodDetector(),
             autocorr: new AutocorrelationDetector()
         };
-        this.currentDetector = this.detectors.yin;
+        this.currentDetector = this.detectors.mcleod;
 
         // Configuration
         this.frequencyBuffer = new Float32Array(TunerDefaults.FFTSIZE);
