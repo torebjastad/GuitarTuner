@@ -45,6 +45,9 @@ class Tuner {
             this.smoothingSlider.value = this.smoothingWindow;
         }
 
+        // Track whether we paused due to visibility change (vs user pressing stop)
+        this._pausedByVisibility = false;
+
         this.bindEvents();
     }
 
@@ -101,6 +104,54 @@ class Tuner {
                 }
             });
         }
+
+        // Pause/resume when the page goes to background/foreground.
+        // Saves CPU and battery, especially on mobile devices.
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                // Page went to background — pause if tuner is running
+                if (this.isPlaying) {
+                    this._pauseProcessing();
+                    this._pausedByVisibility = true;
+                }
+            } else {
+                // Page returned to foreground — resume only if we paused it
+                if (this._pausedByVisibility) {
+                    this._pausedByVisibility = false;
+                    this._resumeProcessing();
+                }
+            }
+        });
+    }
+
+    /**
+     * Pause audio processing without fully stopping the tuner.
+     * Suspends the AudioContext and cancels the animation frame loop.
+     * The microphone stream stays connected so we can resume instantly.
+     */
+    _pauseProcessing() {
+        if (this._rafId) {
+            cancelAnimationFrame(this._rafId);
+            this._rafId = null;
+        }
+        if (this.audioContext && this.audioContext.state === 'running') {
+            this.audioContext.suspend();
+        }
+        this.statusEl.textContent = "Paused (background)";
+        this.statusEl.style.color = "var(--warning-color)";
+    }
+
+    /**
+     * Resume audio processing after a visibility-triggered pause.
+     * Resumes the AudioContext and restarts the animation frame loop.
+     */
+    _resumeProcessing() {
+        if (this.audioContext && this.audioContext.state === 'suspended') {
+            this.audioContext.resume();
+        }
+        this.statusEl.textContent = "Listening...";
+        this.statusEl.style.color = "var(--text-primary)";
+        this.update();
     }
 
     async start() {
@@ -135,6 +186,7 @@ class Tuner {
 
     stop() {
         this.isPlaying = false;
+        this._pausedByVisibility = false;
         if (this._rafId) {
             cancelAnimationFrame(this._rafId);
             this._rafId = null;
