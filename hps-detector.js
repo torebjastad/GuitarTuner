@@ -104,29 +104,29 @@ class HpsDetector extends PitchDetector {
     }
 
     /**
-     * Compute multi-harmonic DTFT score at a candidate fundamental frequency.
+     * Compute SNR-weighted multi-harmonic DTFT score at a candidate fundamental.
      *
-     *   S(f) = Σ_{k=1}^{numH} |DTFT(k·f)|²
+     *   S(f) = Σ_{k=1}^{numH} w_k · |DTFT(k·f)|²
      *
-     * By evaluating DTFT at f, 2f, 3f simultaneously, this score is:
-     * - Sharper:  the combined peak is narrower than any single harmonic peak
-     * - Robust:   even if the fundamental is weak (E2 string), stronger upper
-     *             harmonics dominate the sum and stabilise the peak location
-     * - Natural:  frequency errors are measured relative to pitch (musical
-     *             intervals), not in absolute Hz — achieving what log-frequency
-     *             bins would provide
+     * Each harmonic is weighted by its quality (w_k), assessed from the FFT
+     * magnitude spectrum before refinement. This prevents a corrupted or
+     * noisy harmonic from pulling the estimate while still benefiting from
+     * clean harmonics.
      *
      * Uses 3 harmonics for refinement (not 5) to reduce sensitivity to
      * guitar string inharmonicity (higher partials deviate more).
      *
      * O(numH · N) per evaluation. For numH=3, N=4096: ~49K FLOPs.
      */
-    _multiHarmonicScore(f, sampleRate, numH) {
+    _multiHarmonicScore(f, sampleRate, numH, weights) {
         const wb = this._windowedBuf;
         const n = this._windowSize;
         let totalPower = 0;
 
         for (let h = 1; h <= numH; h++) {
+            const w = weights ? weights[h - 1] : 1;
+            if (w <= 0) continue; // Skip unreliable harmonics entirely
+
             const omega = 2 * Math.PI * h * f / sampleRate;
             const cosW = Math.cos(omega);
             const sinW = Math.sin(omega);
@@ -141,9 +141,49 @@ class HpsDetector extends PitchDetector {
                 sinN = sinN * cosW + cosN * sinW;
                 cosN = newCos;
             }
-            totalPower += re * re + im * im;
+            totalPower += w * (re * re + im * im);
         }
         return totalPower;
+    }
+
+    /**
+     * Assess harmonic quality from the FFT magnitude spectrum.
+     *
+     * For each harmonic k, compares the spectral peak at bin k*refBin to
+     * the local noise floor (average of bins 3–5 positions away).
+     * Returns an array of weights:
+     *   weight = max(0, localSNR - 1.5)
+     *
+     * - A strong, clear harmonic (SNR 10+) gets high weight
+     * - A harmonic at the noise floor (SNR ~1) gets weight 0
+     * - The fundamental always gets at least weight 1 (guaranteed participation)
+     */
+    _assessHarmonicWeights(mag, halfN, refBin, numH) {
+        const weights = new Array(numH);
+        for (let h = 1; h <= numH; h++) {
+            const bin = Math.round(h * refBin);
+            if (bin >= halfN - 5) { weights[h - 1] = 0; continue; }
+
+            // Peak magnitude at this harmonic
+            const peak = mag[bin];
+
+            // Local noise floor: average of non-adjacent bins (3–5 bins away)
+            let noiseSum = 0, noiseCount = 0;
+            for (let d = 3; d <= 5; d++) {
+                if (bin - d >= 0) { noiseSum += mag[bin - d]; noiseCount++; }
+                if (bin + d < halfN) { noiseSum += mag[bin + d]; noiseCount++; }
+            }
+            const noise = noiseCount > 0 ? noiseSum / noiseCount : 1;
+
+            // Local SNR — excess above noise floor
+            const localSNR = noise > 0 ? peak / noise : 0;
+            weights[h - 1] = Math.max(0, localSNR - 1.5);
+        }
+
+        // Guarantee the fundamental always participates
+        if (weights[0] < 1) weights[0] = 1;
+
+        return weights;
     }
 
     /**
@@ -204,9 +244,9 @@ class HpsDetector extends PitchDetector {
      *
      * Total cost: (7 + 5) × 3 harmonics × 4096 samples ≈ 150K FLOPs (~0.1 ms)
      */
-    _dtftRefine(approxFreq, sampleRate) {
+    _dtftRefine(approxFreq, sampleRate, weights) {
         const binHz = sampleRate / this.fftSize;
-        const numH = 3; // harmonics for refinement
+        const numH = weights.length;
 
         // ── Round 1: Coarse — 7 points over ±1.5 bins ──
         const step1 = binHz * 0.5;
@@ -215,7 +255,7 @@ class HpsDetector extends PitchDetector {
         for (let i = 0; i < 7; i++) {
             const f = approxFreq + offsets1[i] * step1;
             if (f <= 0) { logScores1[i] = -100; continue; }
-            const score = this._multiHarmonicScore(f, sampleRate, numH);
+            const score = this._multiHarmonicScore(f, sampleRate, numH, weights);
             logScores1[i] = score > 0 ? Math.log(score) : -100;
         }
         const peak1 = this._leastSquaresPeak(offsets1, logScores1);
@@ -228,7 +268,7 @@ class HpsDetector extends PitchDetector {
         for (let i = 0; i < 5; i++) {
             const f = freq1 + offsets2[i] * step2;
             if (f <= 0) { logScores2[i] = -100; continue; }
-            const score = this._multiHarmonicScore(f, sampleRate, numH);
+            const score = this._multiHarmonicScore(f, sampleRate, numH, weights);
             logScores2[i] = score > 0 ? Math.log(score) : -100;
         }
         const peak2 = this._leastSquaresPeak(offsets2, logScores2);
@@ -365,10 +405,14 @@ class HpsDetector extends PitchDetector {
             }
         }
 
-        // Convert to frequency and refine via DTFT
+        // Assess harmonic quality from FFT spectrum
         const binHz = sampleRate / N;
+        const numRefH = 2;
+        const harmonicWeights = this._assessHarmonicWeights(mag, halfN, refBin, numRefH);
+
+        // Convert to frequency and refine via DTFT
         const approxFreq = refBin * binHz;
-        const refinement = this._dtftRefine(approxFreq, sampleRate);
+        const refinement = this._dtftRefine(approxFreq, sampleRate, harmonicWeights);
         const frequency = refinement ? refinement.frequency : approxFreq;
 
         // Capture debug data
