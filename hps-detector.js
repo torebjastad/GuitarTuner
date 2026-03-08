@@ -4,6 +4,17 @@
  * downsampled copies of the magnitude spectrum. Harmonics align at the
  * fundamental, creating a dominant peak even when the fundamental is weak.
  *
+ * Accuracy Strategy (two-stage):
+ *   Stage 1 — HPS on a 32768-point FFT identifies WHICH peak is the fundamental
+ *             (harmonic rejection). This doesn't need to be super precise.
+ *   Stage 2 — DTFT (Discrete-Time Fourier Transform) evaluation at arbitrary
+ *             sub-bin frequencies around the identified peak gives near-perfect
+ *             frequency resolution (sub-0.01 Hz).
+ *
+ * The DTFT evaluates X(f) = Σ x[n]·w[n]·e^(-j·2π·f·n/fs) at any frequency f,
+ * not just integer bin centers. Each evaluation costs O(N) where N=bufferSize,
+ * but we only need 6 evaluations (two rounds of 3), so the total cost is tiny.
+ *
  * Depends on: pitch-common.js (TunerDefaults, PitchDetector)
  */
 class HpsDetector extends PitchDetector {
@@ -13,9 +24,9 @@ class HpsDetector extends PitchDetector {
         this.debug = false;
         this.debugData = null;
 
-        // FFT size: zero-pad input for better frequency resolution
-        // 16384 at 48kHz → ~2.93 Hz per bin; with interpolation → ~0.3 Hz effective
-        this.fftSize = 16384;
+        // FFT size: 32768 for fine HPS harmonic alignment
+        // At 48kHz → ~1.46 Hz per bin (for HPS peak identification only)
+        this.fftSize = 32768;
 
         // Preallocate reusable buffers
         this._fftReal = new Float64Array(this.fftSize);
@@ -23,27 +34,34 @@ class HpsDetector extends PitchDetector {
         this._magnitude = new Float64Array(this.fftSize / 2);
         this._hps = new Float64Array(this.fftSize / 2);
 
+        // Buffer for windowed input (used by DTFT refinement)
+        this._windowedBuf = null;
+
         // Precomputed window (lazily initialized to match input size)
         this._window = null;
         this._windowSize = 0;
     }
 
     /**
-     * Ensure the Hanning window matches the current input buffer size.
+     * Blackman-Harris 4-term window.
+     * Main lobe is wider than Hanning but sidelobes are -92 dB (vs -43 dB),
+     * giving much cleaner spectral peaks for precise interpolation.
      */
     _ensureWindow(size) {
         if (this._windowSize === size) return;
         this._window = new Float64Array(size);
-        const factor = 2 * Math.PI / (size - 1);
+        this._windowedBuf = new Float64Array(size);
+        const N1 = size - 1;
+        const a0 = 0.35875, a1 = 0.48829, a2 = 0.14128, a3 = 0.01168;
         for (let i = 0; i < size; i++) {
-            this._window[i] = 0.5 * (1 - Math.cos(factor * i));
+            const phi = 2 * Math.PI * i / N1;
+            this._window[i] = a0 - a1 * Math.cos(phi) + a2 * Math.cos(2 * phi) - a3 * Math.cos(3 * phi);
         }
         this._windowSize = size;
     }
 
     /**
      * In-place radix-2 Cooley–Tukey FFT.
-     * Operates on interleaved real/imaginary Float64Arrays of length N (power of 2).
      */
     _fft(re, im) {
         const n = re.length;
@@ -85,10 +103,89 @@ class HpsDetector extends PitchDetector {
         }
     }
 
+    /**
+     * Evaluate the DTFT magnitude at an arbitrary frequency.
+     * X(f) = |Σ x_windowed[n] · e^(-j·2π·f·n/fs)|
+     *
+     * Uses phase-accumulation recurrence for efficiency:
+     *   cos(ω·(n+1)) = cos(ω·n)·cos(ω) - sin(ω·n)·sin(ω)
+     * This avoids calling cos/sin per sample (only 4 muls + 2 adds per sample).
+     *
+     * O(N) where N = buffer length. For N=4096, this is ~16K FLOPs.
+     */
+    _dtftMagnitudeAt(freq, sampleRate) {
+        const wb = this._windowedBuf;
+        const n = this._windowSize;
+        const omega = 2 * Math.PI * freq / sampleRate;
+        const cosW = Math.cos(omega);
+        const sinW = Math.sin(omega);
+
+        let re = 0, im = 0;
+        let cosN = 1, sinN = 0; // cos(0), sin(0)
+
+        for (let i = 0; i < n; i++) {
+            const s = wb[i];
+            re += s * cosN;
+            im -= s * sinN;
+            // Phase recurrence: advance by ω
+            const newCos = cosN * cosW - sinN * sinW;
+            sinN = sinN * cosW + cosN * sinW;
+            cosN = newCos;
+        }
+        return Math.sqrt(re * re + im * im);
+    }
+
+    /**
+     * Two-round Gaussian interpolation via DTFT.
+     * Round 1: Evaluate at 3 points spaced 0.5 bins apart, interpolate → ~0.05 bin accuracy
+     * Round 2: Evaluate at 3 points spaced 0.1 bins apart around Round 1 result → ~0.01 bin accuracy
+     *
+     * At 32768 FFT / 48kHz: 0.01 bin = 0.015 Hz → 0.2 cents at E2, 0.05 cents at E4.
+     *
+     * Returns { frequency, dtftPeak } or null if refinement fails.
+     */
+    _dtftRefine(approxFreq, sampleRate) {
+        const binHz = sampleRate / this.fftSize;
+
+        // Round 1: Coarse — 3 points at ±0.5 bin
+        const step1 = binHz * 0.5;
+        const m1 = this._dtftMagnitudeAt(approxFreq - step1, sampleRate);
+        const m2 = this._dtftMagnitudeAt(approxFreq, sampleRate);
+        const m3 = this._dtftMagnitudeAt(approxFreq + step1, sampleRate);
+
+        // Gaussian interpolation: parabola on log-magnitudes
+        // (FFT peaks are approximately Gaussian when windowed, so log(peak) ≈ parabola)
+        if (m1 <= 0 || m2 <= 0 || m3 <= 0) return null;
+        const l1 = Math.log(m1), l2 = Math.log(m2), l3 = Math.log(m3);
+        const denom1 = l1 - 2 * l2 + l3;
+        let freq1 = approxFreq;
+        if (denom1 < 0) { // Must be concave (maximum)
+            const delta1 = (l1 - l3) / (2 * denom1);
+            if (Math.abs(delta1) < 1) freq1 = approxFreq + delta1 * step1;
+        }
+
+        // Round 2: Fine — 3 points at ±0.1 bin around Round 1 result
+        const step2 = binHz * 0.1;
+        const mm1 = this._dtftMagnitudeAt(freq1 - step2, sampleRate);
+        const mm2 = this._dtftMagnitudeAt(freq1, sampleRate);
+        const mm3 = this._dtftMagnitudeAt(freq1 + step2, sampleRate);
+
+        if (mm1 <= 0 || mm2 <= 0 || mm3 <= 0) return { frequency: freq1, dtftPeak: m2 };
+        const ll1 = Math.log(mm1), ll2 = Math.log(mm2), ll3 = Math.log(mm3);
+        const denom2 = ll1 - 2 * ll2 + ll3;
+        let freq2 = freq1;
+        if (denom2 < 0) {
+            const delta2 = (ll1 - ll3) / (2 * denom2);
+            if (Math.abs(delta2) < 1) freq2 = freq1 + delta2 * step2;
+        }
+
+        return { frequency: freq2, dtftPeak: mm2 };
+    }
+
     getPitch(buffer, sampleRate) {
         const bufLen = buffer.length;
 
-        // RMS noise gate (same as Autocorrelation)
+        // RMS noise gate
         let rms = 0;
         for (let i = 0; i < bufLen; i++) {
             rms += buffer[i] * buffer[i];
@@ -99,26 +196,30 @@ class HpsDetector extends PitchDetector {
             return -1;
         }
 
-        // Prepare window
+        // Prepare window & windowed buffer (shared between FFT and DTFT)
         this._ensureWindow(bufLen);
+        for (let i = 0; i < bufLen; i++) {
+            this._windowedBuf[i] = buffer[i] * this._window[i];
+        }
 
         const N = this.fftSize;
         const re = this._fftReal;
         const im = this._fftImag;
 
-        // Apply Hanning window + zero-pad
+        // Zero-pad windowed buffer into FFT input
         for (let i = 0; i < bufLen; i++) {
-            re[i] = buffer[i] * this._window[i];
+            re[i] = this._windowedBuf[i];
         }
         for (let i = bufLen; i < N; i++) {
             re[i] = 0;
         }
         im.fill(0);
 
-        // FFT
+        // ── Stage 1: FFT-based HPS for harmonic identification ──
+
         this._fft(re, im);
 
-        // Magnitude spectrum (first half only — second half is conjugate mirror)
+        // Magnitude spectrum (positive frequencies only)
         const halfN = N >> 1;
         const mag = this._magnitude;
         for (let i = 0; i < halfN; i++) {
@@ -127,18 +228,16 @@ class HpsDetector extends PitchDetector {
 
         // Frequency range → bin range
         const minBin = Math.max(1, Math.floor(TunerDefaults.MIN_FREQUENCY * N / sampleRate));
-        // maxBin for HPS: the highest harmonic of maxBin must fit within halfN
         const maxBin = Math.min(
             Math.floor(halfN / this.numHarmonics),
             Math.ceil(TunerDefaults.MAX_FREQUENCY * N / sampleRate)
         );
 
-        // Harmonic Product Spectrum (log domain to avoid overflow)
+        // Harmonic Product Spectrum (log domain)
         const hps = this._hps;
         for (let i = 0; i < maxBin; i++) {
             hps[i] = mag[i] > 0 ? Math.log(mag[i]) : -100;
         }
-
         for (let h = 2; h <= this.numHarmonics; h++) {
             for (let i = minBin; i < maxBin; i++) {
                 const idx = i * h;
@@ -148,7 +247,7 @@ class HpsDetector extends PitchDetector {
             }
         }
 
-        // Find peak in valid range
+        // Find HPS peak
         let peakBin = minBin;
         let peakVal = hps[minBin];
         for (let i = minBin + 1; i < maxBin; i++) {
@@ -158,13 +257,9 @@ class HpsDetector extends PitchDetector {
             }
         }
 
-        // Octave-error check: HPS can sometimes pick the octave above.
-        // In log domain, we compare with an additive threshold (not multiplicative).
-        // If the bin at peakBin/2 has an HPS value close to the peak, prefer it
-        // (lower frequency = more likely to be the true fundamental).
+        // Octave-error check (sub-harmonic preference)
         const halfPeakBin = Math.round(peakBin / 2);
         if (halfPeakBin >= minBin) {
-            // Search a small neighborhood around peakBin/2 for the best candidate
             let bestSubBin = halfPeakBin;
             let bestSubVal = hps[halfPeakBin];
             const searchRadius = Math.max(2, Math.round(halfPeakBin * 0.05));
@@ -176,55 +271,78 @@ class HpsDetector extends PitchDetector {
                     bestSubBin = k;
                 }
             }
-            // In log domain: accept if the sub-harmonic peak is within 1.5 of the main peak
-            // (exp(1.5) ≈ 4.5×, meaning the sub-harmonic is at least ~22% of the main peak's power)
             if (peakVal - bestSubVal < 1.5) {
                 peakBin = bestSubBin;
                 peakVal = bestSubVal;
             }
         }
 
-        // Parabolic interpolation for sub-bin accuracy
-        let interpolatedBin = peakBin;
-        if (peakBin > minBin && peakBin < maxBin - 1) {
-            const s0 = hps[peakBin - 1];
-            const s1 = hps[peakBin];
-            const s2 = hps[peakBin + 1];
-            const denom = 2 * s1 - s0 - s2;
-            if (denom > 0) {
-                const adjustment = (s0 - s2) / (2 * denom);
-                if (Math.abs(adjustment) < 1) {
-                    interpolatedBin = peakBin + adjustment;
-                }
-            }
-        }
-
-        // Convert bin to frequency
-        const frequency = interpolatedBin * sampleRate / N;
-
-        // SNR gate: peak must be well above the noise floor in the HPS
-        // Compute median HPS value in the search range as noise estimate
+        // SNR gate: peak must be well above the noise floor
         const hpsValues = [];
         for (let i = minBin; i < maxBin; i++) {
             hpsValues.push(hps[i]);
         }
         hpsValues.sort((a, b) => a - b);
         const median = hpsValues[Math.floor(hpsValues.length / 2)];
-        const snr = peakVal - median; // log-domain difference = ratio
+        const snr = peakVal - median;
+
+        if (snr < 4) {
+            if (this.debug) this.debugData = null;
+            return -1;
+        }
+
+        // ── Stage 2: DTFT refinement for precise frequency estimation ──
+        //
+        // The HPS told us approximately WHERE the fundamental is (peakBin).
+        // Now we find the *exact* spectral peak in the original magnitude
+        // spectrum near that bin, then use DTFT evaluation at sub-bin
+        // frequencies for near-perfect precision.
+
+        // Find the true spectral peak in the original spectrum near the HPS bin
+        let refBin = peakBin;
+        let refVal = mag[peakBin];
+        const refLo = Math.max(minBin, peakBin - 3);
+        const refHi = Math.min(maxBin - 1, peakBin + 3);
+        for (let k = refLo; k <= refHi; k++) {
+            if (mag[k] > refVal) {
+                refVal = mag[k];
+                refBin = k;
+            }
+        }
+
+        // Convert to frequency and refine via DTFT
+        const binHz = sampleRate / N;
+        const approxFreq = refBin * binHz;
+        const refinement = this._dtftRefine(approxFreq, sampleRate);
+        const frequency = refinement ? refinement.frequency : approxFreq;
 
         // Capture debug data
         if (this.debug) {
-            // For the debug plot: copy magnitude spectrum up to a useful range
             const magDisplayMax = Math.min(halfN, maxBin * this.numHarmonics);
+
+            // HPS-only frequency (for comparison in debug info)
+            let hpsInterpolatedBin = peakBin;
+            if (peakBin > minBin && peakBin < maxBin - 1) {
+                const s0 = hps[peakBin - 1], s1 = hps[peakBin], s2 = hps[peakBin + 1];
+                const d = s0 - 2 * s1 + s2;
+                if (d < 0) {
+                    const adj = (s0 - s2) / (2 * d);
+                    if (Math.abs(adj) < 1) hpsInterpolatedBin = peakBin + adj;
+                }
+            }
+            const hpsFreq = hpsInterpolatedBin * binHz;
+
             this.debugData = {
                 magnitudeSpectrum: new Float64Array(mag.subarray(0, magDisplayMax)),
                 hpsSpectrum: new Float64Array(hps.subarray(0, maxBin)),
                 peakBin,
-                interpolatedBin,
+                interpolatedBin: frequency / binHz,
                 peakVal,
                 snr,
                 rms,
-                frequency: snr >= 4 ? frequency : -1,
+                frequency,
+                hpsOnlyFreq: hpsFreq,
+                refBin,
                 sampleRate,
                 fftSize: N,
                 minBin,
@@ -232,9 +350,6 @@ class HpsDetector extends PitchDetector {
                 numHarmonics: this.numHarmonics
             };
         }
-
-        // Reject if SNR too low (exp(4) ≈ 55× above noise floor)
-        if (snr < 4) return -1;
 
         return frequency;
     }

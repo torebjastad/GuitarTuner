@@ -78,9 +78,11 @@ class DebugPlot {
                 s('Trimmed', `[${debugData.r1}..${debugData.r2}]`),
             );
         } else if (algoName === 'HPS' && debugData) {
+            const freqStr = debugData.frequency > 0 ? debugData.frequency.toFixed(2) + ' Hz' : 'rejected';
+            const hpsOnly = debugData.hpsOnlyFreq ? debugData.hpsOnlyFreq.toFixed(2) + ' Hz' : '—';
             items.push(
-                s('Freq', debugData.frequency > 0 ? debugData.frequency.toFixed(2) + ' Hz' : 'rejected'),
-                s('Bin', debugData.interpolatedBin.toFixed(2)),
+                s('Freq (DTFT)', freqStr),
+                s('HPS-only', hpsOnly),
                 s('SNR', debugData.snr.toFixed(1)),
                 s('RMS', debugData.rms.toFixed(4)),
                 s('Harmonics', debugData.numHarmonics),
@@ -848,8 +850,8 @@ class DebugPlot {
 
         // Legend
         ctx.font = '10px Outfit, sans-serif';
-        ctx.textAlign = 'left';
-        const lx = pad.left + 8;
+        ctx.textAlign = 'right';
+        const lx = W - pad.right - 8;
         const ly = pad.top + 14;
         ctx.fillStyle = 'rgba(56, 189, 248, 0.5)';
         ctx.fillText('— Magnitude spectrum', lx, ly);
