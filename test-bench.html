@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pitch Detection — Algorithm Test Bench</title>
+    <style>
+        :root {
+            --bg: #1a1a2e;
+            --card: #16213e;
+            --text: #e0e0e0;
+            --muted: #888;
+            --green: #4caf50;
+            --yellow: #ff9800;
+            --red: #f44336;
+            --blue: #42a5f5;
+            --border: #2a2a4a;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            padding: 24px;
+            line-height: 1.5;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 8px;
+        }
+
+        .controls {
+            margin-bottom: 16px;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        button {
+            background: var(--blue);
+            color: #fff;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        button:hover {
+            opacity: 0.85;
+        }
+
+        button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .config {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+
+        .config label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .config input[type="number"] {
+            width: 60px;
+            background: var(--card);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 3px 6px;
+            font-size: 0.85rem;
+        }
+
+        #status {
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.82rem;
+            margin-top: 12px;
+        }
+
+        th {
+            background: var(--card);
+            padding: 8px 6px;
+            text-align: left;
+            border-bottom: 2px solid var(--border);
+            position: sticky;
+            top: 0;
+            white-space: nowrap;
+        }
+
+        td {
+            padding: 6px;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .play-col {
+            width: 32px;
+            text-align: center;
+        }
+
+        .play-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text);
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 0.75rem;
+            line-height: 28px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .play-btn:hover {
+            border-color: var(--blue);
+            color: var(--blue);
+        }
+
+        .play-btn.playing {
+            border-color: var(--yellow);
+            color: var(--yellow);
+        }
+
+        .file-col {
+            max-width: 260px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-family: monospace;
+            font-size: 0.78rem;
+        }
+
+        .expected-col {
+            font-weight: bold;
+        }
+
+        .result-cell {
+            font-family: monospace;
+        }
+
+        .pass {
+            color: var(--green);
+        }
+
+        .close {
+            color: var(--yellow);
+        }
+
+        .fail {
+            color: var(--red);
+        }
+
+        .no-detect {
+            color: var(--muted);
+            font-style: italic;
+        }
+
+        .section-header td {
+            background: var(--card);
+            font-weight: bold;
+            padding: 10px 6px 6px;
+            font-size: 0.9rem;
+            border-bottom: 2px solid var(--border);
+        }
+
+        /* Summary row */
+        .summary-row td {
+            background: var(--card);
+            font-weight: bold;
+            border-top: 2px solid var(--border);
+            padding: 10px 6px;
+        }
+
+        .algo-header {
+            text-align: center;
+        }
+
+        .algo-sub {
+            font-size: 0.7rem;
+            color: var(--muted);
+            font-weight: normal;
+        }
+
+        .legend {
+            margin-top: 12px;
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+
+        .legend span {
+            margin-right: 16px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Pitch Detection — Algorithm Test Bench</h1>
+
+    <div class="controls">
+        <button id="run-btn">Run All Tests</button>
+        <div class="config">
+            <label>Sample at:
+                <input type="number" id="sample-time" value="1.0" min="0.1" max="5" step="0.1"> sec
+            </label>
+            <label>Window:
+                <input type="number" id="window-size" value="4096" min="2048" max="8192" step="1024">
+                samples
+            </label>
+        </div>
+        <span id="status">Ready</span>
+    </div>
+
+    <table id="results">
+        <thead>
+            <tr>
+                <th></th>
+                <th>File</th>
+                <th>Expected</th>
+                <th class="algo-header">YIN<br><span class="algo-sub">Hz / cents</span></th>
+                <th class="algo-header">McLeod<br><span class="algo-sub">Hz / cents</span></th>
+                <th class="algo-header">Autocorr<br><span class="algo-sub">Hz / cents</span></th>
+                <th class="algo-header">HPS<br><span class="algo-sub">Hz / cents</span></th>
+                <th class="algo-header">MUSIC<br><span class="algo-sub">Hz / cents</span></th>
+            </tr>
+        </thead>
+        <tbody id="results-body"></tbody>
+    </table>
+
+    <div class="legend">
+        <span class="pass">&#9632; Correct note, &lt;10¢</span>
+        <span class="close">&#9632; Correct note, 10–50¢</span>
+        <span class="fail">&#9632; Wrong note or &gt;50¢</span>
+        <span class="no-detect">&#9632; No detection</span>
+    </div>
+
+    <!-- Load detector scripts in dependency order -->
+    <script src="pitch-common.js"></script>
+    <script src="yin-detector.js"></script>
+    <script src="autocorrelation-detector.js"></script>
+    <script src="mcleod-detector.js"></script>
+    <script src="hps-detector.js"></script>
+    <script src="music-detector.js"></script>
+
+    <script>
+        // ---- Test file definitions ----
+        const TEST_DIR = 'TestData/Nylon-guitar-single-notes/';
+        const NOTE_STRINGS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+        const TEST_FILES = [
+            // Section: Low E (E2)
+            { section: "Low E String — E2" },
+            { file: "8396__speedy__clean_e_str_pick.wav", expected: 82.41, note: "E2", technique: "pick" },
+            { file: "8397__speedy__clean_e_str_pluck.wav", expected: 82.41, note: "E2", technique: "pluck" },
+            { file: "8395__speedy__clean_e_harm.wav", expected: 164.81, note: "E3", technique: "harmonic" },
+
+            // Section: A (A2)
+            { section: "A String — A2" },
+            { file: "8382__speedy__clean_a_str_pick.wav", expected: 110.00, note: "A2", technique: "pick" },
+            { file: "8383__speedy__clean_a_str_pluck.wav", expected: 110.00, note: "A2", technique: "pluck" },
+            { file: "8381__speedy__clean_a_harm.wav", expected: 220.00, note: "A3", technique: "harmonic" },
+
+            // Section: D (D3)
+            { section: "D String — D3" },
+            { file: "8388__speedy__clean_d_str_pick.wav", expected: 146.83, note: "D3", technique: "pick" },
+            { file: "8389__speedy__clean_d_str_pluck.wav", expected: 146.83, note: "D3", technique: "pluck" },
+            { file: "8387__speedy__clean_d_harm.wav", expected: 293.66, note: "D4", technique: "harmonic" },
+
+            // Section: G (G3)
+            { section: "G String — G3" },
+            { file: "8402__speedy__clean_g_str_pick.wav", expected: 196.00, note: "G3", technique: "pick" },
+            { file: "8403__speedy__clean_g_str_pluck.wav", expected: 196.00, note: "G3", technique: "pluck" },
+            { file: "8401__speedy__clean_g_harm1.wav", expected: 392.00, note: "G4", technique: "harmonic" },
+
+            // Section: B (B3)
+            { section: "B String — B3" },
+            { file: "8385__speedy__clean_b_str_pick.wav", expected: 246.94, note: "B3", technique: "pick" },
+            { file: "8386__speedy__clean_b_str_pluck.wav", expected: 246.94, note: "B3", technique: "pluck" },
+            { file: "8384__speedy__clean_b_harm.wav", expected: 493.88, note: "B4", technique: "harmonic" },
+
+            // Section: High E (E4)
+            { section: "High E String — E4" },
+            { file: "8393__speedy__clean_e1st_str_pick.wav", expected: 329.63, note: "E4", technique: "pick" },
+            { file: "8394__speedy__clean_e1st_str_pluck.wav", expected: 329.63, note: "E4", technique: "pluck" },
+            { file: "8392__speedy__clean_e1st_harm.wav", expected: 659.26, note: "E5", technique: "harmonic" },
+            { file: "8391__speedy__clean_e1st_5th.wav", expected: 440.00, note: "A4", technique: "5th harm (mislabeled?)" },
+            { file: "8390__speedy__clean_e1st_12th.wav", expected: 659.26, note: "E5", technique: "12th harm" },
+
+
+        ];
+
+        const ALGO_KEYS = ['yin', 'mcleod', 'autocorr', 'hps', 'music'];
+        const ALGO_NAMES = { yin: 'YIN', mcleod: 'McLeod', autocorr: 'Autocorr', hps: 'HPS', music: 'MUSIC' };
+
+        // ---- Helpers ----
+
+        function freqToNoteName(freq) {
+            const midi = Math.round(12 * Math.log2(freq / 440) + 69);
+            const name = NOTE_STRINGS[midi % 12];
+            const octave = Math.floor(midi / 12) - 1;
+            return name + octave;
+        }
+
+        function centsDiff(detected, expected) {
+            return 1200 * Math.log2(detected / expected);
+        }
+
+        function formatResult(detected, expected) {
+            if (detected === -1 || isNaN(detected) || detected < TunerDefaults.MIN_FREQUENCY || detected > TunerDefaults.MAX_FREQUENCY) {
+                // No detection
+                if (expected === null) {
+                    // Expected no detection — this is a pass
+                    return { html: '— (correct)', cls: 'pass' };
+                }
+                return { html: '—', cls: 'no-detect' };
+            }
+
+            const noteName = freqToNoteName(detected);
+
+            if (expected === null) {
+                // Expected no detection but got one — fail
+                return { html: `${detected.toFixed(1)} Hz (${noteName})`, cls: 'fail' };
+            }
+
+            const cents = centsDiff(detected, expected);
+            const expectedNote = freqToNoteName(expected);
+            const detectedNote = noteName;
+            const absCents = Math.abs(cents);
+            const centsStr = (cents >= 0 ? '+' : '') + cents.toFixed(1) + '¢';
+
+            let cls;
+            if (detectedNote !== expectedNote) {
+                cls = 'fail';
+            } else if (absCents < 10) {
+                cls = 'pass';
+            } else if (absCents < 50) {
+                cls = 'close';
+            } else {
+                cls = 'fail';
+            }
+
+            return {
+                html: `${detected.toFixed(1)} Hz ${centsStr}`,
+                cls: cls
+            };
+        }
+
+        // ---- Audio playback ----
+
+        let _playbackCtx = null;
+        let _playbackSource = null;
+        let _activePlayBtn = null;
+
+        async function playFile(filename, btn) {
+            // Stop any currently playing sound
+            if (_playbackSource) {
+                _playbackSource.stop();
+                _playbackSource = null;
+            }
+            if (_activePlayBtn) {
+                _activePlayBtn.classList.remove('playing');
+                _activePlayBtn.textContent = '\u25B6';
+            }
+
+            // If clicking the same button again, just stop
+            if (_activePlayBtn === btn) {
+                _activePlayBtn = null;
+                return;
+            }
+
+            if (!_playbackCtx) {
+                _playbackCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (_playbackCtx.state === 'suspended') {
+                await _playbackCtx.resume();
+            }
+
+            try {
+                const url = TEST_DIR + encodeURIComponent(filename);
+                const response = await fetch(url);
+                const arrayBuf = await response.arrayBuffer();
+                const audioBuffer = await new Promise((resolve, reject) => {
+                    _playbackCtx.decodeAudioData(arrayBuf, resolve, reject);
+                });
+
+                _playbackSource = _playbackCtx.createBufferSource();
+                _playbackSource.buffer = audioBuffer;
+                _playbackSource.connect(_playbackCtx.destination);
+
+                btn.classList.add('playing');
+                btn.textContent = '\u25A0';
+                _activePlayBtn = btn;
+
+                _playbackSource.onended = () => {
+                    btn.classList.remove('playing');
+                    btn.textContent = '\u25B6';
+                    if (_activePlayBtn === btn) _activePlayBtn = null;
+                    _playbackSource = null;
+                };
+
+                _playbackSource.start();
+            } catch (err) {
+                console.error('Playback error:', err);
+            }
+        }
+
+        // ---- Main test runner ----
+
+        async function runTests() {
+            const runBtn = document.getElementById('run-btn');
+            const statusEl = document.getElementById('status');
+            const tbody = document.getElementById('results-body');
+
+            runBtn.disabled = true;
+            tbody.innerHTML = '';
+            statusEl.textContent = 'Initializing...';
+
+            const sampleTime = parseFloat(document.getElementById('sample-time').value);
+            const windowSize = parseInt(document.getElementById('window-size').value);
+
+            // Create detectors
+            const detectors = {
+                yin: new YinDetector(),
+                mcleod: new McLeodDetector(),
+                autocorr: new AutocorrelationDetector(),
+                hps: new HpsDetector(),
+                music: new MusicDetector()
+            };
+
+            // We need an AudioContext to decode WAV files
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+            // Track scores per algorithm
+            const scores = {};
+            for (const key of ALGO_KEYS) {
+                scores[key] = { pass: 0, close: 0, fail: 0, noDetect: 0, total: 0 };
+            }
+
+            const testEntries = TEST_FILES.filter(t => !t.section);
+            let completed = 0;
+
+            for (const entry of TEST_FILES) {
+                if (entry.section) {
+                    // Render section header
+                    const tr = document.createElement('tr');
+                    tr.className = 'section-header';
+                    tr.innerHTML = `<td colspan="8">${entry.section}</td>`;
+                    tbody.appendChild(tr);
+                    continue;
+                }
+
+                completed++;
+                statusEl.textContent = `Testing ${completed}/${testEntries.length}: ${entry.note} (${entry.technique})...`;
+
+                const tr = document.createElement('tr');
+
+                // Play button cell
+                const tdPlay = document.createElement('td');
+                tdPlay.className = 'play-col';
+                const playBtn = document.createElement('button');
+                playBtn.className = 'play-btn';
+                playBtn.textContent = '\u25B6';
+                playBtn.title = 'Play ' + entry.file;
+                playBtn.dataset.file = entry.file;
+                playBtn.addEventListener('click', () => playFile(entry.file, playBtn));
+                tdPlay.appendChild(playBtn);
+                tr.appendChild(tdPlay);
+
+                // File name cell
+                const shortName = entry.file.replace(/__speedy__clean_/, '…');
+                const tdFile = document.createElement('td');
+                tdFile.className = 'file-col';
+                tdFile.title = entry.file;
+                tdFile.textContent = shortName;
+                tr.appendChild(tdFile);
+
+                // Expected cell
+                const tdExpected = document.createElement('td');
+                tdExpected.className = 'expected-col';
+                tdExpected.textContent = entry.expected
+                    ? `${entry.note} (${entry.expected} Hz)`
+                    : 'No pitch';
+                tr.appendChild(tdExpected);
+
+                // Load and decode audio
+                let audioBuffer;
+                try {
+                    const url = TEST_DIR + encodeURIComponent(entry.file);
+                    const response = await fetch(url);
+                    if (!response.ok) throw new Error(`HTTP ${response.status} for ${entry.file}`);
+                    const arrayBuf = await response.arrayBuffer();
+                    audioBuffer = await new Promise((resolve, reject) => {
+                        audioCtx.decodeAudioData(arrayBuf, resolve, reject);
+                    });
+                } catch (err) {
+                    // File load error
+                    console.error(`Failed to load ${entry.file}:`, err);
+                    for (const key of ALGO_KEYS) {
+                        const td = document.createElement('td');
+                        td.className = 'result-cell fail';
+                        td.textContent = 'Load error';
+                        td.title = err.message;
+                        tr.appendChild(td);
+                    }
+                    tbody.appendChild(tr);
+                    continue;
+                }
+
+                // Extract a window at the specified time
+                const sampleRate = audioBuffer.sampleRate;
+                const channelData = audioBuffer.getChannelData(0); // mono or first channel
+                const startSample = Math.floor(sampleTime * sampleRate);
+
+                let buffer;
+                if (startSample + windowSize <= channelData.length) {
+                    buffer = channelData.slice(startSample, startSample + windowSize);
+                } else if (channelData.length >= windowSize) {
+                    // File shorter than expected — sample from the end
+                    buffer = channelData.slice(channelData.length - windowSize);
+                } else {
+                    // File too short — pad with zeros
+                    buffer = new Float32Array(windowSize);
+                    buffer.set(channelData);
+                }
+
+                // Run each detector
+                for (const key of ALGO_KEYS) {
+                    const td = document.createElement('td');
+                    td.className = 'result-cell';
+
+                    try {
+                        const detected = detectors[key].getPitch(buffer, sampleRate);
+                        const result = formatResult(detected, entry.expected);
+                        td.innerHTML = result.html;
+                        td.classList.add(result.cls);
+
+                        // Track scores
+                        scores[key].total++;
+                        if (result.cls === 'pass') scores[key].pass++;
+                        else if (result.cls === 'close') scores[key].close++;
+                        else if (result.cls === 'no-detect') scores[key].noDetect++;
+                        else scores[key].fail++;
+                    } catch (err) {
+                        td.textContent = 'Error';
+                        td.classList.add('fail');
+                        scores[key].total++;
+                        scores[key].fail++;
+                        console.error(`${ALGO_NAMES[key]} error on ${entry.file}:`, err);
+                    }
+
+                    tr.appendChild(td);
+                }
+
+                tbody.appendChild(tr);
+
+                // Yield to browser so the table updates progressively
+                await new Promise(r => setTimeout(r, 0));
+            }
+
+            // Summary row
+            const summaryTr = document.createElement('tr');
+            summaryTr.className = 'summary-row';
+
+            const tdLabel = document.createElement('td');
+            tdLabel.colSpan = 3;
+            tdLabel.textContent = 'TOTALS';
+            summaryTr.appendChild(tdLabel);
+
+            for (const key of ALGO_KEYS) {
+                const s = scores[key];
+                const td = document.createElement('td');
+                td.innerHTML = `<span class="pass">${s.pass}</span> / ` +
+                    `<span class="close">${s.close}</span> / ` +
+                    `<span class="fail">${s.fail}</span> / ` +
+                    `<span class="no-detect">${s.noDetect}</span>`;
+                summaryTr.appendChild(td);
+            }
+            tbody.appendChild(summaryTr);
+
+            await audioCtx.close();
+            statusEl.textContent = `Done — ${testEntries.length} files tested.`;
+            runBtn.disabled = false;
+        }
+
+        document.getElementById('run-btn').addEventListener('click', runTests);
+    </script>
+</body>
+
+</html>
