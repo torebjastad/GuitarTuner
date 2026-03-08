@@ -281,21 +281,27 @@ class HpsDetector extends PitchDetector {
     getPitch(buffer, sampleRate) {
         const bufLen = buffer.length;
 
-        // RMS noise gate
+        // RMS noise gate — very low floor to reject only true silence
         let rms = 0;
         for (let i = 0; i < bufLen; i++) {
             rms += buffer[i] * buffer[i];
         }
         rms = Math.sqrt(rms / bufLen);
-        if (rms < 0.01) {
+        if (rms < 0.002) {
             if (this.debug) this.debugData = null;
             return -1;
         }
 
+        // Normalize buffer to target RMS for amplitude-invariant processing.
+        // This allows the algorithm to work on quiet signals (decaying notes)
+        // without adjusting internal thresholds.
+        const targetRms = 0.1;
+        const gain = targetRms / rms;
+
         // Prepare window & windowed buffer (shared between FFT and DTFT)
         this._ensureWindow(bufLen);
         for (let i = 0; i < bufLen; i++) {
-            this._windowedBuf[i] = buffer[i] * this._window[i];
+            this._windowedBuf[i] = buffer[i] * gain * this._window[i];
         }
 
         const N = this.fftSize;
@@ -354,6 +360,10 @@ class HpsDetector extends PitchDetector {
         }
 
         // Octave-error check (sub-harmonic preference)
+        // Only prefer the sub-harmonic if it has a real presence in the
+        // magnitude spectrum AND a competitive HPS score. This prevents
+        // false octave-down on harmonics where spectral leakage creates
+        // a phantom sub-harmonic peak in the HPS product.
         const halfPeakBin = Math.round(peakBin / 2);
         if (halfPeakBin >= minBin) {
             let bestSubBin = halfPeakBin;
@@ -367,7 +377,12 @@ class HpsDetector extends PitchDetector {
                     bestSubBin = k;
                 }
             }
-            if (peakVal - bestSubVal < 1.5) {
+            // Require: (1) HPS score within 0.8 of peak, AND
+            //          (2) sub-harmonic has a real magnitude peak (at least 30%
+            //              of the main peak's magnitude in the raw spectrum)
+            const subMag = mag[bestSubBin];
+            const peakMag = mag[peakBin];
+            if (peakVal - bestSubVal < 0.8 && subMag > peakMag * 0.3) {
                 peakBin = bestSubBin;
                 peakVal = bestSubVal;
             }

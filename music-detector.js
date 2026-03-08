@@ -562,19 +562,29 @@ class MusicDetector extends PitchDetector {
     getPitch(buffer, sampleRate) {
         const N = buffer.length;
 
-        // RMS noise gate (on original buffer, before decimation)
+        // RMS noise gate — very low floor to reject only true silence
         let rms = 0;
         for (let i = 0; i < N; i++) {
             rms += buffer[i] * buffer[i];
         }
         rms = Math.sqrt(rms / N);
-        if (rms < 0.01) {
+        if (rms < 0.002) {
             if (this.debug) this.debugData = null;
             return -1;
         }
 
+        // Normalize buffer to target RMS for amplitude-invariant processing.
+        // This allows the algorithm to work on quiet signals (decaying notes)
+        // without adjusting internal thresholds like the eigenvalue gap ratio.
+        const targetRms = 0.1;
+        const gain = targetRms / rms;
+        const normalizedBuffer = new Float32Array(N);
+        for (let i = 0; i < N; i++) {
+            normalizedBuffer[i] = buffer[i] * gain;
+        }
+
         // Step 0: Decimate — anti-alias filter + downsample by factor D
-        const decimatedLen = this._decimateBuffer(buffer);
+        const decimatedLen = this._decimateBuffer(normalizedBuffer);
         const effectiveSampleRate = sampleRate / this.D;
 
         // Safety check: need enough decimated samples for autocorrelation

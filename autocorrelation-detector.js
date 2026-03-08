@@ -19,21 +19,29 @@ class AutocorrelationDetector extends PitchDetector {
         }
         rms = Math.sqrt(rms / SIZE);
 
-        if (rms < 0.01) {
+        if (rms < 0.002) {
             if (this.debug) this.debugData = null;
             return -1;
+        }
+
+        // Normalize buffer to target RMS for amplitude-invariant processing
+        const targetRms = 0.1;
+        const gain = targetRms / rms;
+        const normBuf = new Float32Array(SIZE);
+        for (let i = 0; i < SIZE; i++) {
+            normBuf[i] = buffer[i] * gain;
         }
 
         let r1 = 0, r2 = SIZE - 1;
         const thres = 0.2;
         for (let i = 0; i < SIZE / 2; i++) {
-            if (Math.abs(buffer[i]) < thres) { r1 = i; break; }
+            if (Math.abs(normBuf[i]) < thres) { r1 = i; break; }
         }
         for (let i = 1; i < SIZE / 2; i++) {
-            if (Math.abs(buffer[SIZE - i]) < thres) { r2 = SIZE - i; break; }
+            if (Math.abs(normBuf[SIZE - i]) < thres) { r2 = SIZE - i; break; }
         }
 
-        const subBuffer = buffer.slice(r1, r2);
+        const subBuffer = normBuf.slice(r1, r2);
         SIZE = subBuffer.length;
 
         // Restrict lag range based on frequency limits

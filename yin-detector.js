@@ -12,6 +12,26 @@ class YinDetector extends PitchDetector {
 
     getPitch(float32AudioBuffer, sampleRate) {
         const bufferSize = float32AudioBuffer.length;
+
+        // RMS noise gate — very low floor to reject only true silence
+        let rms = 0;
+        for (let i = 0; i < bufferSize; i++) {
+            rms += float32AudioBuffer[i] * float32AudioBuffer[i];
+        }
+        rms = Math.sqrt(rms / bufferSize);
+        if (rms < 0.002) {
+            if (this.debug) this.debugData = null;
+            return -1;
+        }
+
+        // Normalize buffer to target RMS for amplitude-invariant processing
+        const targetRms = 0.1;
+        const gain = targetRms / rms;
+        const buffer = new Float32Array(bufferSize);
+        for (let i = 0; i < bufferSize; i++) {
+            buffer[i] = float32AudioBuffer[i] * gain;
+        }
+
         const halfBuffer = Math.floor(bufferSize / 2);
 
         // Restrict tau range based on frequency limits:
@@ -29,7 +49,7 @@ class YinDetector extends PitchDetector {
 
         for (let tau = 1; tau < maxTau; tau++) {
             for (let i = 0; i < halfBuffer; i++) {
-                const delta = float32AudioBuffer[i] - float32AudioBuffer[i + tau];
+                const delta = buffer[i] - buffer[i + tau];
                 yinBuffer[tau] += delta * delta;
             }
         }
@@ -71,35 +91,58 @@ class YinDetector extends PitchDetector {
 
         const initialTau = tau;
 
-        // Step 4: Octave-error correction
-        // Check if there's a valid dip at 2*tau (the true fundamental).
-        // Guitar low strings often have a stronger 2nd harmonic than the
-        // fundamental, causing YIN to lock onto the harmonic (half the
-        // true period). If the CMND value at 2*tau is below a relaxed
-        // threshold AND is better (lower) than the value at tau, the
-        // fundamental is present and we should prefer it.
+        // Step 4: Octave-error correction (bidirectional)
         let octaveCorrected = false;
-        const doubleTau = Math.round(tau * 2);
-        if (doubleTau > 0 && doubleTau < maxTau - 1) {
-            // Walk to the local minimum near doubleTau
-            let bestTau = doubleTau;
-            let bestVal = yinBuffer[doubleTau];
-            const searchRadius = Math.max(4, Math.round(tau * 0.1));
-            const lo = Math.max(1, doubleTau - searchRadius);
-            const hi = Math.min(maxTau - 2, doubleTau + searchRadius);
+
+        // 4a: Check tau/2 — if YIN locked onto a sub-harmonic (double the
+        // true period), the real fundamental will have a good dip at half tau.
+        // This fixes octave-down errors on mid/high strings (B3, E4) where
+        // the first CMND dip below threshold is at 2× the true period.
+        const halfTau = Math.round(tau / 2);
+        if (halfTau >= minTau && halfTau < maxTau - 1) {
+            let bestTau = halfTau;
+            let bestVal = yinBuffer[halfTau];
+            const searchRadius = Math.max(2, Math.round(halfTau * 0.1));
+            const lo = Math.max(minTau, halfTau - searchRadius);
+            const hi = Math.min(maxTau - 2, halfTau + searchRadius);
             for (let k = lo; k <= hi; k++) {
                 if (yinBuffer[k] < bestVal) {
                     bestVal = yinBuffer[k];
                     bestTau = k;
                 }
             }
-            // Accept the sub-harmonic only if its CMND dip is reasonable
-            // AND the dip at 2*tau is at least as good as at tau.
-            // This prevents false corrections on mid/high strings (G3, B3, E4)
-            // where the 2*tau dip is a sub-harmonic artifact, not the fundamental.
-            if (bestVal < 0.3 && bestVal <= yinBuffer[tau]) {
+            // Accept the half-tau if it has a reasonable dip and is
+            // comparable to the current tau. Use a relaxed threshold (0.5)
+            // since the true fundamental may have a weaker CMND dip than
+            // the sub-harmonic, but still represents a valid period.
+            if (bestVal < 0.5 && bestVal <= yinBuffer[tau] * 1.2) {
                 tau = bestTau;
                 octaveCorrected = true;
+            }
+        }
+
+        // 4b: Check 2*tau — if YIN locked onto a harmonic (half the true
+        // period), the real fundamental will have a good dip at double tau.
+        // This fixes octave-up errors on low strings (E2, A2) where the
+        // 2nd harmonic is stronger than the fundamental.
+        if (!octaveCorrected) {
+            const doubleTau = Math.round(tau * 2);
+            if (doubleTau > 0 && doubleTau < maxTau - 1) {
+                let bestTau = doubleTau;
+                let bestVal = yinBuffer[doubleTau];
+                const searchRadius = Math.max(4, Math.round(tau * 0.1));
+                const lo = Math.max(1, doubleTau - searchRadius);
+                const hi = Math.min(maxTau - 2, doubleTau + searchRadius);
+                for (let k = lo; k <= hi; k++) {
+                    if (yinBuffer[k] < bestVal) {
+                        bestVal = yinBuffer[k];
+                        bestTau = k;
+                    }
+                }
+                if (bestVal < 0.3 && bestVal < yinBuffer[tau] * 0.85) {
+                    tau = bestTau;
+                    octaveCorrected = true;
+                }
             }
         }
 
