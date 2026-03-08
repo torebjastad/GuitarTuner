@@ -7,13 +7,14 @@
  * Accuracy Strategy (two-stage):
  *   Stage 1 — HPS on a 32768-point FFT identifies WHICH peak is the fundamental
  *             (harmonic rejection). This doesn't need to be super precise.
- *   Stage 2 — DTFT (Discrete-Time Fourier Transform) evaluation at arbitrary
- *             sub-bin frequencies around the identified peak gives near-perfect
+ *   Stage 2 — SNR-weighted multi-harmonic DTFT evaluation at arbitrary sub-bin
+ *             frequencies around the identified peak gives near-perfect
  *             frequency resolution (sub-0.01 Hz).
  *
  * The DTFT evaluates X(f) = Σ x[n]·w[n]·e^(-j·2π·f·n/fs) at any frequency f,
- * not just integer bin centers. Each evaluation costs O(N) where N=bufferSize,
- * but we only need 6 evaluations (two rounds of 3), so the total cost is tiny.
+ * not just integer bin centers. Each evaluation costs O(N) where N=bufferSize.
+ * Two rounds of 7+5 evaluation points with least-squares parabolic fitting,
+ * using 2 harmonics (f and 2f) with adaptive SNR-based weighting.
  *
  * Depends on: pitch-common.js (TunerDefaults, PitchDetector)
  */
@@ -113,10 +114,10 @@ class HpsDetector extends PitchDetector {
      * noisy harmonic from pulling the estimate while still benefiting from
      * clean harmonics.
      *
-     * Uses 3 harmonics for refinement (not 5) to reduce sensitivity to
-     * guitar string inharmonicity (higher partials deviate more).
+     * Uses 2 harmonics for refinement (f and 2f) to avoid sensitivity to
+     * guitar string inharmonicity (higher partials deviate sharp on hard attacks).
      *
-     * O(numH · N) per evaluation. For numH=3, N=4096: ~49K FLOPs.
+     * O(numH · N) per evaluation. For numH=2, N=4096: ~33K FLOPs.
      */
     _multiHarmonicScore(f, sampleRate, numH, weights) {
         const wb = this._windowedBuf;
@@ -242,7 +243,7 @@ class HpsDetector extends PitchDetector {
      * At 32768 FFT / 48kHz:
      *   0.005 bin ≈ 0.007 Hz ≈ 0.1 cent at E2, 0.04 cent at E4
      *
-     * Total cost: (7 + 5) × 3 harmonics × 4096 samples ≈ 150K FLOPs (~0.1 ms)
+     * Total cost: (7 + 5) × 2 harmonics × 4096 samples ≈ 100K FLOPs (~0.1 ms)
      */
     _dtftRefine(approxFreq, sampleRate, weights) {
         const binHz = sampleRate / this.fftSize;

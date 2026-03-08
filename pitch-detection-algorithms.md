@@ -303,19 +303,19 @@ HPS is a **frequency-domain** method, fundamentally different from the three tim
 
 #### 1. Windowing
 
-A Hanning window is applied to the input buffer to reduce spectral leakage:
+A Blackman-Harris 4-term window is applied to the input buffer. It has much lower sidelobes (−92 dB) than a Hanning window (−43 dB), giving cleaner spectral peaks for precise interpolation:
 
 ```
-w(n) = 0.5 * (1 - cos(2π * n / (N-1)))
+w(n) = 0.35875 - 0.48829·cos(2πn/(N-1)) + 0.14128·cos(4πn/(N-1)) - 0.01168·cos(6πn/(N-1))
 x_windowed[n] = x[n] * w(n)
 ```
 
 #### 2. Zero-Padded FFT
 
-The windowed signal is zero-padded to 16384 samples (at 48kHz this gives ~2.93 Hz/bin resolution) and transformed using a radix-2 Cooley-Tukey FFT. Only the first half of the output (positive frequencies) is used.
+The windowed signal is zero-padded to 32768 samples (at 48kHz this gives ~1.46 Hz/bin resolution) and transformed using a radix-2 Cooley-Tukey FFT. Only the first half of the output (positive frequencies) is used.
 
 ```
-X[k] = FFT(x_windowed, padded to 16384)
+X[k] = FFT(x_windowed, padded to 32768)
 mag[k] = |X[k]| = sqrt(Re[k]² + Im[k]²)
 ```
 
@@ -349,15 +349,19 @@ HPS can occasionally lock onto the octave above the fundamental (especially for 
 
 #### 6. Two-Stage DTFT Refinement
 
-The HPS peak identifies the correct harmonic bin but with limited frequency precision (~1.5 Hz per bin). A second stage uses the DTFT (Discrete-Time Fourier Transform) to measure the exact frequency with sub-cent accuracy.
+The HPS peak identifies the correct harmonic bin but with limited frequency precision (~1.46 Hz per bin). A second stage uses the DTFT (Discrete-Time Fourier Transform) to measure the exact frequency with sub-cent accuracy.
 
 **Stage A — Find the spectral peak:** In the original magnitude spectrum (not the HPS product), find the true peak within ±3 bins of the HPS result.
 
-**Stage B — Multi-harmonic DTFT refinement:** Evaluate a multi-harmonic score at arbitrary sub-bin frequencies:
+**Stage B — Assess harmonic quality:** Before refinement, each harmonic's reliability is assessed from the FFT magnitude spectrum by comparing the peak at the expected harmonic bin to the local noise floor (average of bins 3–5 positions away). The weight for each harmonic is `max(0, localSNR - 1.5)`. Harmonics buried in noise get weight ≈0 and are excluded, preventing corrupted harmonics from pulling the estimate. The fundamental always gets at least weight 1.
+
+**Stage C — SNR-weighted multi-harmonic DTFT refinement:** Evaluate a weighted multi-harmonic score at arbitrary sub-bin frequencies:
 
 ```
-S(f) = |DTFT(f)|² + |DTFT(2f)|² + |DTFT(3f)|²
+S(f) = w₁·|DTFT(f)|² + w₂·|DTFT(2f)|²
 ```
+
+Uses 2 harmonics (fundamental + 2nd) for refinement. The 3rd harmonic is excluded because guitar string inharmonicity (fₖ = k·f₀·√(1 + B·k²)) causes higher partials to deviate sharp, biasing the result especially on hard attacks.
 
 This combined score is sharper and more stable than the fundamental alone. Uses two rounds of least-squares parabolic fitting (7+5 points) for ~0.005 bin accuracy. At 32768 FFT / 48kHz: **0.007 Hz ≈ 0.1 cent at E2**.
 
@@ -371,16 +375,17 @@ The peak must be significantly above the noise floor (measured as the median HPS
 |-----------|---------|-------------|
 | `numHarmonics` | `5` | HPS downsampling factors for harmonic identification. |
 | `fftSize` | `32768` | Zero-padded FFT. Gives ~1.46 Hz/bin for HPS. |
-| Refinement harmonics | `3` | Harmonics in DTFT refinement (less than HPS to avoid inharmonicity). |
-| Window | Blackman-Harris | −92 dB sidelobes for clean spectral peaks. |
+| Refinement harmonics | `2` | Harmonics in DTFT refinement (f and 2f only, to avoid inharmonicity bias). |
+| Harmonic weighting | SNR-adaptive | Each harmonic weighted by its local SNR; noisy harmonics excluded automatically. |
+| Window | Blackman-Harris 4-term | −92 dB sidelobes for clean spectral peaks. |
 | SNR threshold | `4` | Minimum log-domain SNR (peak vs median). |
 | RMS threshold | `0.01` | Same RMS noise gate as Autocorrelation. |
 
 ### Characteristics
 
-- **Accuracy:** Very high — multi-harmonic DTFT refinement gives ~0.007 Hz effective resolution (~0.1 cent at E2).
+- **Accuracy:** Very high — SNR-weighted multi-harmonic DTFT refinement gives ~0.007 Hz effective resolution (~0.1 cent at E2).
 - **Latency:** Low — O(N log N) for FFT + O(H·N·P) for DTFT refinement. Total typically < 1 ms.
-- **Stability:** High — 7-point least-squares fit averages out noise; multi-harmonic scoring provides redundancy.
+- **Stability:** High — 7-point least-squares fit averages out noise; adaptive harmonic weighting excludes corrupted partials automatically.
 - **Octave errors:** Moderate — mitigated by sub-harmonic check.
 - **Best for:** High-accuracy pitch detection with lower computational cost than time-domain methods.
 
@@ -395,8 +400,8 @@ The peak must be significantly above the noise floor (measured as the median HPS
 | Normalization | Cumulative mean (CMNDF) | Per-lag `m(tau)` (NSDF) | None | Log-domain sum + least-squares |
 | Threshold type | Absolute (`0.1`) | Relative (`k * nmax`) | None (argmax) | SNR vs median |
 | Octave error resistance | High (CMND + correction step) | High (relative threshold) | Low | Moderate (sub-harmonic check) |
-| Noise rejection | Confidence-based (probability > 0.6) | Clarity-based (NSDF value > 0.5) | RMS threshold (> 0.01) | RMS + SNR gate |
-| Sub-sample interpolation | Yes (5-point least-squares) | Yes (3-point parabolic) | Yes (3-point parabolic) | Yes (multi-harmonic DTFT, 7+5 point LS) |
+| Noise rejection | Confidence-based (probability > 0.6) | Clarity-based (NSDF value > 0.5) | RMS threshold (> 0.01) | RMS + SNR gate + adaptive harmonic weighting |
+| Sub-sample interpolation | Yes (5-point least-squares) | Yes (3-point parabolic) | Yes (3-point parabolic) | Yes (SNR-weighted multi-harmonic DTFT, 7+5 point LS) |
 | Computational cost | O(N²) | O(N²) | O(N²) | O(N log N) + O(H·N·P) |
 | Default in tuner | No | **Yes** | No | No |
 | Explicit octave correction | Yes (sub-harmonic check) | No (not needed) | No | Yes (half-frequency check) |
