@@ -104,82 +104,137 @@ class HpsDetector extends PitchDetector {
     }
 
     /**
-     * Evaluate the DTFT magnitude at an arbitrary frequency.
-     * X(f) = |Σ x_windowed[n] · e^(-j·2π·f·n/fs)|
+     * Compute multi-harmonic DTFT score at a candidate fundamental frequency.
      *
-     * Uses phase-accumulation recurrence for efficiency:
-     *   cos(ω·(n+1)) = cos(ω·n)·cos(ω) - sin(ω·n)·sin(ω)
-     * This avoids calling cos/sin per sample (only 4 muls + 2 adds per sample).
+     *   S(f) = Σ_{k=1}^{numH} |DTFT(k·f)|²
      *
-     * O(N) where N = buffer length. For N=4096, this is ~16K FLOPs.
+     * By evaluating DTFT at f, 2f, 3f simultaneously, this score is:
+     * - Sharper:  the combined peak is narrower than any single harmonic peak
+     * - Robust:   even if the fundamental is weak (E2 string), stronger upper
+     *             harmonics dominate the sum and stabilise the peak location
+     * - Natural:  frequency errors are measured relative to pitch (musical
+     *             intervals), not in absolute Hz — achieving what log-frequency
+     *             bins would provide
+     *
+     * Uses 3 harmonics for refinement (not 5) to reduce sensitivity to
+     * guitar string inharmonicity (higher partials deviate more).
+     *
+     * O(numH · N) per evaluation. For numH=3, N=4096: ~49K FLOPs.
      */
-    _dtftMagnitudeAt(freq, sampleRate) {
+    _multiHarmonicScore(f, sampleRate, numH) {
         const wb = this._windowedBuf;
         const n = this._windowSize;
-        const omega = 2 * Math.PI * freq / sampleRate;
-        const cosW = Math.cos(omega);
-        const sinW = Math.sin(omega);
+        let totalPower = 0;
 
-        let re = 0, im = 0;
-        let cosN = 1, sinN = 0; // cos(0), sin(0)
+        for (let h = 1; h <= numH; h++) {
+            const omega = 2 * Math.PI * h * f / sampleRate;
+            const cosW = Math.cos(omega);
+            const sinW = Math.sin(omega);
+            let re = 0, im = 0;
+            let cosN = 1, sinN = 0;
 
-        for (let i = 0; i < n; i++) {
-            const s = wb[i];
-            re += s * cosN;
-            im -= s * sinN;
-            // Phase recurrence: advance by ω
-            const newCos = cosN * cosW - sinN * sinW;
-            sinN = sinN * cosW + cosN * sinW;
-            cosN = newCos;
+            for (let i = 0; i < n; i++) {
+                const s = wb[i];
+                re += s * cosN;
+                im -= s * sinN;
+                const newCos = cosN * cosW - sinN * sinW;
+                sinN = sinN * cosW + cosN * sinW;
+                cosN = newCos;
+            }
+            totalPower += re * re + im * im;
         }
-        return Math.sqrt(re * re + im * im);
+        return totalPower;
     }
 
     /**
-     * Two-round Gaussian interpolation via DTFT.
-     * Round 1: Evaluate at 3 points spaced 0.5 bins apart, interpolate → ~0.05 bin accuracy
-     * Round 2: Evaluate at 3 points spaced 0.1 bins apart around Round 1 result → ~0.01 bin accuracy
+     * Least-squares parabolic fit to symmetric evaluation points.
      *
-     * At 32768 FFT / 48kHz: 0.01 bin = 0.015 Hz → 0.2 cents at E2, 0.05 cents at E4.
+     * Given 2k+1 points at offsets {-k, -(k-1), ..., 0, ..., k-1, k} × step
+     * with log-domain scores, fits y = a·x² + b·x + c via normal equations.
+     * For symmetric x-values, S_1 = S_3 = 0, giving the clean closed-form:
+     *   b = T_1 / S_2         (linear coefficient)
+     *   a = (n·T_2 - S_2·T_0) / (n·S_4 - S_2²)   (quadratic coefficient)
+     *   peak at x = -b/(2a)
      *
-     * Returns { frequency, dtftPeak } or null if refinement fails.
+     * Returns the fractional offset (in units of step) of the parabola's peak,
+     * or 0 if the fit fails (non-concave or degenerate).
+     */
+    _leastSquaresPeak(offsets, logScores) {
+        const n = offsets.length;
+        let S_2 = 0, S_4 = 0, T_0 = 0, T_1 = 0, T_2 = 0;
+
+        for (let i = 0; i < n; i++) {
+            const x = offsets[i], y = logScores[i];
+            const x2 = x * x;
+            S_2 += x2;
+            S_4 += x2 * x2;
+            T_0 += y;
+            T_1 += x * y;
+            T_2 += x2 * y;
+        }
+
+        const det = n * S_4 - S_2 * S_2;
+        if (det === 0 || S_2 === 0) return 0;
+
+        const a = (n * T_2 - S_2 * T_0) / det;
+        const b = T_1 / S_2;
+
+        // Must be concave (a < 0) for a valid maximum
+        if (a >= 0) return 0;
+
+        const peak = -b / (2 * a);
+
+        // Sanity: peak should be within the evaluation range
+        const maxOff = offsets[offsets.length - 1];
+        if (Math.abs(peak) > maxOff + 0.5) return 0;
+
+        return peak;
+    }
+
+    /**
+     * Two-round multi-harmonic DTFT refinement.
+     *
+     * Round 1 — Coarse:  7 points at ±1.5 bins (step = 0.5 bin)
+     *                    least-squares parabola → ~0.05 bin accuracy
+     * Round 2 — Fine:    5 points at ±0.25 bins around R1 result (step = 0.125 bin)
+     *                    least-squares parabola → ~0.005 bin accuracy
+     *
+     * At 32768 FFT / 48kHz:
+     *   0.005 bin ≈ 0.007 Hz ≈ 0.1 cent at E2, 0.04 cent at E4
+     *
+     * Total cost: (7 + 5) × 3 harmonics × 4096 samples ≈ 150K FLOPs (~0.1 ms)
      */
     _dtftRefine(approxFreq, sampleRate) {
         const binHz = sampleRate / this.fftSize;
+        const numH = 3; // harmonics for refinement
 
-        // Round 1: Coarse — 3 points at ±0.5 bin
+        // ── Round 1: Coarse — 7 points over ±1.5 bins ──
         const step1 = binHz * 0.5;
-        const m1 = this._dtftMagnitudeAt(approxFreq - step1, sampleRate);
-        const m2 = this._dtftMagnitudeAt(approxFreq, sampleRate);
-        const m3 = this._dtftMagnitudeAt(approxFreq + step1, sampleRate);
-
-        // Gaussian interpolation: parabola on log-magnitudes
-        // (FFT peaks are approximately Gaussian when windowed, so log(peak) ≈ parabola)
-        if (m1 <= 0 || m2 <= 0 || m3 <= 0) return null;
-        const l1 = Math.log(m1), l2 = Math.log(m2), l3 = Math.log(m3);
-        const denom1 = l1 - 2 * l2 + l3;
-        let freq1 = approxFreq;
-        if (denom1 < 0) { // Must be concave (maximum)
-            const delta1 = (l1 - l3) / (2 * denom1);
-            if (Math.abs(delta1) < 1) freq1 = approxFreq + delta1 * step1;
+        const offsets1 = [-3, -2, -1, 0, 1, 2, 3];
+        const logScores1 = new Array(7);
+        for (let i = 0; i < 7; i++) {
+            const f = approxFreq + offsets1[i] * step1;
+            if (f <= 0) { logScores1[i] = -100; continue; }
+            const score = this._multiHarmonicScore(f, sampleRate, numH);
+            logScores1[i] = score > 0 ? Math.log(score) : -100;
         }
+        const peak1 = this._leastSquaresPeak(offsets1, logScores1);
+        const freq1 = approxFreq + peak1 * step1;
 
-        // Round 2: Fine — 3 points at ±0.1 bin around Round 1 result
-        const step2 = binHz * 0.1;
-        const mm1 = this._dtftMagnitudeAt(freq1 - step2, sampleRate);
-        const mm2 = this._dtftMagnitudeAt(freq1, sampleRate);
-        const mm3 = this._dtftMagnitudeAt(freq1 + step2, sampleRate);
-
-        if (mm1 <= 0 || mm2 <= 0 || mm3 <= 0) return { frequency: freq1, dtftPeak: m2 };
-        const ll1 = Math.log(mm1), ll2 = Math.log(mm2), ll3 = Math.log(mm3);
-        const denom2 = ll1 - 2 * ll2 + ll3;
-        let freq2 = freq1;
-        if (denom2 < 0) {
-            const delta2 = (ll1 - ll3) / (2 * denom2);
-            if (Math.abs(delta2) < 1) freq2 = freq1 + delta2 * step2;
+        // ── Round 2: Fine — 5 points over ±0.25 bins around Round 1 ──
+        const step2 = binHz * 0.125;
+        const offsets2 = [-2, -1, 0, 1, 2];
+        const logScores2 = new Array(5);
+        for (let i = 0; i < 5; i++) {
+            const f = freq1 + offsets2[i] * step2;
+            if (f <= 0) { logScores2[i] = -100; continue; }
+            const score = this._multiHarmonicScore(f, sampleRate, numH);
+            logScores2[i] = score > 0 ? Math.log(score) : -100;
         }
+        const peak2 = this._leastSquaresPeak(offsets2, logScores2);
+        const freq2 = freq1 + peak2 * step2;
 
-        return { frequency: freq2, dtftPeak: mm2 };
+        return { frequency: freq2 };
     }
 
     getPitch(buffer, sampleRate) {

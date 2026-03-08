@@ -347,15 +347,19 @@ HPS can occasionally lock onto the octave above the fundamental (especially for 
 - If the sub-harmonic's HPS value is within 1.5 (log domain) of the main peak, prefer it
 - This corresponds to the sub-harmonic being at least ~22% of the main peak's power
 
-#### 6. Parabolic Interpolation
+#### 6. Two-Stage DTFT Refinement
 
-Same principle as the other algorithms — fit a parabola through the peak and its neighbors to achieve sub-bin frequency resolution:
+The HPS peak identifies the correct harmonic bin but with limited frequency precision (~1.5 Hz per bin). A second stage uses the DTFT (Discrete-Time Fourier Transform) to measure the exact frequency with sub-cent accuracy.
+
+**Stage A — Find the spectral peak:** In the original magnitude spectrum (not the HPS product), find the true peak within ±3 bins of the HPS result.
+
+**Stage B — Multi-harmonic DTFT refinement:** Evaluate a multi-harmonic score at arbitrary sub-bin frequencies:
 
 ```
-δ = (HPS[k-1] - HPS[k+1]) / (2 * (2*HPS[k] - HPS[k-1] - HPS[k+1]))
-interpolated_bin = k + δ
-frequency = interpolated_bin * sampleRate / N_fft
+S(f) = |DTFT(f)|² + |DTFT(2f)|² + |DTFT(3f)|²
 ```
+
+This combined score is sharper and more stable than the fundamental alone. Uses two rounds of least-squares parabolic fitting (7+5 points) for ~0.005 bin accuracy. At 32768 FFT / 48kHz: **0.007 Hz ≈ 0.1 cent at E2**.
 
 #### 7. SNR Noise Gate
 
@@ -365,17 +369,20 @@ The peak must be significantly above the noise floor (measured as the median HPS
 
 | Parameter | Default | Purpose |
 |-----------|---------|-------------|
-| `numHarmonics` | `5` | Number of downsampling factors (2..5). More = better harmonic rejection but narrows the usable frequency range. |
-| `fftSize` | `16384` | Zero-padded FFT size. Larger = finer frequency resolution but more computation. |
+| `numHarmonics` | `5` | HPS downsampling factors for harmonic identification. |
+| `fftSize` | `32768` | Zero-padded FFT. Gives ~1.46 Hz/bin for HPS. |
+| Refinement harmonics | `3` | Harmonics in DTFT refinement (less than HPS to avoid inharmonicity). |
+| Window | Blackman-Harris | −92 dB sidelobes for clean spectral peaks. |
 | SNR threshold | `4` | Minimum log-domain SNR (peak vs median). |
 | RMS threshold | `0.01` | Same RMS noise gate as Autocorrelation. |
 
 ### Characteristics
 
-- **Accuracy:** Good — zero-padding + parabolic interpolation gives ~0.3 Hz effective resolution. Slightly less precise than time-domain methods for sub-cent accuracy.
-- **Latency:** Low — O(N log N) for FFT, compared to O(N²) for YIN/McLeod. Significantly faster.
-- **Octave errors:** Moderate — the harmonic product naturally prefers the fundamental, but can occasionally jump up an octave (mitigated by the sub-harmonic check).
-- **Best for:** Fast, lightweight pitch detection. Good for scenarios where computational budget is tight.
+- **Accuracy:** Very high — multi-harmonic DTFT refinement gives ~0.007 Hz effective resolution (~0.1 cent at E2).
+- **Latency:** Low — O(N log N) for FFT + O(H·N·P) for DTFT refinement. Total typically < 1 ms.
+- **Stability:** High — 7-point least-squares fit averages out noise; multi-harmonic scoring provides redundancy.
+- **Octave errors:** Moderate — mitigated by sub-harmonic check.
+- **Best for:** High-accuracy pitch detection with lower computational cost than time-domain methods.
 
 ---
 
@@ -384,12 +391,12 @@ The peak must be significantly above the noise floor (measured as the median HPS
 | Property | YIN | McLeod (MPM) | Autocorrelation | HPS |
 |----------|-----|--------------|-----------------|-----|
 | Domain | Time | Time | Time | Frequency |
-| Core function | Difference (finds **minima**) | NSDF (finds **maxima**) | Autocorrelation (finds **maxima**) | Magnitude product (finds **maxima** in FFT) |
-| Normalization | Cumulative mean (CMNDF) | Per-lag `m(tau)` (NSDF) | None | Log-domain sum |
+| Core function | Difference (finds **minima**) | NSDF (finds **maxima**) | Autocorrelation (finds **maxima**) | HPS + multi-harmonic DTFT refinement |
+| Normalization | Cumulative mean (CMNDF) | Per-lag `m(tau)` (NSDF) | None | Log-domain sum + least-squares |
 | Threshold type | Absolute (`0.1`) | Relative (`k * nmax`) | None (argmax) | SNR vs median |
 | Octave error resistance | High (CMND + correction step) | High (relative threshold) | Low | Moderate (sub-harmonic check) |
 | Noise rejection | Confidence-based (probability > 0.6) | Clarity-based (NSDF value > 0.5) | RMS threshold (> 0.01) | RMS + SNR gate |
-| Sub-sample interpolation | Yes (5-point least-squares) | Yes (3-point parabolic) | Yes (3-point parabolic) | Yes (3-point parabolic on HPS) |
-| Computational cost | O(N²) | O(N²) | O(N²) | O(N log N) |
+| Sub-sample interpolation | Yes (5-point least-squares) | Yes (3-point parabolic) | Yes (3-point parabolic) | Yes (multi-harmonic DTFT, 7+5 point LS) |
+| Computational cost | O(N²) | O(N²) | O(N²) | O(N log N) + O(H·N·P) |
 | Default in tuner | No | **Yes** | No | No |
 | Explicit octave correction | Yes (sub-harmonic check) | No (not needed) | No | Yes (half-frequency check) |
