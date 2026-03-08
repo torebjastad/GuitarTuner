@@ -88,6 +88,16 @@ class DebugPlot {
                 s('Harmonics', debugData.numHarmonics),
                 s('FFT', debugData.fftSize),
             );
+        } else if (algoName === 'MUSIC' && debugData) {
+            const freqStr = debugData.frequency > 0 ? debugData.frequency.toFixed(2) + ' Hz' : 'rejected';
+            items.push(
+                s('Freq', freqStr),
+                s('Dimension p', debugData.signalDimension),
+                s('Model order', debugData.modelOrder),
+                s('RMS', debugData.rms.toFixed(4)),
+                s('Peaks', debugData.peaks.length),
+                s('Sweeps', debugData.sweeps),
+            );
         }
 
         items.push(
@@ -857,5 +867,218 @@ class DebugPlot {
         ctx.fillText('— Magnitude spectrum', lx, ly);
         ctx.fillStyle = '#4ade80';
         ctx.fillText('— HPS product (' + numHarmonics + ' harmonics)', lx, ly + 13);
+    }
+
+    drawMusic(debugData) {
+        if (!this.visible || !this.ctx || !debugData) return;
+
+        const canvas = this.canvas;
+        const ctx = this.ctx;
+        const dpr = window.devicePixelRatio || 1;
+
+        const W = canvas.parentElement.getBoundingClientRect().width;
+        const H = 300; // Taller for dual-panel layout
+        canvas.width = W * dpr;
+        canvas.height = H * dpr;
+        canvas.style.width = W + 'px';
+        canvas.style.height = H + 'px';
+        ctx.scale(dpr, dpr);
+
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+        ctx.fillRect(0, 0, W, H);
+
+        const pad = { left: 50, right: 15 };
+        const plotW = W - pad.left - pad.right;
+
+        const { eigenvalues, signalDimension, pseudoFreqs, pseudoScores,
+            peaks, frequency, modelOrder } = debugData;
+
+        // ── Upper panel: Eigenvalue spectrum (bar chart) ──
+        const eigTop = 15;
+        const eigH = 70;
+        const eigBottom = eigTop + eigH;
+
+        // Find eigenvalue range (log scale, skip near-zero)
+        let eigMax = -Infinity, eigMin = Infinity;
+        for (let i = 0; i < modelOrder; i++) {
+            const v = eigenvalues[i];
+            if (v > 1e-15) {
+                const lv = Math.log10(v);
+                if (lv > eigMax) eigMax = lv;
+                if (lv < eigMin) eigMin = lv;
+            }
+        }
+        const eigRange = eigMax - eigMin || 1;
+        eigMin -= eigRange * 0.05;
+        eigMax += eigRange * 0.05;
+
+        const barW = Math.max(1, (plotW - 4) / modelOrder);
+        for (let i = 0; i < modelOrder; i++) {
+            const v = eigenvalues[i];
+            const lv = v > 1e-15 ? Math.log10(v) : eigMin;
+            const normH = ((lv - eigMin) / (eigMax - eigMin)) * eigH;
+            const x = pad.left + i * barW;
+            const y = eigBottom - normH;
+
+            ctx.fillStyle = i < signalDimension
+                ? 'rgba(251, 146, 60, 0.8)'    // Signal: orange
+                : 'rgba(148, 163, 184, 0.35)';  // Noise: gray
+            ctx.fillRect(x, y, Math.max(1, barW - 0.5), normH);
+        }
+
+        // Signal/noise boundary line
+        const boundaryX = pad.left + signalDimension * barW;
+        ctx.strokeStyle = 'rgba(251, 191, 36, 0.7)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.moveTo(boundaryX, eigTop);
+        ctx.lineTo(boundaryX, eigBottom);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Labels
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '10px Outfit, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('Eigenvalues (log)', pad.left, eigTop - 2);
+        ctx.fillStyle = 'rgba(251, 146, 60, 0.9)';
+        ctx.textAlign = 'right';
+        ctx.fillText(`signal (p=${signalDimension})`, boundaryX - 4, eigTop + 10);
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.6)';
+        ctx.textAlign = 'left';
+        ctx.fillText('noise', boundaryX + 4, eigTop + 10);
+
+        // ── Lower panel: Pseudospectrum ──
+        const specTop = eigBottom + 25;
+        const specBottom = H - 35;
+        const specH = specBottom - specTop;
+
+        // Find pseudospectrum Y range (dB scale)
+        let psMax = -Infinity, psMin = Infinity;
+        for (let i = 0; i < pseudoScores.length; i++) {
+            const v = pseudoScores[i];
+            if (v > 0) {
+                const db = 10 * Math.log10(v);
+                if (db > psMax) psMax = db;
+                if (db < psMin) psMin = db;
+            }
+        }
+        const psRange = psMax - psMin || 1;
+        psMax += psRange * 0.05;
+        psMin -= psRange * 0.1;
+
+        const maxFreqDisplay = TunerDefaults.MAX_FREQUENCY;
+        const toX = (freq) => pad.left + (freq / maxFreqDisplay) * plotW;
+        const toY = (db) => specTop + (1 - (db - psMin) / (psMax - psMin)) * specH;
+
+        // Grid lines
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.15)';
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= 4; i++) {
+            const v = psMin + (psMax - psMin) * i / 4;
+            const y = toY(v);
+            ctx.beginPath();
+            ctx.moveTo(pad.left, y);
+            ctx.lineTo(W - pad.right, y);
+            ctx.stroke();
+        }
+
+        // X-axis tick labels
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '11px Outfit, sans-serif';
+        ctx.textAlign = 'center';
+        const freqStep = maxFreqDisplay <= 500 ? 50
+            : maxFreqDisplay <= 1500 ? 200
+                : 500;
+        for (let f = freqStep; f < maxFreqDisplay; f += freqStep) {
+            const x = toX(f);
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.3)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(x, specBottom);
+            ctx.lineTo(x, specBottom + 5);
+            ctx.stroke();
+            ctx.fillText(f + ' Hz', x, specBottom + 17);
+        }
+        ctx.fillText('frequency (Hz)', pad.left + plotW / 2, H - 4);
+
+        // Draw pseudospectrum curve
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        let started = false;
+        for (let i = 0; i < pseudoFreqs.length; i++) {
+            const f = pseudoFreqs[i];
+            if (f > maxFreqDisplay) break;
+            const db = pseudoScores[i] > 0 ? 10 * Math.log10(pseudoScores[i]) : psMin;
+            const x = toX(f);
+            const y = toY(Math.max(psMin, Math.min(db, psMax)));
+            if (!started) { ctx.moveTo(x, y); started = true; }
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        // Mark detected peaks (red dots)
+        for (let i = 0; i < peaks.length; i++) {
+            const pk = peaks[i];
+            if (pk.freq > maxFreqDisplay) continue;
+            const db = pk.score > 0 ? 10 * Math.log10(pk.score) : psMin;
+            const px = toX(pk.freq);
+            const py = toY(Math.max(psMin, Math.min(db, psMax)));
+
+            ctx.fillStyle = pk.freq === frequency ? '#f87171' : 'rgba(248, 113, 113, 0.5)';
+            ctx.beginPath();
+            ctx.arc(px, py, pk.freq === frequency ? 5 : 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Label the fundamental peak
+            if (pk.freq === frequency) {
+                ctx.strokeStyle = 'rgba(248, 113, 113, 0.4)';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([3, 3]);
+                ctx.beginPath();
+                ctx.moveTo(px, specTop);
+                ctx.lineTo(px, specBottom);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                ctx.fillStyle = '#f87171';
+                ctx.font = '10px Outfit, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(
+                    `Fundamental: ${pk.freq.toFixed(1)} Hz`,
+                    px, specTop - 5
+                );
+            }
+        }
+
+        // Mark fundamental with green triangle
+        if (frequency > 0 && frequency <= maxFreqDisplay) {
+            const fx = toX(frequency);
+
+            ctx.fillStyle = '#4ade80';
+            ctx.beginPath();
+            ctx.moveTo(fx, specBottom - 20);
+            ctx.lineTo(fx - 5, specBottom - 12);
+            ctx.lineTo(fx + 5, specBottom - 12);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.strokeStyle = 'rgba(74, 222, 128, 0.8)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(fx, specBottom - 20);
+            ctx.lineTo(fx, specBottom);
+            ctx.stroke();
+        }
+
+        // Legend
+        ctx.font = '10px Outfit, sans-serif';
+        ctx.textAlign = 'right';
+        const lx = W - pad.right - 8;
+        ctx.fillStyle = '#38bdf8';
+        ctx.fillText('— MUSIC pseudospectrum (dB)', lx, specTop + 12);
     }
 }

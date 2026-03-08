@@ -1,6 +1,6 @@
 # Pitch Detection Algorithms
 
-This document describes the four pitch detection algorithms used in the Guitar Tuner application. Three are time-domain methods and one (HPS) is frequency-domain.
+This document describes the five pitch detection algorithms used in the Guitar Tuner application. Three are time-domain methods, one (HPS) is frequency-domain, and one (MUSIC) is subspace-based.
 
 ---
 
@@ -391,17 +391,162 @@ The peak must be significantly above the noise floor (measured as the median HPS
 
 ---
 
+## MUSIC Algorithm (`MusicDetector`)
+
+**Source:** Based on the MUSIC (MUltiple SIgnal Classification) algorithm by R. O. Schmidt (1986). Originally developed for direction-of-arrival estimation in antenna arrays, it is equally applicable to frequency estimation of sinusoidal signals.
+
+### Overview
+
+MUSIC is a **subspace-based** method that performs eigenvalue decomposition of the signal's autocorrelation matrix — mathematically the same operation as Principal Component Analysis (PCA). It separates the signal into a "signal subspace" (containing the fundamental and harmonics) and a "noise subspace", then scans a pseudospectrum to find frequencies whose steering vectors are orthogonal to the noise subspace. This produces sharp peaks with "super-resolution" — the ability to resolve frequencies below the FFT bin spacing.
+
+### Relationship to PCA
+
+PCA decomposes a data matrix into principal components by finding the eigenvectors of the covariance matrix. MUSIC does exactly the same operation on the signal's autocorrelation matrix (which IS the covariance matrix for a zero-mean signal). The key insight is that for a signal containing sinusoids in noise:
+
+- The **largest eigenvalues** correspond to sinusoidal components (fundamental + harmonics) — the signal subspace
+- The **smallest eigenvalues** cluster near the noise variance — the noise subspace
+- The boundary between these subspaces reveals how many sinusoidal components are present
+
+### Steps
+
+#### 1. RMS Noise Gate
+
+Same as the other detectors — reject silent/near-silent buffers:
+
+```
+rms = sqrt( sum(x[i]^2) / N )
+if rms < 0.01: return -1
+```
+
+#### 2. Signal Decimation (Anti-Alias Filter + Downsample)
+
+At the native sample rate of 48 kHz, M=96 autocorrelation lags cover only ~2 ms — far too short to resolve E2's ~12 ms period. The steering vectors for low frequencies barely rotate in the complex plane, making them indistinguishable from noise.
+
+To solve this, the signal is decimated by a factor D=6 before processing:
+
+1. **Anti-alias filter:** A windowed-sinc low-pass FIR filter (Hamming window, length 4D+1=25 taps, cutoff at 0.8/D of Nyquist) removes energy above the decimated Nyquist frequency. This provides ~43 dB sidelobe suppression, preventing aliased harmonics from corrupting the autocorrelation.
+
+2. **Downsample:** Every D-th filtered sample is kept, reducing the effective sample rate to 8 kHz.
+
+With decimation, M=96 lags now cover ~12 ms — a full period of E2 (82 Hz), giving sufficient phase rotation for all guitar frequencies.
+
+#### 3. Autocorrelation Matrix Construction
+
+Compute M autocorrelation values from the **decimated** buffer:
+
+```
+r(k) = (1/N_d) * sum( x_d[n] * x_d[n+k] )   for k = 0..M-1
+```
+
+where x_d is the decimated signal and N_d is its length. Build the M×M symmetric Toeplitz autocorrelation matrix:
+
+```
+R[i,j] = r(|i-j|)
+```
+
+The model order M (default: 96) controls the trade-off between frequency resolution and computational cost. The matrix is real and symmetric, with Toeplitz structure (constant along each diagonal).
+
+#### 4. Eigenvalue Decomposition (The "PCA Step")
+
+The Jacobi eigenvalue algorithm iteratively diagonalizes R via 2×2 rotations:
+
+1. Sweep through all off-diagonal pairs (p, q) with p < q
+2. For each pair where |R[p,q]| exceeds a threshold, compute a rotation angle that zeros out R[p,q]
+3. Apply the rotation to R and accumulate it in the eigenvector matrix V
+4. Repeat sweeps until all off-diagonal elements are below epsilon (typically 6–10 sweeps)
+
+This produces eigenvalues (diagonal of the rotated R) and eigenvectors (columns of V). Uses Float64Array for numerical stability.
+
+#### 5. Subspace Separation
+
+Sort eigenvalues in descending order and find the signal/noise boundary via eigenvalue gap detection:
+
+```
+ratio[i] = eigenvalue[i] / eigenvalue[i+1]
+p = argmax(ratio[i])   for i in [2, 20]
+```
+
+The largest ratio indicates where signal eigenvalues end and noise eigenvalues begin. If no gap exceeds 2×, the signal quality is too poor and the reading is rejected.
+
+- Signal subspace: eigenvectors for the p largest eigenvalues
+- Noise subspace: eigenvectors for the remaining M−p eigenvalues
+
+#### 6. MUSIC Pseudospectrum Scan
+
+For a candidate frequency f, the MUSIC pseudospectrum is:
+
+```
+P(f) = 1 / sum_k |<e_k, a(f)>|²
+```
+
+where e_k are noise eigenvectors and a(f) is the steering vector using the **effective** (decimated) sample rate fs_eff = fs/D:
+
+```
+a(f) = [1, e^(j·2π·f/fs_eff), e^(j·4π·f/fs_eff), ..., e^(j·2π·(M-1)·f/fs_eff)]
+```
+
+Frequencies present in the signal have steering vectors orthogonal to the noise subspace, making the denominator near-zero and P(f) very large — producing sharp peaks. The scan frequency range is clamped to below 95% of the decimated Nyquist (0.95 × fs_eff/2 = 3800 Hz).
+
+The scan uses a two-stage approach:
+
+- **Coarse:** 500 logarithmically-spaced frequencies from MIN_FREQUENCY to max scan frequency
+- **Fine:** ±3% of center frequency (minimum ±5 Hz) at 0.1 Hz steps around each of the top 15 peaks, with parabolic refinement
+
+#### 7. Fundamental Identification (Score-Gated Harmonic Validation)
+
+The pseudospectrum shows peaks at the fundamental and all harmonics. To identify the fundamental:
+
+1. **Score gating:** Compute a minimum score threshold (1% of the strongest peak's score). Peaks below this threshold are excluded from harmonic validation, preventing noise peaks from accidentally matching harmonic intervals.
+2. Sort above-threshold peaks by frequency ascending.
+3. For each candidate (lowest first), check if other above-threshold peaks exist at 2f, 3f, 4f, 5f, 6f (within 4% tolerance).
+4. The first candidate with 2+ confirmed harmonics is identified as the fundamental.
+5. **Sub-harmonic check:** For candidates with 1+ harmonics, probe the pseudospectrum at f/2. Accept f/2 as fundamental only if its score ≥ the candidate's score AND at least 2 detected peaks are harmonics of f/2.
+6. Fallback: candidate with the most harmonics, or the highest-scoring peak overall.
+
+### Configuration
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| Model order M | `96` | Size of the autocorrelation matrix. Controls resolution vs. cost. |
+| Decimation factor D | `6` | Downsample ratio. Reduces effective sample rate from 48kHz to 8kHz. |
+| Anti-alias filter | Windowed-sinc (25 taps) | Hamming-windowed FIR, cutoff at 0.8/D of Nyquist (~3200 Hz). |
+| Max Jacobi sweeps | `15` | Maximum iterations for eigendecomposition. Typically converges in 4–6. |
+| Signal dimension p | Adaptive (2–20) | Estimated via eigenvalue gap detection. |
+| Eigenvalue gap threshold | `2.0` | Minimum ratio for signal/noise boundary. |
+| Coarse scan points | `500` | Log-spaced frequencies for initial pseudospectrum scan. |
+| Fine scan range | `±3%` (min ±5 Hz) | Frequency-adaptive range for refinement scan around peaks. |
+| Fine scan step | `0.1 Hz` | Resolution of refinement scan. |
+| Score gate threshold | `1%` of max | Minimum pseudospectrum score for harmonic validation candidates. |
+| Harmonic tolerance | `4%` | Frequency tolerance for harmonic validation. |
+| RMS threshold | `0.01` | Same RMS noise gate as other detectors. |
+
+### Characteristics
+
+- **Accuracy:** High — super-resolution property can resolve frequencies below FFT bin spacing.
+- **Latency:** Higher — O(M³) for eigendecomposition + O(P·M·(M−p)) for pseudospectrum scan. Typically 4–8 ms per frame.
+- **Octave errors:** Low — harmonic validation explicitly identifies the fundamental among all detected sinusoidal components.
+- **Noise rejection:** Inherent — the eigendecomposition explicitly separates signal from noise. The eigenvalue gap threshold acts as a signal quality gate.
+- **Best for:** Exploring subspace/PCA-based signal analysis. Higher CPU cost than other algorithms.
+
+### Debug Visualization
+
+The debug display shows two panels:
+- **Upper panel:** Eigenvalue spectrum (bar chart, log scale). Orange bars = signal subspace, gray bars = noise subspace, with a dashed boundary line.
+- **Lower panel:** MUSIC pseudospectrum (dB scale) with detected peaks (red dots) and the identified fundamental (green triangle).
+
+---
+
 ## Comparison
 
-| Property | YIN | McLeod (MPM) | Autocorrelation | HPS |
-|----------|-----|--------------|-----------------|-----|
-| Domain | Time | Time | Time | Frequency |
-| Core function | Difference (finds **minima**) | NSDF (finds **maxima**) | Autocorrelation (finds **maxima**) | HPS + multi-harmonic DTFT refinement |
-| Normalization | Cumulative mean (CMNDF) | Per-lag `m(tau)` (NSDF) | None | Log-domain sum + least-squares |
-| Threshold type | Absolute (`0.1`) | Relative (`k * nmax`) | None (argmax) | SNR vs median |
-| Octave error resistance | High (CMND + correction step) | High (relative threshold) | Low | Moderate (sub-harmonic check) |
-| Noise rejection | Confidence-based (probability > 0.6) | Clarity-based (NSDF value > 0.5) | RMS threshold (> 0.01) | RMS + SNR gate + adaptive harmonic weighting |
-| Sub-sample interpolation | Yes (5-point least-squares) | Yes (3-point parabolic) | Yes (3-point parabolic) | Yes (SNR-weighted multi-harmonic DTFT, 7+5 point LS) |
-| Computational cost | O(N²) | O(N²) | O(N²) | O(N log N) + O(H·N·P) |
-| Default in tuner | No | **Yes** | No | No |
-| Explicit octave correction | Yes (sub-harmonic check) | No (not needed) | No | Yes (half-frequency check) |
+| Property | YIN | McLeod (MPM) | Autocorrelation | HPS | MUSIC |
+|----------|-----|--------------|-----------------|-----|-------|
+| Domain | Time | Time | Time | Frequency | Subspace |
+| Core function | Difference (finds **minima**) | NSDF (finds **maxima**) | Autocorrelation (finds **maxima**) | HPS + multi-harmonic DTFT refinement | Eigendecomposition + pseudospectrum |
+| Normalization | Cumulative mean (CMNDF) | Per-lag `m(tau)` (NSDF) | None | Log-domain sum + least-squares | Autocorrelation matrix decomposition |
+| Threshold type | Absolute (`0.1`) | Relative (`k * nmax`) | None (argmax) | SNR vs median | Eigenvalue gap ratio |
+| Octave error resistance | High (CMND + correction step) | High (relative threshold) | Low | Moderate (sub-harmonic check) | High (harmonic validation) |
+| Noise rejection | Confidence-based (probability > 0.6) | Clarity-based (NSDF value > 0.5) | RMS threshold (> 0.01) | RMS + SNR gate + adaptive harmonic weighting | RMS + eigenvalue gap + subspace separation |
+| Sub-sample interpolation | Yes (5-point least-squares) | Yes (3-point parabolic) | Yes (3-point parabolic) | Yes (SNR-weighted multi-harmonic DTFT, 7+5 point LS) | Yes (fine scan + parabolic) |
+| Computational cost | O(N²) | O(N²) | O(N²) | O(N log N) + O(H·N·P) | O(M³) + O(P·M·(M−p)) |
+| Default in tuner | No | **Yes** | No | No | No |
+| Explicit octave correction | Yes (sub-harmonic check) | No (not needed) | No | Yes (half-frequency check) | Yes (harmonic validation) |

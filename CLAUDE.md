@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-A lightweight, browser-based guitar tuner with no build step or external dependencies. It captures microphone audio via the Web Audio API and performs real-time pitch detection using one of four selectable algorithms.
+A lightweight, browser-based guitar tuner with no build step or external dependencies. It captures microphone audio via the Web Audio API and performs real-time pitch detection using one of five selectable algorithms.
 
 ## Repository Structure
 
@@ -14,6 +14,7 @@ GuitarTuner/
 ├── autocorrelation-detector.js   # Autocorrelation pitch detection algorithm
 ├── mcleod-detector.js            # McLeod Pitch Method (MPM) algorithm
 ├── hps-detector.js               # Harmonic Product Spectrum (FFT-based) algorithm
+├── music-detector.js             # MUSIC (subspace/eigendecomposition-based) algorithm
 ├── debug-plot.js                 # Debug visualization (canvas plots for all algorithms)
 ├── tuner.js                      # Tuner orchestrator (Web Audio API, UI, smoothing)
 ├── test-tone-generator.js        # Realistic guitar test tone synthesis
@@ -32,12 +33,13 @@ GuitarTuner/
 | `autocorrelation-detector.js` | `AutocorrelationDetector` — Classic autocorrelation with RMS gate and signal trimming. |
 | `mcleod-detector.js` | `McLeodDetector` — McLeod MPM with NSDF, key maxima, relative threshold. |
 | `hps-detector.js` | `HpsDetector` — Harmonic Product Spectrum with Blackman-Harris windowed FFT, log-domain product, octave-error check, and SNR-weighted multi-harmonic DTFT refinement. |
-| `debug-plot.js` | `DebugPlot` — Canvas-based real-time visualization for all four algorithms. |
+| `music-detector.js` | `MusicDetector` — MUSIC (subspace) algorithm with Jacobi eigendecomposition of the autocorrelation matrix, pseudospectrum scanning, and harmonic validation. |
+| `debug-plot.js` | `DebugPlot` — Canvas-based real-time visualization for all five algorithms. |
 | `tuner.js` | `Tuner` — Main orchestrator: Web Audio API, microphone, smoothing, UI updates. |
 | `test-tone-generator.js` | `TestToneGenerator` — Guitar-like test tones with harmonics, vibrato, noise. |
 | `app.js` | Entry point — instantiates `Tuner` and `TestToneGenerator`. |
 | `style.css` | Dark-theme glassmorphism UI using CSS custom properties (no preprocessor). |
-| `pitch-detection-algorithms.md` | In-depth documentation of all four pitch detection algorithms. |
+| `pitch-detection-algorithms.md` | In-depth documentation of all five pitch detection algorithms. |
 
 ## Architecture
 
@@ -50,7 +52,8 @@ PitchDetector (abstract base)
 ├── YinDetector              — YIN algorithm (accurate, CMND-based)
 ├── McLeodDetector           — McLeod MPM (default, adaptive threshold)
 ├── AutocorrelationDetector  — Autocorrelation (faster, simpler)
-└── HpsDetector              — Harmonic Product Spectrum (FFT-based, frequency domain)
+├── HpsDetector              — Harmonic Product Spectrum (FFT-based, frequency domain)
+└── MusicDetector            — MUSIC (subspace-based, eigendecomposition)
 ```
 
 All implement a single method:
@@ -76,12 +79,13 @@ getPitch(float32AudioBuffer, sampleRate) -> Hz | -1
 
 ### DebugPlot Class
 
-`DebugPlot` renders a real-time canvas visualization for the active algorithm when the "Show Algorithm Debug" checkbox is enabled. It supports four drawing modes:
+`DebugPlot` renders a real-time canvas visualization for the active algorithm when the "Show Algorithm Debug" checkbox is enabled. It supports five drawing modes:
 
 - **YIN:** Draws the CMND curve with threshold lines (step 3 threshold at 0.1, octave-correction threshold at 0.3), initial/corrected tau markers with arrows, and the parabolic-interpolated final tau (green triangle).
 - **McLeod MPM:** Draws the NSDF curve with positive/negative lobes, key maxima (orange dots), the selected peak (red dot), relative threshold line, and interpolated tau.
 - **Autocorrelation:** Draws the autocorrelation function, first-dip marker, detected peak, and interpolated T₀.
 - **HPS:** Draws the magnitude spectrum (faint blue) and HPS product spectrum (green) on a frequency (Hz) x-axis, with detected peak (red dot) and DTFT-refined frequency (green triangle). Shows both DTFT-refined and HPS-only frequencies for comparison.
+- **MUSIC:** Dual-panel display. Upper panel shows the eigenvalue spectrum (bar chart, log scale) with signal subspace (orange) and noise subspace (gray) separated by a dashed boundary. Lower panel shows the MUSIC pseudospectrum (dB) with detected peaks (red dots) and identified fundamental (green triangle).
 
 All modes include an info panel showing algorithm name, frequency, confidence/clarity metrics, and CPU load (avg/peak/percentage).
 
@@ -146,10 +150,10 @@ There are no automated tests. Manual testing via a browser with microphone acces
 2. **Class-based OOP** — new pitch algorithms must extend `PitchDetector` and implement `getPitch(buffer, sampleRate)`.
 3. **Register new detectors in `Tuner`** — add to `this.detectors` map and add a corresponding `<option>` in `index.html`.
 4. **CSS custom properties** — use existing tokens for all colours. Do not hardcode hex/rgb values.
-5. **Frequency range** — `MIN_FREQUENCY` and `MAX_FREQUENCY` in `TunerDefaults` control both the post-detection filter and the tau/bin search range in all four algorithms. Lowering `MIN_FREQUENCY` increases CPU cost.
+5. **Frequency range** — `MIN_FREQUENCY` and `MAX_FREQUENCY` in `TunerDefaults` control both the post-detection filter and the tau/bin search range in all five algorithms. Lowering `MIN_FREQUENCY` increases CPU cost.
 6. **Tuning reference** — A4 = 440 Hz. Cent calculations use standard 12-TET: `cents = 1200 * log2(f / f_target)`.
 7. **In-tune tolerance** — currently ±5 cents (`isPerfect = Math.abs(cents) < 5` in `updateUI`).
-8. **Noise gate** — YIN rejects reads with probability < 0.6; McLeod rejects clarity < 0.5; Autocorrelation rejects RMS < 0.01; HPS rejects RMS < 0.01 and SNR < 4 (log-domain). Keep these gates; removing them causes jitter on silence.
+8. **Noise gate** — YIN rejects reads with probability < 0.6; McLeod rejects clarity < 0.5; Autocorrelation rejects RMS < 0.01; HPS rejects RMS < 0.01 and SNR < 4 (log-domain); MUSIC rejects RMS < 0.01 and eigenvalue gap ratio < 2.0. Keep these gates; removing them causes jitter on silence.
 
 ## Branch / Git Conventions
 
