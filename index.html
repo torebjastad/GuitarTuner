@@ -62,6 +62,14 @@
                 <input type="checkbox" id="debug-toggle">
                 Show Algorithm Debug
             </label>
+            <div class="test-samples" id="test-samples" style="display: none;">
+                <div class="test-samples-controls">
+                    <select id="sample-dataset" class="sample-select"></select>
+                    <select id="sample-tone" class="sample-select" disabled></select>
+                    <button id="sample-play-btn" class="sample-btn" disabled title="Play audio">&#9654;</button>
+                    <label class="sample-mute-label"><input type="checkbox" id="sample-mute"> Mute mic</label>
+                </div>
+            </div>
             <div class="debug-canvas-wrapper" style="display: none;">
                 <canvas id="debug-canvas"></canvas>
                 <div id="debug-info" class="debug-info"></div>

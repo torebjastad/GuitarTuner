@@ -41,6 +41,14 @@ class Tuner {
         this.smoothingSlider = document.getElementById('smoothing-slider');
         this.smoothingVal = document.getElementById('smoothing-val');
 
+        // Test sample state (debug mode)
+        this._testSamplesInit = false;
+        this._testSamplesAvailable = false;
+        this._audioCache = new Map();
+        this._testSampleCtx = null;
+        this._testSampleSource = null;
+        this._micMuted = false;
+
         if (this.smoothingSlider && this.smoothingVal) {
             this.smoothingSlider.value = this.smoothingWindow;
         }
@@ -67,6 +75,11 @@ class Tuner {
             if (this.detectors[algo]) {
                 this.currentDetector = this.detectors[algo];
                 console.log(`Switched to ${algo}`);
+                // Re-analyze test sample if one is selected
+                const toneSelect = document.getElementById('sample-tone');
+                if (toneSelect && toneSelect.value !== '' && this._testSamplesInit) {
+                    this._analyzeTestSample();
+                }
             }
         });
 
@@ -80,6 +93,19 @@ class Tuner {
                 this.detectors.autocorr.debug = on;
                 this.detectors.hps.debug = on;
                 this.detectors.music.debug = on;
+                // Test samples
+                const samplesDiv = document.getElementById('test-samples');
+                if (samplesDiv) {
+                    if (on) {
+                        if (!this._testSamplesInit) {
+                            this._initTestSamples();
+                        } else if (this._testSamplesAvailable) {
+                            samplesDiv.style.display = '';
+                        }
+                    } else {
+                        samplesDiv.style.display = 'none';
+                    }
+                }
             });
         }
 
@@ -213,6 +239,9 @@ class Tuner {
         }
         this._rafId = requestAnimationFrame(() => this.update());
 
+        // Skip mic processing when muted (test sample results stay visible)
+        if (this._micMuted) return;
+
         this.analyser.getFloatTimeDomainData(this.frequencyBuffer);
 
         // STRATEGY CALL (with performance timing)
@@ -272,25 +301,7 @@ class Tuner {
         this.updateUI(note);
 
         // Draw debug plot if enabled
-        if (this.currentDetector.debug && this.currentDetector.debugData) {
-            const dd = this.currentDetector.debugData;
-            if (this.currentDetector === this.detectors.yin) {
-                this.debugPlot.draw(dd);
-                this.debugPlot.updateInfo('YIN', dd, perfMs);
-            } else if (this.currentDetector === this.detectors.mcleod) {
-                this.debugPlot.drawMcLeod(dd);
-                this.debugPlot.updateInfo('McLeod', dd, perfMs);
-            } else if (this.currentDetector === this.detectors.hps) {
-                this.debugPlot.drawHps(dd);
-                this.debugPlot.updateInfo('HPS', dd, perfMs);
-            } else if (this.currentDetector === this.detectors.music) {
-                this.debugPlot.drawMusic(dd);
-                this.debugPlot.updateInfo('MUSIC', dd, perfMs);
-            } else {
-                this.debugPlot.drawAutocorrelation(dd);
-                this.debugPlot.updateInfo('Autocorr', dd, perfMs);
-            }
-        }
+        this._renderDebugPlot(perfMs);
     }
 
     getNote(frequency) {
@@ -360,5 +371,283 @@ class Tuner {
                 this.sharpEl.classList.add('visible');
             }
         }
+    }
+
+    _renderDebugPlot(perfMs) {
+        if (!this.currentDetector.debug || !this.currentDetector.debugData) return;
+        const dd = this.currentDetector.debugData;
+        if (this.currentDetector === this.detectors.yin) {
+            this.debugPlot.draw(dd);
+            this.debugPlot.updateInfo('YIN', dd, perfMs);
+        } else if (this.currentDetector === this.detectors.mcleod) {
+            this.debugPlot.drawMcLeod(dd);
+            this.debugPlot.updateInfo('McLeod', dd, perfMs);
+        } else if (this.currentDetector === this.detectors.hps) {
+            this.debugPlot.drawHps(dd);
+            this.debugPlot.updateInfo('HPS', dd, perfMs);
+        } else if (this.currentDetector === this.detectors.music) {
+            this.debugPlot.drawMusic(dd);
+            this.debugPlot.updateInfo('MUSIC', dd, perfMs);
+        } else {
+            this.debugPlot.drawAutocorrelation(dd);
+            this.debugPlot.updateInfo('Autocorr', dd, perfMs);
+        }
+    }
+
+    _getTestDatasets() {
+        const semi = { C: 0, Db: 1, D: 2, Eb: 3, E: 4, F: 5, Gb: 6, G: 7, Ab: 8, A: 9, Bb: 10, B: 11 };
+        const disp = { C: 'C', Db: 'C#', D: 'D', Eb: 'D#', E: 'E', F: 'F', Gb: 'F#', G: 'G', Ab: 'G#', A: 'A', Bb: 'A#', B: 'B' };
+        const freq = (note, oct) => {
+            const midi = (oct + 1) * 12 + (semi[note] ?? { C:0,D:2,E:4,F:5,G:7,A:9,B:11 }[note]);
+            return Math.round(440 * Math.pow(2, (midi - 69) / 12) * 100) / 100;
+        };
+
+        // Nylon guitar
+        const nylon = [
+            ['8396__speedy__clean_e_str_pick.wav', 'E2 pick', 82.41],
+            ['8397__speedy__clean_e_str_pluck.wav', 'E2 pluck', 82.41],
+            ['8395__speedy__clean_e_harm.wav', 'E3 harm', 164.81],
+            ['8382__speedy__clean_a_str_pick.wav', 'A2 pick', 110.00],
+            ['8383__speedy__clean_a_str_pluck.wav', 'A2 pluck', 110.00],
+            ['8381__speedy__clean_a_harm.wav', 'A3 harm', 220.00],
+            ['8388__speedy__clean_d_str_pick.wav', 'D3 pick', 146.83],
+            ['8389__speedy__clean_d_str_pluck.wav', 'D3 pluck', 146.83],
+            ['8387__speedy__clean_d_harm.wav', 'D4 harm', 293.66],
+            ['8402__speedy__clean_g_str_pick.wav', 'G3 pick', 196.00],
+            ['8403__speedy__clean_g_str_pluck.wav', 'G3 pluck', 196.00],
+            ['8401__speedy__clean_g_harm1.wav', 'G4 harm', 392.00],
+            ['8385__speedy__clean_b_str_pick.wav', 'B3 pick', 246.94],
+            ['8386__speedy__clean_b_str_pluck.wav', 'B3 pluck', 246.94],
+            ['8384__speedy__clean_b_harm.wav', 'B4 harm', 493.88],
+            ['8393__speedy__clean_e1st_str_pick.wav', 'E4 pick', 329.63],
+            ['8394__speedy__clean_e1st_str_pluck.wav', 'E4 pluck', 329.63],
+            ['8392__speedy__clean_e1st_harm.wav', 'E5 harm', 659.26],
+            ['8391__speedy__clean_e1st_5th.wav', 'A4 5th', 440.00],
+            ['8390__speedy__clean_e1st_12th.wav', 'E5 12th', 659.26],
+        ].map(([file, note, f]) => ({ file, note, freq: f }));
+
+        // Plucked guitar — [id, note, octave] × 7 notes × 6 octaves
+        const pluckedIds = {
+            C: [399489,399488,399495,399494,399493,399492],
+            D: [399497,399496,399482,399483,399480,399481],
+            E: [399486,399487,399484,399485,399478,399479],
+            F: [399501,399500,399503,399502,399505,399504],
+            G: [399507,399506,399499,399498,399476,399477],
+            A: [399469,399468,399467,399466,399473,399472],
+            B: [399471,399470,399475,399474,399491,399490],
+        };
+        const plucked = [];
+        for (const [n, ids] of Object.entries(pluckedIds)) {
+            ids.forEach((id, i) => {
+                const oct = i + 1;
+                plucked.push({ file: `${id}__skamos66__${n.toLowerCase()}${oct}.wav`, note: `${n}${oct}`, freq: freq(n, oct) });
+            });
+        }
+        plucked.sort((a, b) => a.freq - b.freq);
+
+        // Piano (UIowa mf) — B0 to C8
+        const noteOrder = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+        const piano = [];
+        const addPiano = (n, oct) => piano.push({ file: `Piano.mf.${n}${oct}.ogg`, note: `${disp[n]}${oct}`, freq: freq(n, oct) });
+        addPiano('B', 0);
+        for (let oct = 1; oct <= 7; oct++) noteOrder.forEach(n => addPiano(n, oct));
+        addPiano('C', 8);
+
+        return [
+            { key: 'nylon', name: 'Nylon Guitar', dir: 'TestData/Nylon-guitar-single-notes/', probe: nylon[0].file, tones: nylon },
+            { key: 'plucked', name: 'Plucked Guitar', dir: 'TestData/22511__skamos66__plucked-guitar-notes/', probe: plucked[0].file, tones: plucked },
+            { key: 'piano', name: 'Piano (UIowa)', dir: 'TestData/UIowa-Piano-mf/', probe: piano[0].file, tones: piano },
+        ];
+    }
+
+    async _initTestSamples() {
+        this._testSamplesInit = true;
+        const datasets = this._getTestDatasets();
+        const dsSelect = document.getElementById('sample-dataset');
+        const toneSelect = document.getElementById('sample-tone');
+        const playBtn = document.getElementById('sample-play-btn');
+        const samplesDiv = document.getElementById('test-samples');
+
+        dsSelect.innerHTML = '<option value="">Checking...</option>';
+
+        // Probe each dataset
+        const available = [];
+        for (const ds of datasets) {
+            try {
+                const resp = await fetch(ds.dir + encodeURIComponent(ds.probe), { method: 'HEAD' });
+                if (resp.ok) available.push(ds);
+            } catch (e) { /* not available */ }
+        }
+
+        if (available.length === 0) {
+            samplesDiv.style.display = 'none';
+            return;
+        }
+
+        this._testSamplesAvailable = true;
+        this._testDatasets = available;
+        samplesDiv.style.display = '';
+
+        dsSelect.innerHTML = available.map((ds, i) =>
+            `<option value="${i}">${ds.name}</option>`
+        ).join('');
+
+        dsSelect.addEventListener('change', () => this._populateTones());
+        toneSelect.addEventListener('change', () => this._analyzeTestSample());
+        playBtn.addEventListener('click', () => this._playTestAudio());
+        document.getElementById('sample-mute').addEventListener('change', (e) => {
+            this._micMuted = e.target.checked;
+        });
+
+        this._populateTones();
+    }
+
+    _populateTones() {
+        const dsSelect = document.getElementById('sample-dataset');
+        const toneSelect = document.getElementById('sample-tone');
+        const idx = parseInt(dsSelect.value);
+        const ds = this._testDatasets[idx];
+
+        toneSelect.innerHTML = '<option value="">\u2014 Select tone \u2014</option>' +
+            ds.tones.map((t, i) =>
+                `<option value="${i}">${t.note} (${t.freq} Hz)</option>`
+            ).join('');
+        toneSelect.disabled = false;
+        document.getElementById('sample-play-btn').disabled = true;
+    }
+
+    async _analyzeTestSample() {
+        const dsSelect = document.getElementById('sample-dataset');
+        const toneSelect = document.getElementById('sample-tone');
+        const playBtn = document.getElementById('sample-play-btn');
+
+        if (toneSelect.value === '') {
+            playBtn.disabled = true;
+            return;
+        }
+
+        const ds = this._testDatasets[parseInt(dsSelect.value)];
+        const tone = ds.tones[parseInt(toneSelect.value)];
+        const cacheKey = ds.dir + tone.file;
+
+        // Ensure AudioContext for decoding
+        if (!this._testSampleCtx || this._testSampleCtx.state === 'closed') {
+            this._testSampleCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        // Load and decode (with caching)
+        let audioBuffer = this._audioCache.get(cacheKey);
+        if (!audioBuffer) {
+            try {
+                const resp = await fetch(ds.dir + encodeURIComponent(tone.file));
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const arrayBuf = await resp.arrayBuffer();
+                audioBuffer = await this._testSampleCtx.decodeAudioData(arrayBuf);
+                this._audioCache.set(cacheKey, audioBuffer);
+            } catch (err) {
+                console.error('Failed to load test sample:', err);
+                this.statusEl.textContent = 'Load error';
+                this.statusEl.style.color = 'var(--danger-color)';
+                return;
+            }
+        }
+
+        // Extract window at 1 second
+        const sampleRate = audioBuffer.sampleRate;
+        const channelData = audioBuffer.getChannelData(0);
+        const windowSize = TunerDefaults.FFTSIZE;
+        const startSample = Math.floor(1.0 * sampleRate);
+
+        let buffer;
+        if (startSample + windowSize <= channelData.length) {
+            buffer = channelData.slice(startSample, startSample + windowSize);
+        } else if (channelData.length >= windowSize) {
+            buffer = channelData.slice(channelData.length - windowSize);
+        } else {
+            buffer = new Float32Array(windowSize);
+            buffer.set(channelData);
+        }
+
+        // Run detector
+        const t0 = performance.now();
+        const detected = this.currentDetector.getPitch(buffer, sampleRate);
+        const perfMs = performance.now() - t0;
+
+        // Update main UI
+        if (detected > 0 && !isNaN(detected) &&
+            detected >= TunerDefaults.MIN_FREQUENCY &&
+            detected <= TunerDefaults.MAX_FREQUENCY) {
+            const note = this.getNote(detected);
+            this.updateUI(note);
+        } else {
+            this.updateUI(null);
+            this.statusEl.textContent = 'No pitch detected';
+        }
+
+        // Update debug plot
+        this._renderDebugPlot(perfMs);
+        playBtn.disabled = false;
+    }
+
+    async _playTestAudio() {
+        const playBtn = document.getElementById('sample-play-btn');
+
+        // Stop if already playing
+        if (this._testSampleSource) {
+            this._testSampleSource.stop();
+            this._testSampleSource = null;
+            playBtn.textContent = '\u25B6';
+            return;
+        }
+
+        const dsSelect = document.getElementById('sample-dataset');
+        const toneSelect = document.getElementById('sample-tone');
+        if (toneSelect.value === '') return;
+
+        const ds = this._testDatasets[parseInt(dsSelect.value)];
+        const tone = ds.tones[parseInt(toneSelect.value)];
+        const audioBuffer = this._audioCache.get(ds.dir + tone.file);
+        if (!audioBuffer) return;
+
+        if (!this._testSampleCtx || this._testSampleCtx.state === 'closed') {
+            this._testSampleCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (this._testSampleCtx.state === 'suspended') {
+            await this._testSampleCtx.resume();
+        }
+
+        this._testSampleSource = this._testSampleCtx.createBufferSource();
+        this._testSampleSource.buffer = audioBuffer;
+        this._testSampleSource.connect(this._testSampleCtx.destination);
+
+        // Also connect through an analyser for real-time detection during playback
+        const analyser = this._testSampleCtx.createAnalyser();
+        analyser.fftSize = TunerDefaults.FFTSIZE;
+        this._testSampleSource.connect(analyser);
+        const buf = new Float32Array(TunerDefaults.FFTSIZE);
+        const sr = this._testSampleCtx.sampleRate;
+
+        const processLoop = () => {
+            if (!this._testSampleSource) return;
+            analyser.getFloatTimeDomainData(buf);
+            const t0 = performance.now();
+            const detected = this.currentDetector.getPitch(buf, sr);
+            const perfMs = performance.now() - t0;
+            if (detected > 0 && !isNaN(detected) &&
+                detected >= TunerDefaults.MIN_FREQUENCY &&
+                detected <= TunerDefaults.MAX_FREQUENCY) {
+                this.updateUI(this.getNote(detected));
+            }
+            this._renderDebugPlot(perfMs);
+            requestAnimationFrame(processLoop);
+        };
+
+        playBtn.textContent = '\u25A0';
+        this._testSampleSource.onended = () => {
+            playBtn.textContent = '\u25B6';
+            this._testSampleSource = null;
+        };
+        this._testSampleSource.start();
+        processLoop();
     }
 }

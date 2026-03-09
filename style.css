@@ -367,6 +367,87 @@ body {
 .debug-info .perf-ok { color: var(--warning-color); }
 .debug-info .perf-bad { color: var(--danger-color); }
 
+/* Test Samples (debug mode) */
+.test-samples {
+    margin-top: 0.75rem;
+    width: 100%;
+}
+
+.test-samples-controls {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.sample-select {
+    padding: 0.4rem 0.6rem;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+    border-radius: 8px;
+    font-size: 0.8rem;
+    outline: none;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+}
+
+.sample-select:first-child {
+    flex: 2;
+}
+
+.sample-select:nth-child(2) {
+    flex: 3;
+}
+
+.sample-select:hover:not(:disabled) {
+    border-color: var(--accent-color);
+    color: var(--text-primary);
+}
+
+.sample-select:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.sample-btn {
+    padding: 0.4rem 0.7rem;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+    border-radius: 8px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+}
+
+.sample-btn:hover:not(:disabled) {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+
+.sample-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.sample-mute-label {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.sample-mute-label input {
+    accent-color: var(--accent-color);
+    cursor: pointer;
+}
+
 /* Test Tone Section */
 .test-tone-section {
     width: 100%;
