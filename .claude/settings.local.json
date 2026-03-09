@@ -8,7 +8,18 @@
       "WebFetch(domain:samyak.me)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:www.npmjs.com)",
-      "WebFetch(domain:www.researchgate.net)"
+      "WebFetch(domain:www.researchgate.net)",
+      "Bash(curl -s -L -o /tmp/test_piano.aiff \"https://web.archive.org/web/20220309211042/http://theremin.music.uiowa.edu/sound%20files/MIS/Piano_Other/piano/Piano.mf.A4.aiff\")",
+      "Read(//tmp/**)",
+      "Bash(curl -s -L \"https://web.archive.org/web/20220309211042/http://theremin.music.uiowa.edu/MISpiano.html\")",
+      "Bash(for f in Piano.mf.Db2.aiff Piano.mf.E2.aiff Piano.mf.Gb6.aiff Piano.mf.C2.aiff)",
+      "Bash(do)",
+      "Bash(echo -n \"$f: \")",
+      "Read(//c/Users/toreb/OneDrive/Code/GuitarTuner/TestData/UIowa-Piano-mf/**)",
+      "Bash(xxd -p)",
+      "Bash(done)",
+      "Bash(ffmpeg -version)",
+      "Bash(curl -s -L --retry 3 -o /tmp/Piano.mf.F6.aiff \"https://web.archive.org/web/20220309211042/http://theremin.music.uiowa.edu/sound%20files/MIS/Piano_Other/piano/Piano.mf.F6.aiff\")"
     ]
   }
 }
