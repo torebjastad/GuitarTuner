@@ -215,6 +215,7 @@ body {
     color: var(--text-secondary);
     font-variant-numeric: tabular-nums;
     margin-top: 0.5rem;
+    white-space: nowrap;
 }
 
 .meter-container {
