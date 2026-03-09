@@ -78,14 +78,22 @@
             gap: 4px;
         }
 
-        .config input[type="number"] {
-            width: 60px;
+        .config input[type="number"],
+        .config select {
             background: var(--card);
             color: var(--text);
             border: 1px solid var(--border);
             border-radius: 4px;
             padding: 3px 6px;
             font-size: 0.85rem;
+        }
+
+        .config input[type="number"] {
+            width: 75px;
+        }
+
+        .config select {
+            min-width: 140px;
         }
 
         #status {
@@ -192,6 +200,15 @@
             border-bottom: 2px solid var(--border);
         }
 
+        .dataset-header td {
+            background: #1e2a45;
+            font-weight: bold;
+            padding: 12px 6px 8px;
+            font-size: 1rem;
+            border-bottom: 2px solid var(--blue);
+            color: var(--blue);
+        }
+
         /* Summary row */
         .summary-row td {
             background: var(--card);
@@ -228,11 +245,18 @@
     <div class="controls">
         <button id="run-btn">Run All Tests</button>
         <div class="config">
+            <label>Dataset:
+                <select id="dataset-select">
+                    <option value="nylon">Nylon Guitar (Speedy)</option>
+                    <option value="plucked">Plucked Guitar (Skamos66)</option>
+<option value="all">All Datasets</option>
+                </select>
+            </label>
             <label>Sample at:
                 <input type="number" id="sample-time" value="1.0" min="0.1" max="5" step="0.1"> sec
             </label>
             <label>Window:
-                <input type="number" id="window-size" value="4096" min="2048" max="8192" step="1024">
+                <input type="number" id="window-size" value="4096" min="2048" max="65536" step="1024">
                 samples
             </label>
         </div>
@@ -256,9 +280,9 @@
     </table>
 
     <div class="legend">
-        <span class="pass">&#9632; Correct note, &lt;10¢</span>
-        <span class="close">&#9632; Correct note, 10–50¢</span>
-        <span class="fail">&#9632; Wrong note or &gt;50¢</span>
+        <span class="pass">&#9632; Correct note, &lt;10&cent;</span>
+        <span class="close">&#9632; Correct note, 10–50&cent;</span>
+        <span class="fail">&#9632; Wrong note or &gt;50&cent;</span>
         <span class="no-detect">&#9632; No detection</span>
     </div>
 
@@ -271,56 +295,16 @@
     <script src="music-detector.js"></script>
 
     <script>
-        // ---- Test file definitions ----
-        const TEST_DIR = 'TestData/Nylon-guitar-single-notes/';
-        const NOTE_STRINGS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-
-        const TEST_FILES = [
-            // Section: Low E (E2)
-            { section: "Low E String — E2" },
-            { file: "8396__speedy__clean_e_str_pick.wav", expected: 82.41, note: "E2", technique: "pick" },
-            { file: "8397__speedy__clean_e_str_pluck.wav", expected: 82.41, note: "E2", technique: "pluck" },
-            { file: "8395__speedy__clean_e_harm.wav", expected: 164.81, note: "E3", technique: "harmonic" },
-
-            // Section: A (A2)
-            { section: "A String — A2" },
-            { file: "8382__speedy__clean_a_str_pick.wav", expected: 110.00, note: "A2", technique: "pick" },
-            { file: "8383__speedy__clean_a_str_pluck.wav", expected: 110.00, note: "A2", technique: "pluck" },
-            { file: "8381__speedy__clean_a_harm.wav", expected: 220.00, note: "A3", technique: "harmonic" },
-
-            // Section: D (D3)
-            { section: "D String — D3" },
-            { file: "8388__speedy__clean_d_str_pick.wav", expected: 146.83, note: "D3", technique: "pick" },
-            { file: "8389__speedy__clean_d_str_pluck.wav", expected: 146.83, note: "D3", technique: "pluck" },
-            { file: "8387__speedy__clean_d_harm.wav", expected: 293.66, note: "D4", technique: "harmonic" },
-
-            // Section: G (G3)
-            { section: "G String — G3" },
-            { file: "8402__speedy__clean_g_str_pick.wav", expected: 196.00, note: "G3", technique: "pick" },
-            { file: "8403__speedy__clean_g_str_pluck.wav", expected: 196.00, note: "G3", technique: "pluck" },
-            { file: "8401__speedy__clean_g_harm1.wav", expected: 392.00, note: "G4", technique: "harmonic" },
-
-            // Section: B (B3)
-            { section: "B String — B3" },
-            { file: "8385__speedy__clean_b_str_pick.wav", expected: 246.94, note: "B3", technique: "pick" },
-            { file: "8386__speedy__clean_b_str_pluck.wav", expected: 246.94, note: "B3", technique: "pluck" },
-            { file: "8384__speedy__clean_b_harm.wav", expected: 493.88, note: "B4", technique: "harmonic" },
-
-            // Section: High E (E4)
-            { section: "High E String — E4" },
-            { file: "8393__speedy__clean_e1st_str_pick.wav", expected: 329.63, note: "E4", technique: "pick" },
-            { file: "8394__speedy__clean_e1st_str_pluck.wav", expected: 329.63, note: "E4", technique: "pluck" },
-            { file: "8392__speedy__clean_e1st_harm.wav", expected: 659.26, note: "E5", technique: "harmonic" },
-            { file: "8391__speedy__clean_e1st_5th.wav", expected: 440.00, note: "A4", technique: "5th harm (mislabeled?)" },
-            { file: "8390__speedy__clean_e1st_12th.wav", expected: 659.26, note: "E5", technique: "12th harm" },
-
-
-        ];
-
-        const ALGO_KEYS = ['yin', 'mcleod', 'autocorr', 'hps', 'music'];
-        const ALGO_NAMES = { yin: 'YIN', mcleod: 'McLeod', autocorr: 'Autocorr', hps: 'HPS', music: 'MUSIC' };
-
         // ---- Helpers ----
+
+        const NOTE_STRINGS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+        const ALGO_KEYS = ['yin', 'mcleod', 'autocorr', 'hps', 'music'];
+
+        function noteFreq(note, octave) {
+            const semitones = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+            const midi = (octave + 1) * 12 + semitones[note];
+            return Math.round(440 * Math.pow(2, (midi - 69) / 12) * 100) / 100;
+        }
 
         function freqToNoteName(freq) {
             const midi = Math.round(12 * Math.log2(freq / 440) + 69);
@@ -333,31 +317,34 @@
             return 1200 * Math.log2(detected / expected);
         }
 
+        function shortFileName(filename) {
+            return filename
+                .replace(/__speedy__clean_/, '\u2026')
+                .replace(/\d+__skamos66__/, '')
+                .replace(/\d+__tedagame__/, '');
+        }
+
         function formatResult(detected, expected) {
             if (detected === -1 || isNaN(detected) || detected < TunerDefaults.MIN_FREQUENCY || detected > TunerDefaults.MAX_FREQUENCY) {
-                // No detection
                 if (expected === null) {
-                    // Expected no detection — this is a pass
-                    return { html: '— (correct)', cls: 'pass' };
+                    return { html: '\u2014 (correct)', cls: 'pass' };
                 }
-                return { html: '—', cls: 'no-detect' };
+                return { html: '\u2014', cls: 'no-detect' };
             }
 
             const noteName = freqToNoteName(detected);
 
             if (expected === null) {
-                // Expected no detection but got one — fail
                 return { html: `${detected.toFixed(1)} Hz (${noteName})`, cls: 'fail' };
             }
 
             const cents = centsDiff(detected, expected);
             const expectedNote = freqToNoteName(expected);
-            const detectedNote = noteName;
             const absCents = Math.abs(cents);
-            const centsStr = (cents >= 0 ? '+' : '') + cents.toFixed(1) + '¢';
+            const centsStr = (cents >= 0 ? '+' : '') + cents.toFixed(1) + '\u00A2';
 
             let cls;
-            if (detectedNote !== expectedNote) {
+            if (noteName !== expectedNote) {
                 cls = 'fail';
             } else if (absCents < 10) {
                 cls = 'pass';
@@ -373,14 +360,274 @@
             };
         }
 
+        // ---- Dataset definitions ----
+
+        const DATASETS = {
+            nylon: {
+                name: "Nylon Guitar (Speedy)",
+                dir: "TestData/Nylon-guitar-single-notes/",
+                files: [
+                    { section: "Low E String \u2014 E2" },
+                    { file: "8396__speedy__clean_e_str_pick.wav", expected: 82.41, note: "E2" },
+                    { file: "8397__speedy__clean_e_str_pluck.wav", expected: 82.41, note: "E2" },
+                    { file: "8395__speedy__clean_e_harm.wav", expected: 164.81, note: "E3" },
+
+                    { section: "A String \u2014 A2" },
+                    { file: "8382__speedy__clean_a_str_pick.wav", expected: 110.00, note: "A2" },
+                    { file: "8383__speedy__clean_a_str_pluck.wav", expected: 110.00, note: "A2" },
+                    { file: "8381__speedy__clean_a_harm.wav", expected: 220.00, note: "A3" },
+
+                    { section: "D String \u2014 D3" },
+                    { file: "8388__speedy__clean_d_str_pick.wav", expected: 146.83, note: "D3" },
+                    { file: "8389__speedy__clean_d_str_pluck.wav", expected: 146.83, note: "D3" },
+                    { file: "8387__speedy__clean_d_harm.wav", expected: 293.66, note: "D4" },
+
+                    { section: "G String \u2014 G3" },
+                    { file: "8402__speedy__clean_g_str_pick.wav", expected: 196.00, note: "G3" },
+                    { file: "8403__speedy__clean_g_str_pluck.wav", expected: 196.00, note: "G3" },
+                    { file: "8401__speedy__clean_g_harm1.wav", expected: 392.00, note: "G4" },
+
+                    { section: "B String \u2014 B3" },
+                    { file: "8385__speedy__clean_b_str_pick.wav", expected: 246.94, note: "B3" },
+                    { file: "8386__speedy__clean_b_str_pluck.wav", expected: 246.94, note: "B3" },
+                    { file: "8384__speedy__clean_b_harm.wav", expected: 493.88, note: "B4" },
+
+                    { section: "High E String \u2014 E4" },
+                    { file: "8393__speedy__clean_e1st_str_pick.wav", expected: 329.63, note: "E4" },
+                    { file: "8394__speedy__clean_e1st_str_pluck.wav", expected: 329.63, note: "E4" },
+                    { file: "8392__speedy__clean_e1st_harm.wav", expected: 659.26, note: "E5" },
+                    { file: "8391__speedy__clean_e1st_5th.wav", expected: 440.00, note: "A4" },
+                    { file: "8390__speedy__clean_e1st_12th.wav", expected: 659.26, note: "E5" },
+                ]
+            },
+            plucked: {
+                name: "Plucked Guitar (Skamos66)",
+                dir: "TestData/22511__skamos66__plucked-guitar-notes/",
+                files: buildPluckedDataset()
+            },
+            piano: {
+                name: "Piano (TEDAgame)",
+                dir: "TestData/25405__tedagame__88-piano-keys-long-reverb/",
+                files: buildPianoDataset()
+            }
+        };
+
+        function buildPluckedDataset() {
+            const rawFiles = [
+                "399469__skamos66__a1.wav",
+                "399468__skamos66__a2.wav",
+                "399467__skamos66__a3.wav",
+                "399466__skamos66__a4.wav",
+                "399473__skamos66__a5.wav",
+                "399472__skamos66__a6.wav",
+                "399471__skamos66__b1.wav",
+                "399470__skamos66__b2.wav",
+                "399475__skamos66__b3.wav",
+                "399474__skamos66__b4.wav",
+                "399491__skamos66__b5.wav",
+                "399490__skamos66__b6.wav",
+                "399489__skamos66__c1.wav",
+                "399488__skamos66__c2.wav",
+                "399495__skamos66__c3.wav",
+                "399494__skamos66__c4.wav",
+                "399493__skamos66__c5.wav",
+                "399492__skamos66__c6.wav",
+                "399497__skamos66__d1.wav",
+                "399496__skamos66__d2.wav",
+                "399482__skamos66__d3.wav",
+                "399483__skamos66__d4.wav",
+                "399480__skamos66__d5.wav",
+                "399481__skamos66__d6.wav",
+                "399486__skamos66__e1.wav",
+                "399487__skamos66__e2.wav",
+                "399484__skamos66__e3.wav",
+                "399485__skamos66__e4.wav",
+                "399478__skamos66__e5.wav",
+                "399479__skamos66__e6.wav",
+                "399501__skamos66__f1.wav",
+                "399500__skamos66__f2.wav",
+                "399503__skamos66__f3.wav",
+                "399502__skamos66__f4.wav",
+                "399505__skamos66__f5.wav",
+                "399504__skamos66__f6.wav",
+                "399507__skamos66__g1.wav",
+                "399506__skamos66__g2.wav",
+                "399499__skamos66__g3.wav",
+                "399498__skamos66__g4.wav",
+                "399476__skamos66__g5.wav",
+                "399477__skamos66__g6.wav",
+            ];
+
+            const noteOrder = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+
+            // Parse and group by octave
+            const byOctave = {};
+            for (const file of rawFiles) {
+                const m = file.match(/__([a-g])(\d)\.wav$/);
+                if (!m) continue;
+                const note = m[1].toUpperCase();
+                const octave = parseInt(m[2]);
+                if (!byOctave[octave]) byOctave[octave] = [];
+                byOctave[octave].push({ file, note, octave });
+            }
+
+            const entries = [];
+            for (const oct of Object.keys(byOctave).sort((a, b) => a - b)) {
+                entries.push({ section: `Octave ${oct}` });
+                byOctave[oct].sort((a, b) => noteOrder.indexOf(a.note) - noteOrder.indexOf(b.note));
+                for (const item of byOctave[oct]) {
+                    entries.push({
+                        file: item.file,
+                        expected: noteFreq(item.note, item.octave),
+                        note: `${item.note}${item.octave}`
+                    });
+                }
+            }
+            return entries;
+        }
+
+        function buildPianoDataset() {
+            // 88 piano keys (A0-C8). Duplicate note names exist because
+            // sharps are named after the natural below (e.g., two "c1" files
+            // = C1 and C#1). We assign sharps based on file ID ordering:
+            // lower ID = natural, higher ID = sharp.
+            const rawFiles = [
+                "448573__tedagame__a0.ogg", "448579__tedagame__a0.ogg",
+                "448572__tedagame__a1.ogg", "448578__tedagame__a1.ogg",
+                "448571__tedagame__a2.ogg", "448563__tedagame__a2.ogg",
+                "448570__tedagame__a3.ogg", "448562__tedagame__a3.ogg",
+                "448577__tedagame__a4.ogg", "448561__tedagame__a4.ogg",
+                "448576__tedagame__a5.ogg", "448560__tedagame__a5.ogg",
+                "448575__tedagame__a6.ogg", "448567__tedagame__a6.ogg",
+                "448574__tedagame__a7.ogg", "448566__tedagame__a7.ogg",
+                "448565__tedagame__b0.ogg",
+                "448564__tedagame__b1.ogg",
+                "448569__tedagame__b2.ogg",
+                "448568__tedagame__b3.ogg",
+                "448536__tedagame__b4.ogg",
+                "448537__tedagame__b5.ogg",
+                "448534__tedagame__b6.ogg",
+                "448535__tedagame__b7.ogg",
+                "448540__tedagame__c1.ogg", "448544__tedagame__c1.ogg",
+                "448541__tedagame__c2.ogg", "448547__tedagame__c2.ogg",
+                "448538__tedagame__c3.ogg", "448546__tedagame__c3.ogg",
+                "448539__tedagame__c4.ogg", "448549__tedagame__c4.ogg",
+                "448532__tedagame__c5.ogg", "448548__tedagame__c5.ogg",
+                "448533__tedagame__c6.ogg", "448551__tedagame__c6.ogg",
+                "448545__tedagame__c7.ogg", "448550__tedagame__c7.ogg",
+                "448543__tedagame__c8.ogg",
+                "448542__tedagame__d1.ogg", "448606__tedagame__d1.ogg",
+                "448600__tedagame__d2.ogg", "448607__tedagame__d2.ogg",
+                "448601__tedagame__d3.ogg", "448608__tedagame__d3.ogg",
+                "448602__tedagame__d4.ogg", "448609__tedagame__d4.ogg",
+                "448603__tedagame__d5.ogg", "448619__tedagame__d5.ogg",
+                "448604__tedagame__d6.ogg", "448618__tedagame__d6.ogg",
+                "448605__tedagame__d7.ogg", "448617__tedagame__d7.ogg",
+                "448616__tedagame__e1.ogg",
+                "448615__tedagame__e2.ogg",
+                "448614__tedagame__e3.ogg",
+                "448613__tedagame__e4.ogg",
+                "448612__tedagame__e5.ogg",
+                "448611__tedagame__e6.ogg",
+                "448610__tedagame__e7.ogg",
+                "448581__tedagame__f1.ogg", "448586__tedagame__f1.ogg",
+                "448587__tedagame__f2.ogg", "448588__tedagame__f2.ogg",
+                "448584__tedagame__f3.ogg", "448589__tedagame__f3.ogg",
+                "448585__tedagame__f4.ogg", "448595__tedagame__f4.ogg",
+                "448582__tedagame__f5.ogg", "448594__tedagame__f5.ogg",
+                "448583__tedagame__f6.ogg", "448597__tedagame__f6.ogg",
+                "448580__tedagame__f7.ogg", "448596__tedagame__f7.ogg",
+                "448557__tedagame__g1.ogg", "448591__tedagame__g1.ogg",
+                "448558__tedagame__g2.ogg", "448590__tedagame__g2.ogg",
+                "448559__tedagame__g3.ogg", "448593__tedagame__g3.ogg",
+                "448552__tedagame__g4.ogg", "448592__tedagame__g4.ogg",
+                "448553__tedagame__g5.ogg", "448599__tedagame__g5.ogg",
+                "448554__tedagame__g6.ogg", "448598__tedagame__g6.ogg",
+                "448555__tedagame__g7.ogg", "448556__tedagame__g7.ogg",
+            ];
+
+            const noteOrder = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+            const sharpNotes = ['A', 'C', 'D', 'F', 'G']; // notes that have a sharp above
+
+            // Track which note+octave combos we've seen to detect duplicates
+            const seen = {};
+            const parsed = [];
+
+            for (const file of rawFiles) {
+                const m = file.match(/__([a-g])(\d)\.ogg$/);
+                if (!m) continue;
+                const noteLetter = m[1].toUpperCase();
+                const octave = parseInt(m[2]);
+                const key = noteLetter + octave;
+
+                if (seen[key]) {
+                    // Second occurrence = sharp version
+                    // A# uses same octave, C#/D#/F#/G# use same octave
+                    const sharpNote = noteLetter + '#';
+                    const sharpSemitone = { 'A': 10, 'C': 1, 'D': 3, 'F': 6, 'G': 8 };
+                    const semi = sharpSemitone[noteLetter];
+                    if (semi !== undefined) {
+                        const midi = (octave + 1) * 12 + semi;
+                        const freq = Math.round(440 * Math.pow(2, (midi - 69) / 12) * 100) / 100;
+                        parsed.push({ file, note: `${sharpNote}${octave}`, octave, freq, sortKey: midi });
+                    }
+                } else {
+                    seen[key] = true;
+                    const freq = noteFreq(noteLetter, octave);
+                    const semitones = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+                    const midi = (octave + 1) * 12 + semitones[noteLetter];
+                    parsed.push({ file, note: key, octave, freq, sortKey: midi });
+                }
+            }
+
+            // Sort by MIDI number (low to high)
+            parsed.sort((a, b) => a.sortKey - b.sortKey);
+
+            // Group by octave
+            const entries = [];
+            let currentOct = -1;
+            for (const item of parsed) {
+                if (item.octave !== currentOct) {
+                    currentOct = item.octave;
+                    entries.push({ section: `Octave ${currentOct}` });
+                }
+                entries.push({
+                    file: item.file,
+                    expected: item.freq,
+                    note: item.note
+                });
+            }
+            return entries;
+        }
+
+        function getActiveTestList(datasetKey) {
+            if (datasetKey === 'all') {
+                const combined = [];
+                for (const [key, ds] of Object.entries(DATASETS)) {
+                    combined.push({ datasetHeader: ds.name });
+                    for (const entry of ds.files) {
+                        if (entry.section) {
+                            combined.push(entry);
+                        } else {
+                            combined.push({ ...entry, dir: ds.dir });
+                        }
+                    }
+                }
+                return combined;
+            }
+            const ds = DATASETS[datasetKey];
+            return ds.files.map(entry =>
+                entry.section ? entry : { ...entry, dir: ds.dir }
+            );
+        }
+
         // ---- Audio playback ----
 
         let _playbackCtx = null;
         let _playbackSource = null;
         let _activePlayBtn = null;
 
-        async function playFile(filename, btn) {
-            // Stop any currently playing sound
+        async function playFile(dir, filename, btn) {
             if (_playbackSource) {
                 _playbackSource.stop();
                 _playbackSource = null;
@@ -390,7 +637,6 @@
                 _activePlayBtn.textContent = '\u25B6';
             }
 
-            // If clicking the same button again, just stop
             if (_activePlayBtn === btn) {
                 _activePlayBtn = null;
                 return;
@@ -404,7 +650,7 @@
             }
 
             try {
-                const url = TEST_DIR + encodeURIComponent(filename);
+                const url = dir + encodeURIComponent(filename);
                 const response = await fetch(url);
                 const arrayBuf = await response.arrayBuffer();
                 const audioBuffer = await new Promise((resolve, reject) => {
@@ -443,8 +689,11 @@
             tbody.innerHTML = '';
             statusEl.textContent = 'Initializing...';
 
+            const datasetKey = document.getElementById('dataset-select').value;
             const sampleTime = parseFloat(document.getElementById('sample-time').value);
             const windowSize = parseInt(document.getElementById('window-size').value);
+
+            const testList = getActiveTestList(datasetKey);
 
             // Create detectors
             const detectors = {
@@ -455,7 +704,6 @@
                 music: new MusicDetector()
             };
 
-            // We need an AudioContext to decode WAV files
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
             // Track scores per algorithm
@@ -464,12 +712,19 @@
                 scores[key] = { pass: 0, close: 0, fail: 0, noDetect: 0, total: 0 };
             }
 
-            const testEntries = TEST_FILES.filter(t => !t.section);
+            const testEntries = testList.filter(t => !t.section && !t.datasetHeader);
             let completed = 0;
 
-            for (const entry of TEST_FILES) {
+            for (const entry of testList) {
+                if (entry.datasetHeader) {
+                    const tr = document.createElement('tr');
+                    tr.className = 'dataset-header';
+                    tr.innerHTML = `<td colspan="8">${entry.datasetHeader}</td>`;
+                    tbody.appendChild(tr);
+                    continue;
+                }
+
                 if (entry.section) {
-                    // Render section header
                     const tr = document.createElement('tr');
                     tr.className = 'section-header';
                     tr.innerHTML = `<td colspan="8">${entry.section}</td>`;
@@ -478,42 +733,40 @@
                 }
 
                 completed++;
-                statusEl.textContent = `Testing ${completed}/${testEntries.length}: ${entry.note} (${entry.technique})...`;
+                statusEl.textContent = `Testing ${completed}/${testEntries.length}: ${entry.note}...`;
 
                 const tr = document.createElement('tr');
 
-                // Play button cell
+                // Play button
                 const tdPlay = document.createElement('td');
                 tdPlay.className = 'play-col';
                 const playBtn = document.createElement('button');
                 playBtn.className = 'play-btn';
                 playBtn.textContent = '\u25B6';
                 playBtn.title = 'Play ' + entry.file;
-                playBtn.dataset.file = entry.file;
-                playBtn.addEventListener('click', () => playFile(entry.file, playBtn));
+                const entryDir = entry.dir;
+                const entryFile = entry.file;
+                playBtn.addEventListener('click', () => playFile(entryDir, entryFile, playBtn));
                 tdPlay.appendChild(playBtn);
                 tr.appendChild(tdPlay);
 
-                // File name cell
-                const shortName = entry.file.replace(/__speedy__clean_/, '…');
+                // File name
                 const tdFile = document.createElement('td');
                 tdFile.className = 'file-col';
                 tdFile.title = entry.file;
-                tdFile.textContent = shortName;
+                tdFile.textContent = shortFileName(entry.file);
                 tr.appendChild(tdFile);
 
-                // Expected cell
+                // Expected
                 const tdExpected = document.createElement('td');
                 tdExpected.className = 'expected-col';
-                tdExpected.textContent = entry.expected
-                    ? `${entry.note} (${entry.expected} Hz)`
-                    : 'No pitch';
+                tdExpected.textContent = `${entry.note} (${entry.expected} Hz)`;
                 tr.appendChild(tdExpected);
 
-                // Load and decode audio
+                // Load audio
                 let audioBuffer;
                 try {
-                    const url = TEST_DIR + encodeURIComponent(entry.file);
+                    const url = entry.dir + encodeURIComponent(entry.file);
                     const response = await fetch(url);
                     if (!response.ok) throw new Error(`HTTP ${response.status} for ${entry.file}`);
                     const arrayBuf = await response.arrayBuffer();
@@ -521,7 +774,6 @@
                         audioCtx.decodeAudioData(arrayBuf, resolve, reject);
                     });
                 } catch (err) {
-                    // File load error
                     console.error(`Failed to load ${entry.file}:`, err);
                     for (const key of ALGO_KEYS) {
                         const td = document.createElement('td');
@@ -534,19 +786,17 @@
                     continue;
                 }
 
-                // Extract a window at the specified time
+                // Extract window at sample time
                 const sampleRate = audioBuffer.sampleRate;
-                const channelData = audioBuffer.getChannelData(0); // mono or first channel
+                const channelData = audioBuffer.getChannelData(0);
                 const startSample = Math.floor(sampleTime * sampleRate);
 
                 let buffer;
                 if (startSample + windowSize <= channelData.length) {
                     buffer = channelData.slice(startSample, startSample + windowSize);
                 } else if (channelData.length >= windowSize) {
-                    // File shorter than expected — sample from the end
                     buffer = channelData.slice(channelData.length - windowSize);
                 } else {
-                    // File too short — pad with zeros
                     buffer = new Float32Array(windowSize);
                     buffer.set(channelData);
                 }
@@ -562,7 +812,6 @@
                         td.innerHTML = result.html;
                         td.classList.add(result.cls);
 
-                        // Track scores
                         scores[key].total++;
                         if (result.cls === 'pass') scores[key].pass++;
                         else if (result.cls === 'close') scores[key].close++;
@@ -573,15 +822,13 @@
                         td.classList.add('fail');
                         scores[key].total++;
                         scores[key].fail++;
-                        console.error(`${ALGO_NAMES[key]} error on ${entry.file}:`, err);
+                        console.error(`${key} error on ${entry.file}:`, err);
                     }
 
                     tr.appendChild(td);
                 }
 
                 tbody.appendChild(tr);
-
-                // Yield to browser so the table updates progressively
                 await new Promise(r => setTimeout(r, 0));
             }
 
@@ -606,7 +853,7 @@
             tbody.appendChild(summaryTr);
 
             await audioCtx.close();
-            statusEl.textContent = `Done — ${testEntries.length} files tested.`;
+            statusEl.textContent = `Done \u2014 ${testEntries.length} files tested.`;
             runBtn.disabled = false;
         }
 

@@ -22,6 +22,7 @@ class HpsDetector extends PitchDetector {
     constructor(numHarmonics = 5) {
         super();
         this.numHarmonics = numHarmonics;
+        this.dtftHarmonics = 2; // Harmonics used in DTFT refinement (stage 2)
         this.debug = false;
         this.debugData = null;
 
@@ -423,7 +424,7 @@ class HpsDetector extends PitchDetector {
 
         // Assess harmonic quality from FFT spectrum
         const binHz = sampleRate / N;
-        const numRefH = 2;
+        const numRefH = this.dtftHarmonics;
         const harmonicWeights = this._assessHarmonicWeights(mag, halfN, refBin, numRefH);
 
         // Convert to frequency and refine via DTFT
