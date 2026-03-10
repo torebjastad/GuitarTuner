@@ -16,4 +16,21 @@ class PitchDetector {
     getPitch(buffer, sampleRate) {
         throw new Error("Method 'getPitch()' must be implemented.");
     }
+
+    /**
+     * Returns an array of parameter definitions for generating UI controls.
+     * Each definition should be { key: string, label: string, min: number, max: number, step: number, value: number }
+     */
+    getParams() {
+        return [];
+    }
+
+    /**
+     * Updates an internal parameter. Override if reallocation/recalculation is needed.
+     */
+    setParam(key, value) {
+        if (this[key] !== undefined) {
+            this[key] = value;
+        }
+    }
 }

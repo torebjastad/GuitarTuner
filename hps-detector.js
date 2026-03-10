@@ -19,10 +19,12 @@
  * Depends on: pitch-common.js (TunerDefaults, PitchDetector)
  */
 class HpsDetector extends PitchDetector {
-    constructor(numHarmonics = 5) {
+    constructor(numHarmonics = 5, dtftHarmonics = 2, snrThreshold = 4, rmsThreshold = 0.002) {
         super();
         this.numHarmonics = numHarmonics;
-        this.dtftHarmonics = 2; // Harmonics used in DTFT refinement (stage 2)
+        this.dtftHarmonics = dtftHarmonics; // Harmonics used in DTFT refinement (stage 2)
+        this.snrThreshold = snrThreshold;
+        this.rmsThreshold = rmsThreshold;
         this.debug = false;
         this.debugData = null;
 
@@ -42,6 +44,15 @@ class HpsDetector extends PitchDetector {
         // Precomputed window (lazily initialized to match input size)
         this._window = null;
         this._windowSize = 0;
+    }
+
+    getParams() {
+        return [
+            { key: 'numHarmonics', label: 'HPS Depth', min: 2, max: 10, step: 1, value: this.numHarmonics, description: 'Number of downsampled spectra to multiply. Higher values emphasize the fundamental more strongly against noise.' },
+            { key: 'dtftHarmonics', label: 'DTFT Harmonics', min: 1, max: 5, step: 1, value: this.dtftHarmonics, description: 'Number of harmonics used in the final DTFT refinement step. 2 is ideal (avoids inharmonicity bias of higher guitar harmonics).' },
+            { key: 'snrThreshold', label: 'Log-SNR Gate', min: 1, max: 10, step: 0.5, value: this.snrThreshold, description: 'How much stronger the main peak must be vs the median background noise (in log scale). Rejects weak ambiguous signals.' },
+            { key: 'rmsThreshold', label: 'RMS Noise Gate', min: 0.001, max: 0.1, step: 0.001, value: this.rmsThreshold, description: 'Minimum volume level (RMS) required to process the signal.' }
+        ];
     }
 
     /**
@@ -288,7 +299,7 @@ class HpsDetector extends PitchDetector {
             rms += buffer[i] * buffer[i];
         }
         rms = Math.sqrt(rms / bufLen);
-        if (rms < 0.002) {
+        if (rms < this.rmsThreshold) {
             if (this.debug) this.debugData = null;
             return -1;
         }
@@ -398,7 +409,7 @@ class HpsDetector extends PitchDetector {
         const median = hpsValues[Math.floor(hpsValues.length / 2)];
         const snr = peakVal - median;
 
-        if (snr < 4) {
+        if (snr < this.snrThreshold) {
             if (this.debug) this.debugData = null;
             return -1;
         }

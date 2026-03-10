@@ -26,10 +26,12 @@
  * Depends on: pitch-common.js (TunerDefaults, PitchDetector)
  */
 class MusicDetector extends PitchDetector {
-    constructor(modelOrder = 96, decimationFactor = 6) {
+    constructor(modelOrder = 96, decimationFactor = 6, eigenvalueGapThreshold = 2.0, rmsThreshold = 0.002) {
         super();
         this.M = modelOrder;
         this.D = decimationFactor;
+        this.eigenvalueGapThreshold = eigenvalueGapThreshold;
+        this.rmsThreshold = rmsThreshold;
         this.debug = false;
         this.debugData = null;
 
@@ -46,9 +48,39 @@ class MusicDetector extends PitchDetector {
         // FFTSIZE=4096, decimated by 6 → ~683 samples
         this._decimatedBuffer = new Float64Array(Math.ceil(4096 / decimationFactor) + 1);
 
-        // Build low-pass FIR filter for anti-aliasing
-        this._filterCoeffs = this._designLowPassFilter(decimationFactor);
+        this._filterCoeffs = this._designLowPassFilter(this.D);
         this._filterLen = this._filterCoeffs.length;
+    }
+
+    getParams() {
+        return [
+            { key: 'M', label: 'Model Order (M)', min: 16, max: 128, step: 2, value: this.M, description: 'Size of the autocorrelation matrix. Higher values increase frequency resolution and separation of closely-spaced tones, but dramatically increase CPU cost (O(M³)).' },
+            { key: 'D', label: 'Decimation (D)', min: 1, max: 12, step: 1, value: this.D, description: 'Downsampling factor applied before processing (reduces 48kHz to lower rate). Drastically drops CPU cost, but sets the max measurable frequency lower.' },
+            { key: 'eigenvalueGapThreshold', label: 'Eig Gap Threshold', min: 1.1, max: 5.0, step: 0.1, value: this.eigenvalueGapThreshold, description: 'Minimum ratio between eigenvalues to define the signal/noise subspace boundary. Functions as a quality gate for discarding noisy frames.' },
+            { key: 'rmsThreshold', label: 'RMS Noise Gate', min: 0.001, max: 0.1, step: 0.001, value: this.rmsThreshold, description: 'Minimum volume level (RMS) required to process the signal.' }
+        ];
+    }
+
+    setParam(key, value) {
+        if (this[key] === value) return; // No change
+        
+        super.setParam(key, value);
+
+        if (key === 'M') {
+            const modelOrder = value;
+            this._autocorr = new Float64Array(modelOrder);
+            this._R = new Float64Array(modelOrder * modelOrder);
+            this._V = new Float64Array(modelOrder * modelOrder);
+            this._eigenvalues = new Float64Array(modelOrder);
+            this._sortedIndices = new Uint16Array(modelOrder);
+            this._steeringRe = new Float64Array(modelOrder);
+            this._steeringIm = new Float64Array(modelOrder);
+        } else if (key === 'D') {
+            const decimationFactor = value;
+            this._decimatedBuffer = new Float64Array(Math.ceil(4096 / decimationFactor) + 1);
+            this._filterCoeffs = this._designLowPassFilter(decimationFactor);
+            this._filterLen = this._filterCoeffs.length;
+        }
     }
 
     /**
@@ -286,7 +318,7 @@ class MusicDetector extends PitchDetector {
         }
 
         // Require a meaningful gap
-        if (bestGap < 2.0) return -1;
+        if (bestGap < this.eigenvalueGapThreshold) return -1;
 
         return bestP;
     }
@@ -568,7 +600,7 @@ class MusicDetector extends PitchDetector {
             rms += buffer[i] * buffer[i];
         }
         rms = Math.sqrt(rms / N);
-        if (rms < 0.002) {
+        if (rms < this.rmsThreshold) {
             if (this.debug) this.debugData = null;
             return -1;
         }

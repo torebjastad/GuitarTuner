@@ -3,10 +3,19 @@
  * Depends on: pitch-common.js (TunerDefaults, PitchDetector)
  */
 class AutocorrelationDetector extends PitchDetector {
-    constructor() {
+    constructor(rmsThreshold = 0.002, trimThreshold = 0.2) {
         super();
+        this.rmsThreshold = rmsThreshold;
+        this.trimThreshold = trimThreshold;
         this.debug = false;
         this.debugData = null;
+    }
+
+    getParams() {
+        return [
+            { key: 'rmsThreshold', label: 'RMS Noise Gate', min: 0.001, max: 0.1, step: 0.001, value: this.rmsThreshold, description: 'Minimum volume level (RMS) required to process the signal.' },
+            { key: 'trimThreshold', label: 'Trim Threshold', min: 0.05, max: 0.5, step: 0.05, value: this.trimThreshold, description: 'Amplitude threshold for trimming quiet tails off the beginning and end of the buffer before autocorrelation.' }
+        ];
     }
 
     getPitch(buffer, sampleRate) {
@@ -19,7 +28,7 @@ class AutocorrelationDetector extends PitchDetector {
         }
         rms = Math.sqrt(rms / SIZE);
 
-        if (rms < 0.002) {
+        if (rms < this.rmsThreshold) {
             if (this.debug) this.debugData = null;
             return -1;
         }
@@ -33,12 +42,11 @@ class AutocorrelationDetector extends PitchDetector {
         }
 
         let r1 = 0, r2 = SIZE - 1;
-        const thres = 0.2;
         for (let i = 0; i < SIZE / 2; i++) {
-            if (Math.abs(normBuf[i]) < thres) { r1 = i; break; }
+            if (Math.abs(normBuf[i]) < this.trimThreshold) { r1 = i; break; }
         }
         for (let i = 1; i < SIZE / 2; i++) {
-            if (Math.abs(normBuf[SIZE - i]) < thres) { r2 = SIZE - i; break; }
+            if (Math.abs(normBuf[SIZE - i]) < this.trimThreshold) { r2 = SIZE - i; break; }
         }
 
         const subBuffer = normBuf.slice(r1, r2);

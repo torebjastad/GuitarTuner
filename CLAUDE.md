@@ -153,7 +153,7 @@ There are no automated tests. Manual testing via a browser with microphone acces
 5. **Frequency range** — `MIN_FREQUENCY` and `MAX_FREQUENCY` in `TunerDefaults` control both the post-detection filter and the tau/bin search range in all five algorithms. Lowering `MIN_FREQUENCY` increases CPU cost.
 6. **Tuning reference** — A4 = 440 Hz. Cent calculations use standard 12-TET: `cents = 1200 * log2(f / f_target)`.
 7. **In-tune tolerance** — currently ±5 cents (`isPerfect = Math.abs(cents) < 5` in `updateUI`).
-8. **Noise gate** — YIN rejects reads with probability < 0.6; McLeod rejects clarity < 0.5; Autocorrelation rejects RMS < 0.01; HPS rejects RMS < 0.01 and SNR < 4 (log-domain); MUSIC rejects RMS < 0.01 and eigenvalue gap ratio < 2.0. Keep these gates; removing them causes jitter on silence.
+8. **Noise gates & Parameters** — YIN rejects reads with probability < 0.6; McLeod rejects clarity < 0.5; Autocorrelation rejects RMS < 0.002; HPS rejects RMS < 0.002 and SNR < 4 (log-domain); MUSIC rejects RMS < 0.002 and eigenvalue gap ratio < 2.0. These and other algorithm parameters are exposed dynamically via `PitchDetector.getParams()` / `setParam()`, rendered as sliders in the debug UI.
 
 ## Branch / Git Conventions
 

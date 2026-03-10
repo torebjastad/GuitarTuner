@@ -91,11 +91,13 @@ frequency = sampleRate / tau_refined
 
 ### Configuration
 
+*Note: All algorithms now expose their parameters dynamically via the Tuning UI's "Show Algorithm Debug" section, allowing real-time adjustment of thresholds and gates.*
+
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `threshold` | `0.1` | CMND threshold for period detection. Lower = stricter. |
 | Sub-harmonic threshold | `0.3` | CMND threshold for octave-error correction. Accepts fundamental at `2*tau` if below this. |
-| Noise gate | `0.6` | Minimum confidence to accept a reading. |
+| `probabilityThreshold` | `0.6` | Minimum confidence to accept a reading. |
 
 ### Characteristics
 
@@ -173,10 +175,12 @@ frequency = sampleRate / T0_refined
 
 ### Configuration
 
+*Note: All algorithms now expose their parameters dynamically via the Tuning UI.*
+
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| RMS gate | `0.01` | Minimum RMS amplitude to process. |
-| Trim threshold | `0.2` | Amplitude threshold for trimming buffer edges. |
+| `rmsThreshold` | `0.002` | Minimum RMS amplitude to process. |
+| `trimThreshold` | `0.2` | Amplitude threshold for trimming buffer edges. |
 
 ### Characteristics
 
@@ -276,6 +280,8 @@ frequency = sampleRate / tau_refined
 
 ### Configuration
 
+*Note: All algorithms now expose their parameters dynamically via the Tuning UI.*
+
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `cutoff` (k) | `0.93` | Relative threshold multiplier. Higher = stricter harmonic rejection. McLeod recommends 0.93 for instruments. |
@@ -371,15 +377,17 @@ The peak must be significantly above the noise floor (measured as the median HPS
 
 ### Parameters
 
+*Note: All algorithms now expose their parameters dynamically via the Tuning UI.*
+
 | Parameter | Default | Purpose |
 |-----------|---------|-------------|
 | `numHarmonics` | `5` | HPS downsampling factors for harmonic identification. |
 | `fftSize` | `32768` | Zero-padded FFT. Gives ~1.46 Hz/bin for HPS. |
-| Refinement harmonics | `2` | Harmonics in DTFT refinement (f and 2f only, to avoid inharmonicity bias). |
+| `dtftHarmonics` | `2` | Harmonics in DTFT refinement (f and 2f only, to avoid inharmonicity bias). |
 | Harmonic weighting | SNR-adaptive | Each harmonic weighted by its local SNR; noisy harmonics excluded automatically. |
 | Window | Blackman-Harris 4-term | −92 dB sidelobes for clean spectral peaks. |
-| SNR threshold | `4` | Minimum log-domain SNR (peak vs median). |
-| RMS threshold | `0.01` | Same RMS noise gate as Autocorrelation. |
+| `snrThreshold` | `4` | Minimum log-domain SNR (peak vs median). |
+| `rmsThreshold` | `0.002` | Same RMS noise gate as Autocorrelation. |
 
 ### Characteristics
 
@@ -505,20 +513,22 @@ The pseudospectrum shows peaks at the fundamental and all harmonics. To identify
 
 ### Configuration
 
+*Note: All algorithms now expose their parameters dynamically via the Tuning UI.*
+
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| Model order M | `96` | Size of the autocorrelation matrix. Controls resolution vs. cost. |
-| Decimation factor D | `6` | Downsample ratio. Reduces effective sample rate from 48kHz to 8kHz. |
+| Model order `M` | `96` | Size of the autocorrelation matrix. Controls resolution vs. cost. |
+| Decimation factor `D` | `6` | Downsample ratio. Reduces effective sample rate from 48kHz to 8kHz. |
 | Anti-alias filter | Windowed-sinc (25 taps) | Hamming-windowed FIR, cutoff at 0.8/D of Nyquist (~3200 Hz). |
 | Max Jacobi sweeps | `15` | Maximum iterations for eigendecomposition. Typically converges in 4–6. |
 | Signal dimension p | Adaptive (2–20) | Estimated via eigenvalue gap detection. |
-| Eigenvalue gap threshold | `2.0` | Minimum ratio for signal/noise boundary. |
+| `eigenvalueGapThreshold` | `2.0` | Minimum ratio for signal/noise boundary. |
 | Coarse scan points | `500` | Log-spaced frequencies for initial pseudospectrum scan. |
 | Fine scan range | `±3%` (min ±5 Hz) | Frequency-adaptive range for refinement scan around peaks. |
 | Fine scan step | `0.1 Hz` | Resolution of refinement scan. |
 | Score gate threshold | `1%` of max | Minimum pseudospectrum score for harmonic validation candidates. |
 | Harmonic tolerance | `4%` | Frequency tolerance for harmonic validation. |
-| RMS threshold | `0.01` | Same RMS noise gate as other detectors. |
+| `rmsThreshold` | `0.002` | Minimal signal gate. |
 
 ### Characteristics
 

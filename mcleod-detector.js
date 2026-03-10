@@ -14,6 +14,13 @@ class McLeodDetector extends PitchDetector {
         this.nsdfBuffer = new Float32Array(TunerDefaults.FFTSIZE);
     }
 
+    getParams() {
+        return [
+            { key: 'cutoff', label: 'Relative Threshold', min: 0.5, max: 0.99, step: 0.01, value: this.cutoff, description: 'Multiplier for the highest NSDF peak. Higher values strictly reject harmonics, but might miss weak fundamentals. Default 0.93.' },
+            { key: 'smallCutoff', label: 'Clarity Gate', min: 0.1, max: 0.9, step: 0.05, value: this.smallCutoff, description: 'Absolute minimum NSDF value (clarity) required. Below this, the signal is considered noise and rejected.' }
+        ];
+    }
+
     getPitch(buffer, sampleRate) {
         const bufLen = buffer.length;
         const nsdf = this.nsdfBuffer;

@@ -3,11 +3,19 @@
  * Depends on: pitch-common.js (TunerDefaults, PitchDetector)
  */
 class YinDetector extends PitchDetector {
-    constructor(threshold = 0.1) {
+    constructor(threshold = 0.1, probabilityThreshold = 0.6) {
         super();
         this.threshold = threshold;
+        this.probabilityThreshold = probabilityThreshold;
         this.debug = false;
         this.debugData = null;
+    }
+
+    getParams() {
+        return [
+            { key: 'threshold', label: 'Threshold', min: 0.01, max: 0.3, step: 0.01, value: this.threshold, description: 'Absolute threshold for the CMND function. Lower values make it stricter and less likely to find a pitch, but more accurate against octave-jump errors.' },
+            { key: 'probabilityThreshold', label: 'Noise Gate (Prob)', min: 0.1, max: 0.9, step: 0.05, value: this.probabilityThreshold, description: 'Minimum confidence required to accept a reading. Prevents random noise from being interpreted as a pitch.' }
+        ];
     }
 
     getPitch(float32AudioBuffer, sampleRate) {
@@ -187,14 +195,14 @@ class YinDetector extends PitchDetector {
                 correctedTau,
                 interpolatedTau,
                 probability,
-                frequency: probability >= 0.6 ? sampleRate / interpolatedTau : -1,
+                frequency: probability >= this.probabilityThreshold ? sampleRate / interpolatedTau : -1,
                 sampleRate,
                 bufferLength: maxTau
             };
         }
 
         // Noise gate
-        if (probability < 0.6) return -1;
+        if (probability < this.probabilityThreshold) return -1;
 
         return sampleRate / interpolatedTau;
     }

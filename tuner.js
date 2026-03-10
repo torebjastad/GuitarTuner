@@ -48,6 +48,7 @@ class Tuner {
         this._testSampleCtx = null;
         this._testSampleSource = null;
         this._micMuted = false;
+        this._testPlayId = 0;
 
         if (this.smoothingSlider && this.smoothingVal) {
             this.smoothingSlider.value = this.smoothingWindow;
@@ -75,11 +76,7 @@ class Tuner {
             if (this.detectors[algo]) {
                 this.currentDetector = this.detectors[algo];
                 console.log(`Switched to ${algo}`);
-                // Re-analyze test sample if one is selected
-                const toneSelect = document.getElementById('sample-tone');
-                if (toneSelect && toneSelect.value !== '' && this._testSamplesInit) {
-                    this._analyzeTestSample();
-                }
+                this._buildParamsUI();
             }
         });
 
@@ -87,6 +84,13 @@ class Tuner {
             this.debugToggle.addEventListener('change', (e) => {
                 const on = e.target.checked;
                 this.debugPlot.toggle(on);
+                
+                const paramsContainer = document.getElementById('algo-params');
+                if (paramsContainer) {
+                    paramsContainer.style.display = on ? 'flex' : 'none';
+                    if (on) this._buildParamsUI();
+                }
+
                 // Enable debug on all detectors
                 this.detectors.yin.debug = on;
                 this.detectors.mcleod.debug = on;
@@ -147,6 +151,78 @@ class Tuner {
                     this._resumeProcessing();
                 }
             }
+        });
+    }
+
+    /**
+     * Rebuilds the dynamic Algorithm Parameters UI based on the current detector.
+     */
+    _buildParamsUI() {
+        const container = document.getElementById('algo-params');
+        if (!container) return;
+
+        const params = this.currentDetector.getParams();
+        container.innerHTML = '';
+
+        if (!params || params.length === 0) {
+            container.style.display = 'none';
+            return;
+        }
+
+        if (this.debugToggle && this.debugToggle.checked) {
+            container.style.display = 'flex';
+        }
+
+        params.forEach(param => {
+            const row = document.createElement('div');
+            row.className = 'param-row';
+
+            const labelContainer = document.createElement('div');
+            labelContainer.className = 'param-label';
+            
+            const labelText = document.createElement('span');
+            labelText.textContent = param.label;
+            labelContainer.appendChild(labelText);
+
+            if (param.description) {
+                const helpIcon = document.createElement('span');
+                helpIcon.className = 'param-help-icon';
+                helpIcon.textContent = '?';
+                
+                const tooltip = document.createElement('div');
+                tooltip.className = 'param-tooltip';
+                tooltip.textContent = param.description;
+                
+                helpIcon.appendChild(tooltip);
+                labelContainer.appendChild(helpIcon);
+            }
+
+            const control = document.createElement('div');
+            control.className = 'param-control';
+
+            const slider = document.createElement('input');
+            slider.type = 'range';
+            slider.className = 'param-slider';
+            slider.min = param.min;
+            slider.max = param.max;
+            slider.step = param.step;
+            slider.value = param.value;
+
+            const valDisplay = document.createElement('div');
+            valDisplay.className = 'param-value';
+            valDisplay.textContent = Number(param.value).toFixed(param.step.toString().split('.')[1]?.length || 0);
+
+            slider.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                valDisplay.textContent = val.toFixed(param.step.toString().split('.')[1]?.length || 0);
+                this.currentDetector.setParam(param.key, val);
+            });
+
+            control.appendChild(slider);
+            control.appendChild(valDisplay);
+            row.appendChild(labelContainer);
+            row.appendChild(control);
+            container.appendChild(row);
         });
     }
 
@@ -249,10 +325,24 @@ class Tuner {
         const frequency = this.currentDetector.getPitch(this.frequencyBuffer, this.audioContext.sampleRate);
         const perfMs = performance.now() - t0;
 
+        const smoothedFreq = this._applySmoothing(frequency);
+        if (smoothedFreq !== -1) {
+            this.updateUI(this.getNote(smoothedFreq));
+        }
+
+        // Draw debug plot if enabled
+        this._renderDebugPlot(perfMs);
+    }
+    
+    /**
+     * Applies median smoothing and octave-jump outlier rejection to a raw frequency sequence.
+     * Extracts the logic so both the microphone and test audio samples use identical behavior.
+     */
+    _applySmoothing(frequency) {
         if (frequency === -1 || isNaN(frequency) ||
             frequency < TunerDefaults.MIN_FREQUENCY ||
             frequency > TunerDefaults.MAX_FREQUENCY) {
-            return;
+            return -1;
         }
 
         // Octave-jump rejection & note-change detection
@@ -275,14 +365,14 @@ class Tuner {
                     this.smoothingBuffer = [];
                     this._noteChangeCount = 0;
                 } else {
-                    return; // skip isolated outlier readings
+                    return -1; // skip isolated outlier readings
                 }
             } else {
                 this._noteChangeCount = 0;
 
                 // Standard octave-jump rejection for readings close to the current note
                 if ((ratio > 1.8 && ratio < 2.2) || (ratio > 0.45 && ratio < 0.55)) {
-                    return; // skip this reading
+                    return -1; // skip this reading
                 }
             }
         }
@@ -295,16 +385,11 @@ class Tuner {
 
         // Use median of buffer for robust smoothing (resistant to outliers)
         const sorted = [...this.smoothingBuffer].sort((a, b) => a - b);
-        const smoothedFreq = sorted[Math.floor(sorted.length / 2)];
-
-        const note = this.getNote(smoothedFreq);
-        this.updateUI(note);
-
-        // Draw debug plot if enabled
-        this._renderDebugPlot(perfMs);
+        return sorted[Math.floor(sorted.length / 2)];
     }
 
     getNote(frequency) {
+        if (frequency === -1) return null;
         const noteNum = 12 * (Math.log(frequency / 440) / Math.log(2));
         const midi = Math.round(noteNum) + 69;
         const note = (midi % 12);
@@ -493,7 +578,13 @@ class Tuner {
         ).join('');
 
         dsSelect.addEventListener('change', () => this._populateTones());
-        toneSelect.addEventListener('change', () => this._analyzeTestSample());
+        toneSelect.addEventListener('change', () => this._playTestAudio(true));
+        toneSelect.addEventListener('keydown', (e) => {
+            if (e.code === 'Enter' || e.code === 'Space') {
+                e.preventDefault();
+                this._playTestAudio(true);
+            }
+        });
         playBtn.addEventListener('click', () => this._playTestAudio());
         document.getElementById('sample-mute').addEventListener('change', (e) => {
             this._micMuted = e.target.checked;
@@ -516,11 +607,28 @@ class Tuner {
         document.getElementById('sample-play-btn').disabled = true;
     }
 
-    async _analyzeTestSample() {
+    async _playTestAudio(forcePlay = false) {
+        const playBtn = document.getElementById('sample-play-btn');
+        const currentPlayId = ++this._testPlayId;
+
+        // Stop if already playing
+        if (this._testSampleSource) {
+            this._testSampleSource.onended = null;
+            this._testSampleSource.stop();
+            this._testSampleSource = null;
+            playBtn.textContent = '\u25B6';
+            this.smoothingBuffer = []; // Clear smoothing buffer on stop
+            
+            // Clear debug plot since the signal ended
+            if (this.currentDetector.debug && this.debugPlot) {
+               this.debugPlot.clear();
+            }
+            
+            if (!forcePlay) return;
+        }
+
         const dsSelect = document.getElementById('sample-dataset');
         const toneSelect = document.getElementById('sample-tone');
-        const playBtn = document.getElementById('sample-play-btn');
-
         if (toneSelect.value === '') {
             playBtn.disabled = true;
             return;
@@ -530,88 +638,42 @@ class Tuner {
         const tone = ds.tones[parseInt(toneSelect.value)];
         const cacheKey = ds.dir + tone.file;
 
-        // Ensure AudioContext for decoding
         if (!this._testSampleCtx || this._testSampleCtx.state === 'closed') {
             this._testSampleCtx = new (window.AudioContext || window.webkitAudioContext)();
         }
 
-        // Load and decode (with caching)
         let audioBuffer = this._audioCache.get(cacheKey);
         if (!audioBuffer) {
+            playBtn.disabled = true;
             try {
+                this.statusEl.textContent = 'Loading...';
                 const resp = await fetch(ds.dir + encodeURIComponent(tone.file));
                 if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                 const arrayBuf = await resp.arrayBuffer();
                 audioBuffer = await this._testSampleCtx.decodeAudioData(arrayBuf);
                 this._audioCache.set(cacheKey, audioBuffer);
+                if (currentPlayId === this._testPlayId) {
+                    this.statusEl.textContent = this.isPlaying ? 'Listening...' : 'Ready';
+                }
             } catch (err) {
                 console.error('Failed to load test sample:', err);
-                this.statusEl.textContent = 'Load error';
-                this.statusEl.style.color = 'var(--danger-color)';
+                if (currentPlayId === this._testPlayId) {
+                    this.statusEl.textContent = 'Load error';
+                    this.statusEl.style.color = 'var(--danger-color)';
+                    playBtn.disabled = false;
+                }
                 return;
             }
         }
 
-        // Extract window at 1 second
-        const sampleRate = audioBuffer.sampleRate;
-        const channelData = audioBuffer.getChannelData(0);
-        const windowSize = TunerDefaults.FFTSIZE;
-        const startSample = Math.floor(1.0 * sampleRate);
-
-        let buffer;
-        if (startSample + windowSize <= channelData.length) {
-            buffer = channelData.slice(startSample, startSample + windowSize);
-        } else if (channelData.length >= windowSize) {
-            buffer = channelData.slice(channelData.length - windowSize);
-        } else {
-            buffer = new Float32Array(windowSize);
-            buffer.set(channelData);
-        }
-
-        // Run detector
-        const t0 = performance.now();
-        const detected = this.currentDetector.getPitch(buffer, sampleRate);
-        const perfMs = performance.now() - t0;
-
-        // Update main UI
-        if (detected > 0 && !isNaN(detected) &&
-            detected >= TunerDefaults.MIN_FREQUENCY &&
-            detected <= TunerDefaults.MAX_FREQUENCY) {
-            const note = this.getNote(detected);
-            this.updateUI(note);
-        } else {
-            this.updateUI(null);
-            this.statusEl.textContent = 'No pitch detected';
-        }
-
-        // Update debug plot
-        this._renderDebugPlot(perfMs);
+        // Check if another play event was triggered while we were waiting for the fetch
+        if (currentPlayId !== this._testPlayId) return;
+        
         playBtn.disabled = false;
-    }
+        
+        // Clear smoothing buffer before starting new test audio
+        this.smoothingBuffer = [];
 
-    async _playTestAudio() {
-        const playBtn = document.getElementById('sample-play-btn');
-
-        // Stop if already playing
-        if (this._testSampleSource) {
-            this._testSampleSource.stop();
-            this._testSampleSource = null;
-            playBtn.textContent = '\u25B6';
-            return;
-        }
-
-        const dsSelect = document.getElementById('sample-dataset');
-        const toneSelect = document.getElementById('sample-tone');
-        if (toneSelect.value === '') return;
-
-        const ds = this._testDatasets[parseInt(dsSelect.value)];
-        const tone = ds.tones[parseInt(toneSelect.value)];
-        const audioBuffer = this._audioCache.get(ds.dir + tone.file);
-        if (!audioBuffer) return;
-
-        if (!this._testSampleCtx || this._testSampleCtx.state === 'closed') {
-            this._testSampleCtx = new (window.AudioContext || window.webkitAudioContext)();
-        }
         if (this._testSampleCtx.state === 'suspended') {
             await this._testSampleCtx.resume();
         }
@@ -620,32 +682,41 @@ class Tuner {
         this._testSampleSource.buffer = audioBuffer;
         this._testSampleSource.connect(this._testSampleCtx.destination);
 
-        // Also connect through an analyser for real-time detection during playback
+        // Connect through an analyser for real-time detection during playback
         const analyser = this._testSampleCtx.createAnalyser();
         analyser.fftSize = TunerDefaults.FFTSIZE;
         this._testSampleSource.connect(analyser);
         const buf = new Float32Array(TunerDefaults.FFTSIZE);
         const sr = this._testSampleCtx.sampleRate;
 
+        let rafId;
         const processLoop = () => {
-            if (!this._testSampleSource) return;
+            if (!this._testSampleSource || currentPlayId !== this._testPlayId) return;
             analyser.getFloatTimeDomainData(buf);
             const t0 = performance.now();
             const detected = this.currentDetector.getPitch(buf, sr);
             const perfMs = performance.now() - t0;
-            if (detected > 0 && !isNaN(detected) &&
-                detected >= TunerDefaults.MIN_FREQUENCY &&
-                detected <= TunerDefaults.MAX_FREQUENCY) {
-                this.updateUI(this.getNote(detected));
+            
+            const smoothedFreq = this._applySmoothing(detected);
+            if (smoothedFreq !== -1) {
+                this.updateUI(this.getNote(smoothedFreq));
             }
+            
             this._renderDebugPlot(perfMs);
-            requestAnimationFrame(processLoop);
+            rafId = requestAnimationFrame(processLoop);
         };
 
         playBtn.textContent = '\u25A0';
         this._testSampleSource.onended = () => {
-            playBtn.textContent = '\u25B6';
-            this._testSampleSource = null;
+            if (currentPlayId === this._testPlayId) {
+                playBtn.textContent = '\u25B6';
+                this._testSampleSource = null;
+                cancelAnimationFrame(rafId);
+                // The sound naturally decayed. We should clear the plot to avoid frozen last-frame noise graph.
+                if (this.currentDetector.debug && this.debugPlot) {
+                   this.debugPlot.clear();
+                }
+            }
         };
         this._testSampleSource.start();
         processLoop();
