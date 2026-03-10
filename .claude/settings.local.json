@@ -19,7 +19,8 @@
       "Bash(xxd -p)",
       "Bash(done)",
       "Bash(ffmpeg -version)",
-      "Bash(curl -s -L --retry 3 -o /tmp/Piano.mf.F6.aiff \"https://web.archive.org/web/20220309211042/http://theremin.music.uiowa.edu/sound%20files/MIS/Piano_Other/piano/Piano.mf.F6.aiff\")"
+      "Bash(curl -s -L --retry 3 -o /tmp/Piano.mf.F6.aiff \"https://web.archive.org/web/20220309211042/http://theremin.music.uiowa.edu/sound%20files/MIS/Piano_Other/piano/Piano.mf.F6.aiff\")",
+      "Bash(xargs basename -a)"
     ]
   }
 }

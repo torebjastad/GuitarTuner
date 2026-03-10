@@ -125,7 +125,7 @@ Compute the root-mean-square amplitude of the buffer:
 rms = sqrt( sum(x[i]^2) / N )
 ```
 
-If `rms < 0.01`, the signal is considered silence and the function returns `-1`. This prevents the algorithm from chasing noise.
+If `rms < 0.002` (default `rmsThreshold`), the signal is considered silence and the function returns `-1`. This prevents the algorithm from chasing noise.
 
 #### 2. Signal Trimming
 
@@ -423,7 +423,7 @@ Same as the other detectors — reject silent/near-silent buffers:
 
 ```
 rms = sqrt( sum(x[i]^2) / N )
-if rms < 0.01: return -1
+if rms < 0.002: return -1  (default rmsThreshold)
 ```
 
 #### 2. Signal Decimation (Anti-Alias Filter + Downsample)
@@ -555,7 +555,7 @@ The debug display shows two panels:
 | Normalization | Cumulative mean (CMNDF) | Per-lag `m(tau)` (NSDF) | None | Log-domain sum + least-squares | Autocorrelation matrix decomposition |
 | Threshold type | Absolute (`0.1`) | Relative (`k * nmax`) | None (argmax) | SNR vs median | Eigenvalue gap ratio |
 | Octave error resistance | High (CMND + correction step) | High (relative threshold) | Low | Moderate (sub-harmonic check) | High (harmonic validation) |
-| Noise rejection | Confidence-based (probability > 0.6) | Clarity-based (NSDF value > 0.5) | RMS threshold (> 0.01) | RMS + SNR gate + adaptive harmonic weighting | RMS + eigenvalue gap + subspace separation |
+| Noise rejection | Confidence-based (probability > 0.6) | Clarity-based (NSDF value > 0.5) | RMS threshold (> 0.002) | RMS + SNR gate + adaptive harmonic weighting | RMS + eigenvalue gap + subspace separation |
 | Sub-sample interpolation | Yes (5-point least-squares) | Yes (3-point parabolic) | Yes (3-point parabolic) | Yes (SNR-weighted multi-harmonic DTFT, 7+5 point LS) | Yes (fine scan + parabolic) |
 | Computational cost | O(N²) | O(N²) | O(N²) | O(N log N) + O(H·N·P) | O(M³) + O(P·M·(M−p)) |
 | Default in tuner | No | **Yes** | No | No | No |

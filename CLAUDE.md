@@ -20,7 +20,9 @@ GuitarTuner/
 ├── test-tone-generator.js        # Realistic guitar test tone synthesis
 ├── app.js                        # Entry point (initialization only)
 ├── style.css                     # Full styling with CSS custom properties
-└── pitch-detection-algorithms.md # Detailed documentation of all four pitch detection algorithms
+├── test-bench.html               # Algorithm comparison test bench (batch testing against audio files)
+├── pitch-detection-algorithms.md # Detailed documentation of all five pitch detection algorithms
+└── test-data-description.md      # Description of test datasets (Nylon, Plucked, UIowa Piano)
 ```
 
 ### File Roles
@@ -39,7 +41,9 @@ GuitarTuner/
 | `test-tone-generator.js` | `TestToneGenerator` — Guitar-like test tones with harmonics, vibrato, noise. |
 | `app.js` | Entry point — instantiates `Tuner` and `TestToneGenerator`. |
 | `style.css` | Dark-theme glassmorphism UI using CSS custom properties (no preprocessor). |
+| `test-bench.html` | Standalone test bench — batch-runs all detectors against audio test files, with configurable sample offset, window size, averaging (ms), and per-algorithm checkboxes. |
 | `pitch-detection-algorithms.md` | In-depth documentation of all five pitch detection algorithms. |
+| `test-data-description.md` | Descriptions and metadata for test audio datasets. |
 
 ## Architecture
 
@@ -68,9 +72,12 @@ getPitch(float32AudioBuffer, sampleRate) -> Hz | -1
 `Tuner` owns the Web Audio API lifecycle and all DOM interaction:
 
 - **`start()`** — requests microphone access, creates `AudioContext`, wires `MediaStreamSource → AnalyserNode`.
-- **`update()`** — RAF loop: reads float time-domain data, calls the active detector, rejects octave-jump outliers, detects genuine note changes (resets smoothing buffer after 3+ consecutive different-note readings), applies median smoothing (last N readings), then delegates to `updateUI()`.
+- **`update()`** — RAF loop: reads float time-domain data, calls the active detector, then delegates to `_applySmoothing()` and `updateUI()`.
+- **`_applySmoothing(frequency)`** — rejects octave-jump outliers, detects genuine note changes (resets smoothing buffer after 3+ consecutive different-note readings), applies median smoothing (last N readings). Shared by both mic and test sample paths.
+- **`_buildParamsUI()`** — dynamically renders algorithm parameter sliders (from `getParams()`) with tooltips in the debug section.
 - **`updateUI(noteData)`** — updates note name, frequency display, needle position (mapped ±50 cents → 5–95%), and flat/sharp/in-tune indicators.
-- **`getNote(frequency)`** — converts Hz to MIDI note, name, octave, and cents deviation using A4 = 440 Hz.
+- **`getNote(frequency)`** — converts Hz to MIDI note, name, octave, and cents deviation using A4 = 440 Hz. Returns `null` for invalid frequency (-1).
+- **`_playTestAudio(forcePlay)`** — loads, caches, and plays test audio samples through an inline AnalyserNode for real-time detection during playback. Uses `_testPlayId` to guard against race conditions from rapid tone switching.
 - **`stop()`** — closes `AudioContext`, resets UI.
 
 ### TestToneGenerator Class
@@ -99,8 +106,8 @@ Defined in `TunerDefaults` in `pitch-common.js`:
 |---|---|---|
 | `FFTSIZE` | `4096` | AnalyserNode FFT size (also the time-domain buffer length). Larger buffer for reliable low-frequency detection. |
 | `SmoothingWindow` | `20` | Number of pitch readings used for median smoothing (adjustable via UI slider) |
-| `MIN_FREQUENCY` | `30` | Minimum detectable frequency (Hz). Limits tau search range in all algorithms. |
-| `MAX_FREQUENCY` | `3000` | Maximum detectable frequency (Hz). Filters out-of-range readings and sets minimum tau. |
+| `MIN_FREQUENCY` | `20` | Minimum detectable frequency (Hz). Limits tau search range in all algorithms. |
+| `MAX_FREQUENCY` | `5000` | Maximum detectable frequency (Hz). Filters out-of-range readings and sets minimum tau. |
 
 ### CSS Design Tokens
 
@@ -140,9 +147,12 @@ Then open `http://localhost:8080`.
 
 There is no `package.json`, `webpack`, `vite`, or any bundler. Do **not** add one unless explicitly required. Keep changes in plain HTML/CSS/JS.
 
-### No Test Suite
+### Testing
 
-There are no automated tests. Manual testing via a browser with microphone access is the only verification method.
+There is no automated test framework. Testing is done manually:
+- **Live tuner:** Open `index.html` via a local HTTP server with microphone access.
+- **Test bench:** Open `test-bench.html` to batch-test all algorithms against audio files (Nylon Guitar, Plucked Guitar, UIowa Piano). Supports configurable sample offset, window size, averaging duration (ms), and per-algorithm selection via checkboxes.
+- **Test samples in debug mode:** The main tuner UI exposes dataset/tone dropdowns and a mic-mute option when debug mode is enabled (only available locally; gracefully hidden on deployments where test files are absent).
 
 ## Key Conventions
 
