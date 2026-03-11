@@ -3,7 +3,7 @@ import re
 import pytest
 import soundfile as sf
 import math
-from hps_detector import HpsDetector
+from mcleod_detector import McLeodDetector
 
 # Paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -74,9 +74,8 @@ print(f"Discovered {len(TEST_FILES)} test files for piano tuning.")
 
 @pytest.fixture(scope="module")
 def detector():
-    # Adjust parameters slightly for python if needed, 
-    # but stick to the JS defaults first
-    return HpsDetector(num_harmonics=8, window_size_exp=12)
+    # Adjusted offset to ignore initial strike noise
+    return McLeodDetector(cutoff=0.93, small_cutoff=0.5)
 
 @pytest.mark.parametrize("dataset,filepath,note,octave,expected_note", TEST_FILES, ids=[f"{tc[0]}-{tc[4]}" for tc in TEST_FILES])
 def test_piano_tuning(detector, dataset, filepath, note, octave, expected_note):
@@ -94,10 +93,12 @@ def test_piano_tuning(detector, dataset, filepath, note, octave, expected_note):
     # but let's test the first 4096 points + some offset initially, or
     # simulate what JS does (taking multiple frames and taking median smoothing).
     # Since we want a robust offline test, we can pass a window of audio 
-    # slightly after the start.
+    # We don't have a rigid window_size_exp for MPM, 
+    # McLeod can natively perform well across larger buffers since it's just a lag calculation.
+    # 8192 points is ~170ms, 4096 is ~85ms
+    buffer_size = 8192
     
-    start_idx = int( samplerate * 0.1 ) # start 100ms in
-    buffer_size = 2 ** detector.window_size_exp
+    start_idx = int(samplerate * 0.1)
     
     # Check if buffer fits
     if start_idx + buffer_size > len(data):
@@ -113,7 +114,7 @@ def test_piano_tuning(detector, dataset, filepath, note, octave, expected_note):
     detected_note, cents = detected_info
     
     # The absolute detected note must match
-    assert detected_note == expected_note, f"Expected {expected_note} ({expected_freq:.1f} Hz) but got {detected_note} ({freq:.1f} Hz, {cents:.1f} c) using HpsDepth={detector.num_harmonics}"
+    assert detected_note == expected_note, f"Expected {expected_note} ({expected_freq:.1f} Hz) but got {detected_note} ({freq:.1f} Hz, {cents:.1f} c)"
     
     # Optional: ensure we are within 25 cents
     assert abs(cents) < 25, f"Pitch detection for {expected_note} is off by {cents:.1f} cents ({freq:.1f} Hz detected, expected {expected_freq:.1f} Hz)"

@@ -18,21 +18,36 @@ class McLeodDetector:
         if max_tau <= 0:
             return -1
 
-        # Step 1: NSDF
+        # Step 1: NSDF (Vectorized)
         nsdf = np.zeros(max_tau)
-        for tau in range(max_tau):
-            limit = buf_len - tau
-            if limit <= 0:
-                break
+        
+        # Calculate autocorrelation using FFT-based convolution for speed
+        # r(tau) = sum(x[i] * x[i+tau])
+        # correlation is equivalent to convolution with reversed array
+        r = np.correlate(buffer, buffer, mode='full')
+        # The center of the 'full' correlation array is lag 0
+        center = len(buffer) - 1
+        acf = r[center:center + max_tau]
+        
+        # Calculate moving sum of squares 
+        # m(tau) = sum_{j=0}^{W-tau-1} (x_j^2 + x_{j+tau}^2)
+        sq = buffer ** 2
+        sum_sq = np.sum(sq)
+        
+        m = np.zeros(max_tau)
+        m[0] = 2 * sum_sq
+        
+        # To compute m[tau] iteratively:
+        # m[tau] = m[tau-1] - x[W-tau]^2 - x[tau-1]^2
+        current_m = m[0]
+        for tau in range(1, max_tau):
+            current_m -= sq[buf_len - tau] + sq[tau - 1]
+            m[tau] = current_m
             
-            # Using numpy for speed
-            b1 = buffer[:limit]
-            b2 = buffer[tau:]
-            
-            acf = np.sum(b1 * b2)
-            div = np.sum(b1**2) + np.sum(b2**2)
-            
-            nsdf[tau] = 2 * acf / div if div > 0 else 0
+        # NSDF[tau] = 2 * acf[tau] / m[tau]
+        # using np.divide instead of divide zero warnings
+        with np.errstate(divide='ignore', invalid='ignore'):
+            nsdf = np.where(m > 0, 2 * acf / m, 0)
 
         # Step 2: Peak Picking
         key_maxima = []
