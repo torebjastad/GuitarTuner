@@ -538,10 +538,24 @@ class Tuner {
         for (let oct = 1; oct <= 7; oct++) noteOrder.forEach(n => addPiano(n, oct));
         addPiano('C', 8);
 
+        // Salamander Grand Piano V3 — sampled every 3 semitones, velocity 8 (middle)
+        const salaSemi = { 'C': 0, 'D#': 3, 'F#': 6, 'A': 9 };
+        const salaOrder = ['C', 'D#', 'F#', 'A'];
+        const salamander = [];
+        const addSala = (n, oct) => {
+            const midi = (oct + 1) * 12 + salaSemi[n];
+            const f = Math.round(440 * Math.pow(2, (midi - 69) / 12) * 100) / 100;
+            salamander.push({ file: `${n}${oct}v8.ogg`, note: `${n}${oct}`, freq: f });
+        };
+        addSala('A', 0);
+        for (let oct = 1; oct <= 7; oct++) salaOrder.forEach(n => addSala(n, oct));
+        addSala('C', 8);
+
         return [
             { key: 'nylon', name: 'Nylon Guitar', dir: 'TestData/Nylon-guitar-single-notes/', probe: nylon[0].file, tones: nylon },
             { key: 'plucked', name: 'Plucked Guitar', dir: 'TestData/22511__skamos66__plucked-guitar-notes/', probe: plucked[0].file, tones: plucked },
             { key: 'piano', name: 'Piano (UIowa)', dir: 'TestData/UIowa-Piano-mf/', probe: piano[0].file, tones: piano },
+            { key: 'salamander', name: 'Piano (Salamander)', dir: 'TestData/SalamanderGrandPianoV3_OggVorbis/ogg/', probe: salamander[0].file, tones: salamander },
         ];
     }
 

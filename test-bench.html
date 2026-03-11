@@ -272,6 +272,7 @@
                     <option value="nylon">Nylon Guitar (Speedy)</option>
                     <option value="plucked">Plucked Guitar (Skamos66)</option>
                     <option value="piano">Piano (UIowa mf)</option>
+                    <option value="salamander">Piano (Salamander v8)</option>
                     <option value="all">All Datasets</option>
                 </select>
             </label>
@@ -439,6 +440,11 @@
                 name: "Piano (UIowa mf)",
                 dir: "TestData/UIowa-Piano-mf/",
                 files: buildUIowaPianoDataset()
+            },
+            salamander: {
+                name: "Piano (Salamander v8)",
+                dir: "TestData/SalamanderGrandPianoV3_OggVorbis/ogg/",
+                files: buildSalamanderDataset()
             }
         };
 
@@ -549,6 +555,40 @@
                 const freq = Math.round(440 * Math.pow(2, (midi - 69) / 12) * 100) / 100;
                 entries.push({
                     file: `Piano.mf.${item.note}${item.octave}.ogg`,
+                    expected: freq,
+                    note: `${displayName[item.note]}${item.octave}`
+                });
+            }
+            return entries;
+        }
+
+        function buildSalamanderDataset() {
+            // Salamander Grand Piano V3 — sampled every 3 semitones: A, C, D#, F#
+            // 16 velocity layers per note; we use v8 (middle).
+            const semitoneMap = { 'C': 0, 'D#': 3, 'F#': 6, 'A': 9 };
+            const displayName = { 'C': 'C', 'D#': 'D#', 'F#': 'F#', 'A': 'A' };
+            // Order within each octave (by semitone)
+            const noteOrder = ['C', 'D#', 'F#', 'A'];
+
+            // Range: A0, C1..A1, C2..A2, ..., C7..A7, C8
+            const notes = [];
+            notes.push({ note: 'A', octave: 0 });
+            for (let oct = 1; oct <= 7; oct++) {
+                for (const n of noteOrder) notes.push({ note: n, octave: oct });
+            }
+            notes.push({ note: 'C', octave: 8 });
+
+            const entries = [];
+            let currentOct = -1;
+            for (const item of notes) {
+                if (item.octave !== currentOct) {
+                    currentOct = item.octave;
+                    entries.push({ section: `Octave ${currentOct}` });
+                }
+                const midi = (item.octave + 1) * 12 + semitoneMap[item.note];
+                const freq = Math.round(440 * Math.pow(2, (midi - 69) / 12) * 100) / 100;
+                entries.push({
+                    file: `${item.note}${item.octave}v8.ogg`,
                     expected: freq,
                     note: `${displayName[item.note]}${item.octave}`
                 });
