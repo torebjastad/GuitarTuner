@@ -754,8 +754,9 @@ class DebugPlot {
         ctx.textAlign = 'center';
         const freqStep = maxFreqDisplay <= 500 ? 50
             : maxFreqDisplay <= 1500 ? 200
-                : 500;
-        for (let f = freqStep; f < maxFreqDisplay; f += freqStep) {
+            : maxFreqDisplay <= 3000 ? 500
+            : 1000;
+        for (let f = freqStep; f <= maxFreqDisplay; f += freqStep) {
             const x = toX(f);
             ctx.strokeStyle = 'rgba(148, 163, 184, 0.3)';
             ctx.lineWidth = 1;
@@ -763,7 +764,8 @@ class DebugPlot {
             ctx.moveTo(x, pad.top + plotH);
             ctx.lineTo(x, pad.top + plotH + 5);
             ctx.stroke();
-            ctx.fillText(f + ' Hz', x, pad.top + plotH + 17);
+            const label = f >= 1000 ? (f / 1000) + 'k Hz' : f + ' Hz';
+            ctx.fillText(label, x, pad.top + plotH + 17);
         }
         ctx.fillText('frequency (Hz)', pad.left + plotW / 2, H - 4);
 

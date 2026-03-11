@@ -19,12 +19,13 @@
  * Depends on: pitch-common.js (TunerDefaults, PitchDetector)
  */
 class HpsDetector extends PitchDetector {
-    constructor(numHarmonics = 5, dtftHarmonics = 2, snrThreshold = 4, rmsThreshold = 0.002) {
+    constructor(numHarmonics = 8, dtftHarmonics = 2, snrThreshold = 0.8, rmsThreshold = 0.002) {
         super();
         this.numHarmonics = numHarmonics;
         this.dtftHarmonics = dtftHarmonics; // Harmonics used in DTFT refinement (stage 2)
         this.snrThreshold = snrThreshold;
         this.rmsThreshold = rmsThreshold;
+        this.windowSizeExp = 12; // 2^12 = 4096 by default
         this.debug = false;
         this.debugData = null;
 
@@ -46,11 +47,16 @@ class HpsDetector extends PitchDetector {
         this._windowSize = 0;
     }
 
+    getRequiredBufferSize() {
+        return Math.pow(2, this.windowSizeExp);
+    }
+
     getParams() {
         return [
-            { key: 'numHarmonics', label: 'HPS Depth', min: 2, max: 10, step: 1, value: this.numHarmonics, description: 'Number of downsampled spectra to multiply. Higher values emphasize the fundamental more strongly against noise.' },
-            { key: 'dtftHarmonics', label: 'DTFT Harmonics', min: 1, max: 5, step: 1, value: this.dtftHarmonics, description: 'Number of harmonics used in the final DTFT refinement step. 2 is ideal (avoids inharmonicity bias of higher guitar harmonics).' },
-            { key: 'snrThreshold', label: 'Log-SNR Gate', min: 1, max: 10, step: 0.5, value: this.snrThreshold, description: 'How much stronger the main peak must be vs the median background noise (in log scale). Rejects weak ambiguous signals.' },
+            { key: 'windowSizeExp', label: 'Buffer Log2(N)', min: 10, max: 15, step: 1, value: this.windowSizeExp, description: 'Power of 2 determining the input buffer size (2^N). 12 = 4096. Higher gives finer frequency resolution but more latency.' },
+            { key: 'numHarmonics', label: 'HPS Depth', min: 2, max: 12, step: 1, value: this.numHarmonics, description: 'Maximum number of downsampled spectra to multiply/average. Higher values emphasize the fundamental more strongly against noise.' },
+            { key: 'dtftHarmonics', label: 'DTFT Harmonics', min: 1, max: 8, step: 1, value: this.dtftHarmonics, description: 'Number of harmonics used in the final DTFT refinement step. 2 is ideal for high freq, but low freqs adaptively use more.' },
+            { key: 'snrThreshold', label: 'Log-SNR Gate', min: 0.1, max: 3, step: 0.1, value: this.snrThreshold, description: 'How much stronger the main peak must be vs the median background noise (normalized). Rejects weak ambiguous signals.' },
             { key: 'rmsThreshold', label: 'RMS Noise Gate', min: 0.001, max: 0.1, step: 0.001, value: this.rmsThreshold, description: 'Minimum volume level (RMS) required to process the signal.' }
         ];
     }
@@ -342,23 +348,35 @@ class HpsDetector extends PitchDetector {
 
         // Frequency range → bin range
         const minBin = Math.max(1, Math.floor(TunerDefaults.MIN_FREQUENCY * N / sampleRate));
-        const maxBin = Math.min(
-            Math.floor(halfN / this.numHarmonics),
-            Math.ceil(TunerDefaults.MAX_FREQUENCY * N / sampleRate)
-        );
+        // Allow higher internal max frequency for HPS search (adaptive depth handles Nyquist limit)
+        const internalMaxFreq = 10000;
+        const maxBin = Math.min(halfN - 1, Math.round(internalMaxFreq * N / sampleRate));
 
-        // Harmonic Product Spectrum (log domain)
+        // Harmonic Product Spectrum (log domain) with adaptive depth and normalization
         const hps = this._hps;
-        for (let i = 0; i < maxBin; i++) {
-            hps[i] = mag[i] > 0 ? Math.log(mag[i]) : -100;
+        for (let i = 0; i < minBin; i++) {
+            hps[i] = -100;
         }
-        for (let h = 2; h <= this.numHarmonics; h++) {
-            for (let i = minBin; i < maxBin; i++) {
+        for (let i = minBin; i < maxBin; i++) {
+            const maxH = Math.min(this.numHarmonics, Math.floor((halfN - 1) / i));
+            if (maxH < 2) {
+                hps[i] = -100;
+                continue;
+            }
+            
+            let sum = 0;
+            let count = 0;
+            for (let h = 1; h <= maxH; h++) {
                 const idx = i * h;
-                if (idx < halfN) {
-                    hps[i] += mag[idx] > 0 ? Math.log(mag[idx]) : -100;
+                if (mag[idx] > 0) {
+                    sum += Math.log(mag[idx]);
+                    count++;
                 }
             }
+            hps[i] = count >= 2 ? sum / count : -100;
+        }
+        for (let i = maxBin; i < halfN; i++) {
+            hps[i] = -100;
         }
 
         // Find HPS peak
@@ -435,11 +453,19 @@ class HpsDetector extends PitchDetector {
 
         // Assess harmonic quality from FFT spectrum
         const binHz = sampleRate / N;
-        const numRefH = this.dtftHarmonics;
+        const approxFreq = refBin * binHz;
+        
+        // Adaptive DTFT harmonics for low frequencies
+        let numRefH = this.dtftHarmonics;
+        if (approxFreq < 150) {
+            // For low frequencies, use more harmonics if they fit below 40% of Nyquist
+            const maxUseful = Math.floor((sampleRate * 0.4) / approxFreq);
+            numRefH = Math.min(maxUseful, Math.max(4, this.dtftHarmonics));
+        }
+
         const harmonicWeights = this._assessHarmonicWeights(mag, halfN, refBin, numRefH);
 
-        // Convert to frequency and refine via DTFT
-        const approxFreq = refBin * binHz;
+        // Refine via DTFT
         const refinement = this._dtftRefine(approxFreq, sampleRate, harmonicWeights);
         const frequency = refinement ? refinement.frequency : approxFreq;
 

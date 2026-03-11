@@ -26,6 +26,14 @@ class PitchDetector {
     }
 
     /**
+     * Optionally override to request a larger or smaller sample buffer size from the Tuner.
+     * By default returns TunerDefaults.FFTSIZE (4096).
+     */
+    getRequiredBufferSize() {
+        return TunerDefaults.FFTSIZE;
+    }
+
+    /**
      * Updates an internal parameter. Override if reallocation/recalculation is needed.
      */
     setParam(key, value) {

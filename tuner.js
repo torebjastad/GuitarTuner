@@ -318,6 +318,15 @@ class Tuner {
         // Skip mic processing when muted (test sample results stay visible)
         if (this._micMuted) return;
 
+        // Ensure analyser buffer size matches the detector's required size
+        const targetSize = typeof this.currentDetector.getRequiredBufferSize === 'function' ? 
+                           this.currentDetector.getRequiredBufferSize() : TunerDefaults.FFTSIZE;
+        
+        if (this.analyser && this.analyser.fftSize !== targetSize) {
+            this.analyser.fftSize = targetSize;
+            this.frequencyBuffer = new Float32Array(targetSize);
+        }
+
         this.analyser.getFloatTimeDomainData(this.frequencyBuffer);
 
         // STRATEGY CALL (with performance timing)
@@ -700,12 +709,21 @@ class Tuner {
         const analyser = this._testSampleCtx.createAnalyser();
         analyser.fftSize = TunerDefaults.FFTSIZE;
         this._testSampleSource.connect(analyser);
-        const buf = new Float32Array(TunerDefaults.FFTSIZE);
+        let buf = new Float32Array(TunerDefaults.FFTSIZE);
         const sr = this._testSampleCtx.sampleRate;
 
         let rafId;
         const processLoop = () => {
             if (!this._testSampleSource || currentPlayId !== this._testPlayId) return;
+
+            const targetSize = typeof this.currentDetector.getRequiredBufferSize === 'function' ? 
+                               this.currentDetector.getRequiredBufferSize() : TunerDefaults.FFTSIZE;
+            
+            if (analyser.fftSize !== targetSize) {
+                analyser.fftSize = targetSize;
+                buf = new Float32Array(targetSize);
+            }
+
             analyser.getFloatTimeDomainData(buf);
             const t0 = performance.now();
             const detected = this.currentDetector.getPitch(buf, sr);
