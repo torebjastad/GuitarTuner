@@ -1,2 +1,8 @@
 # Test data (large WAV files)
 TestData/
+
+# Python caching and virtual environments
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
