@@ -98,6 +98,17 @@ class DebugPlot {
                 s('Peaks', debugData.peaks.length),
                 s('Sweeps', debugData.sweeps),
             );
+        } else if (algoName === 'Ultimate' && debugData) {
+            const finalStr = debugData.finalFreq > 0 ? debugData.finalFreq.toFixed(2) + ' Hz' : 'rejected';
+            const mpmStr = debugData.mpmFreq > 0 ? debugData.mpmFreq.toFixed(2) + ' Hz' : 'failed';
+            items.push(
+                s('Final', finalStr),
+                s('MPM', mpmStr),
+                s('Spectral', debugData.wPeakFreq.toFixed(2) + ' Hz'),
+                s('Decision', debugData.decisionReason),
+                s('Clarity', ((debugData.mpmClarity || 0) * 100).toFixed(1) + '%'),
+                s('RMS', debugData.rms.toFixed(4)),
+            );
         }
 
         items.push(
@@ -1082,5 +1093,291 @@ class DebugPlot {
         const lx = W - pad.right - 8;
         ctx.fillStyle = '#38bdf8';
         ctx.fillText('— MUSIC pseudospectrum (dB)', lx, specTop + 12);
+    }
+
+    drawUltimate(debugData) {
+        if (!this.visible || !this.ctx || !debugData) return;
+
+        const canvas = this.canvas;
+        const ctx = this.ctx;
+        const dpr = window.devicePixelRatio || 1;
+
+        const W = canvas.parentElement.getBoundingClientRect().width;
+        const H = 300; // Dual panel
+        canvas.width = W * dpr;
+        canvas.height = H * dpr;
+        canvas.style.width = W + 'px';
+        canvas.style.height = H + 'px';
+        ctx.scale(dpr, dpr);
+
+        ctx.clearRect(0, 0, W, H);
+
+        // Background
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+        ctx.fillRect(0, 0, W, H);
+
+        const pad = { top: 20, bottom: 30, left: 50, right: 15 };
+        const gapH = 10;
+        const panelH = (H - pad.top - pad.bottom - gapH) / 2;
+        const topY = pad.top;
+        const bottomY = pad.top + panelH + gapH;
+        const plotW = W - pad.left - pad.right;
+
+        const { nsdf, keyMaxima, mpmThreshold, selectedTau, interpolatedTau, mpmClarity,
+            maxTau, magnitude, weightedMagnitude, wPeakBin, wPeakFreq,
+            mpmFreq, finalFreq, decisionReason, sampleRate, binHz, minBin, maxBin } = debugData;
+
+        // ── Upper panel: NSDF (McLeod stage) ──
+        const nsdfLen = nsdf ? nsdf.length : 0;
+        const yMax = 1.1, yMin = -0.5;
+        const maxTauDisplay = maxTau || nsdfLen;
+
+        const toXn = (tau) => pad.left + (tau / maxTauDisplay) * plotW;
+        const toYn = (val) => topY + (1 - (val - yMin) / (yMax - yMin)) * panelH;
+
+        // Panel label
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '10px Outfit, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('NSDF (McLeod)', pad.left + 4, topY + 12);
+
+        // Grid
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.15)';
+        ctx.lineWidth = 1;
+        for (let v = -0.5; v <= 1.0; v += 0.5) {
+            const y = toYn(v);
+            ctx.beginPath();
+            ctx.moveTo(pad.left, y);
+            ctx.lineTo(W - pad.right, y);
+            ctx.stroke();
+        }
+
+        // Zero line
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.4)';
+        ctx.beginPath();
+        ctx.moveTo(pad.left, toYn(0));
+        ctx.lineTo(W - pad.right, toYn(0));
+        ctx.stroke();
+
+        // Y-axis labels
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '10px Outfit, sans-serif';
+        ctx.textAlign = 'right';
+        for (let v = -0.5; v <= 1.0; v += 0.5) {
+            ctx.fillText(v.toFixed(1), pad.left - 5, toYn(v) + 3);
+        }
+
+        // NSDF curve
+        if (nsdf && nsdfLen > 1) {
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            for (let i = 1; i < nsdfLen; i++) {
+                const x = toXn(i);
+                const y = toYn(Math.max(yMin, Math.min(nsdf[i], yMax)));
+                if (i === 1) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+        }
+
+        // Threshold line
+        if (mpmThreshold > yMin) {
+            ctx.strokeStyle = 'rgba(251, 191, 36, 0.6)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([6, 4]);
+            ctx.beginPath();
+            ctx.moveTo(pad.left, toYn(mpmThreshold));
+            ctx.lineTo(W - pad.right, toYn(mpmThreshold));
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // Key maxima
+        if (keyMaxima) {
+            for (let i = 0; i < keyMaxima.length; i++) {
+                const km = keyMaxima[i];
+                if (km.tau >= maxTauDisplay) continue;
+                const kx = toXn(km.tau);
+                const ky = toYn(Math.min(km.val, yMax));
+                ctx.fillStyle = km.tau === selectedTau ? '#f87171' : 'rgba(251, 146, 60, 0.7)';
+                ctx.beginPath();
+                ctx.arc(kx, ky, km.tau === selectedTau ? 5 : 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Selected peak label
+        if (selectedTau > 0 && selectedTau < maxTauDisplay) {
+            const sx = toXn(selectedTau);
+            ctx.strokeStyle = 'rgba(248, 113, 113, 0.4)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(sx, topY);
+            ctx.lineTo(sx, topY + panelH);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            ctx.fillStyle = '#f87171';
+            ctx.font = '10px Outfit, sans-serif';
+            ctx.textAlign = 'center';
+            const peakFreq = sampleRate / selectedTau;
+            ctx.fillText(`τ=${selectedTau} (${peakFreq.toFixed(1)} Hz)`, sx, topY - 3);
+        }
+
+        // ── Lower panel: Frequency spectrum ──
+        const maxFreqDisplay = Math.min(5000, (maxBin || 1000) * binHz);
+        const magArr = magnitude;
+        const wMagArr = weightedMagnitude;
+        const magLen = magArr ? magArr.length : 0;
+
+        // Find max values for normalization
+        let magMaxVal = 0, wMagMaxVal = 0;
+        if (magArr) {
+            for (let i = 0; i < magLen; i++) {
+                if (magArr[i] > magMaxVal) magMaxVal = magArr[i];
+            }
+        }
+        if (wMagArr) {
+            for (let i = 0; i < wMagArr.length; i++) {
+                if (wMagArr[i] > wMagMaxVal) wMagMaxVal = wMagArr[i];
+            }
+        }
+
+        const toXf = (freq) => pad.left + (freq / maxFreqDisplay) * plotW;
+        const toYfMag = (val, maxV) => bottomY + panelH - (maxV > 0 ? (val / maxV) * panelH * 0.9 : 0);
+
+        // Panel label
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '10px Outfit, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('Spectrum (frequency-weighted)', pad.left + 4, bottomY + 12);
+
+        // X-axis labels
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '10px Outfit, sans-serif';
+        ctx.textAlign = 'center';
+        const freqStep = maxFreqDisplay <= 1500 ? 200 : maxFreqDisplay <= 3000 ? 500 : 1000;
+        for (let f = freqStep; f <= maxFreqDisplay; f += freqStep) {
+            const x = toXf(f);
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.15)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(x, bottomY);
+            ctx.lineTo(x, bottomY + panelH);
+            ctx.stroke();
+            const label = f >= 1000 ? (f / 1000) + 'k' : f + '';
+            ctx.fillText(label, x, bottomY + panelH + 13);
+        }
+        ctx.fillText('Hz', pad.left + plotW / 2, H - 3);
+
+        // Draw raw magnitude spectrum (faint blue)
+        if (magArr && magMaxVal > 0) {
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.3)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            let started = false;
+            for (let i = 0; i < magLen; i++) {
+                const freq = (minBin + i) * binHz;
+                if (freq > maxFreqDisplay) break;
+                const x = toXf(freq);
+                const y = toYfMag(magArr[i], magMaxVal);
+                if (!started) { ctx.moveTo(x, y); started = true; }
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+        }
+
+        // Draw weighted magnitude (green)
+        if (wMagArr && wMagMaxVal > 0) {
+            ctx.strokeStyle = '#4ade80';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            let started = false;
+            for (let i = 0; i < wMagArr.length; i++) {
+                const freq = (minBin + i) * binHz;
+                if (freq > maxFreqDisplay) break;
+                const x = toXf(freq);
+                const y = toYfMag(wMagArr[i], wMagMaxVal);
+                if (!started) { ctx.moveTo(x, y); started = true; }
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+        }
+
+        // Mark MPM frequency (blue triangle)
+        if (mpmFreq > 0 && mpmFreq <= maxFreqDisplay) {
+            const mx = toXf(mpmFreq);
+            ctx.fillStyle = '#38bdf8';
+            ctx.beginPath();
+            ctx.moveTo(mx, bottomY + panelH);
+            ctx.lineTo(mx - 5, bottomY + panelH - 8);
+            ctx.lineTo(mx + 5, bottomY + panelH - 8);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.font = '9px Outfit, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('MPM', mx, bottomY + panelH - 10);
+        }
+
+        // Mark spectral peak frequency (orange triangle)
+        if (wPeakFreq > 0 && wPeakFreq <= maxFreqDisplay) {
+            const wx = toXf(wPeakFreq);
+            ctx.fillStyle = '#fb923c';
+            ctx.beginPath();
+            ctx.moveTo(wx, bottomY + panelH);
+            ctx.lineTo(wx - 5, bottomY + panelH - 8);
+            ctx.lineTo(wx + 5, bottomY + panelH - 8);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.font = '9px Outfit, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Peak', wx, bottomY + panelH - 10);
+        }
+
+        // Mark final chosen frequency (green, prominent)
+        if (finalFreq > 0 && finalFreq <= maxFreqDisplay) {
+            const fx = toXf(finalFreq);
+
+            ctx.strokeStyle = 'rgba(74, 222, 128, 0.8)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(fx, bottomY);
+            ctx.lineTo(fx, bottomY + panelH);
+            ctx.stroke();
+
+            ctx.fillStyle = '#4ade80';
+            ctx.beginPath();
+            ctx.moveTo(fx, bottomY + 2);
+            ctx.lineTo(fx - 5, bottomY + 10);
+            ctx.lineTo(fx + 5, bottomY + 10);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.font = '10px Outfit, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(finalFreq.toFixed(1) + ' Hz', fx, bottomY + 22);
+        }
+
+        // Decision reason label
+        if (decisionReason) {
+            ctx.fillStyle = 'rgba(148, 163, 184, 0.7)';
+            ctx.font = '10px Outfit, sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText(decisionReason, W - pad.right - 8, bottomY + panelH - 4);
+        }
+
+        // Legend
+        ctx.font = '10px Outfit, sans-serif';
+        ctx.textAlign = 'right';
+        const legendX = W - pad.right - 8;
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.5)';
+        ctx.fillText('— Raw magnitude', legendX, bottomY + 12);
+        ctx.fillStyle = '#4ade80';
+        ctx.fillText('— Weighted magnitude', legendX, bottomY + 24);
     }
 }
