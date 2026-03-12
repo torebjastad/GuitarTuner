@@ -27,7 +27,10 @@
       "Bash(./venv/Scripts/python -c \"import gui_explorer; print\\(''Import OK''\\)\")",
       "Bash(./venv/Scripts/python -c \"import gui_explorer; print\\(''OK''\\)\")",
       "Bash(./venv/Scripts/pip install:*)",
-      "Bash(./venv/Scripts/python -c \":*)"
+      "Bash(./venv/Scripts/python -c \":*)",
+      "Bash(./venv/Scripts/python mcleod_test.py)",
+      "Bash(./venv/Scripts/python focused_test.py)",
+      "Bash(timeout 5 ./venv/Scripts/python -c \":*)"
     ]
   }
 }

@@ -259,15 +259,68 @@ closest_int = round(ratio)
 
 If MPM and the spectral peak are harmonically related, the ratio will be close to an integer (1, 2, 3, ...). For example, if MPM locked onto the fundamental and the weighted peak found the 2nd harmonic, ratio ~ 2.0.
 
-### 3.3 Extreme ratio check
+### 3.3 Extreme ratio check — Harmonic Verification
+
+When `closest_int > 8`, the ratio is too large for a simple harmonic relationship. Instead of blindly using `w_peak_freq`, run harmonic verification to check if MPM found a real fundamental:
+
+#### 3.3.1 Find spectral peaks
+
+Scan the FFT magnitude for local maxima above 10% of the global maximum, with parabolic interpolation:
 
 ```
-if closest_int > 8:
-    final_freq = w_peak_freq    // MPM locked on mechanical thud / structural noise
-    DONE
+peaks = []
+threshold = max(mag[min_bin..max_bin]) * 0.1
+
+for i = min_bin+1 to max_bin-1:
+    if mag[i] > mag[i-1] AND mag[i] > mag[i+1] AND mag[i] > threshold:
+        // Parabolic refinement
+        a = mag[i-1]; b = mag[i]; c = mag[i+1]
+        d = a - 2*b + c
+        adj = 0.5 * (a - c) / d    // 0 if d == 0
+        peaks.append( ((i + adj) * bin_hz, mag[i]) )
 ```
 
-Piano harmonics physically don't exceed ~8x the fundamental with meaningful energy. A ratio > 8 means MPM found something unrelated to the note.
+#### 3.3.2 Count harmonic hits
+
+For each candidate frequency (MPM and w_peak), count how many spectral peaks fall near integer multiples:
+
+```
+function count_harmonic_hits(peaks, f0_candidate):
+    hits = 0
+    total_power = 0
+    for (freq, power) in peaks:
+        ratio = freq / f0_candidate
+        nearest_n = round(ratio)
+        if nearest_n < 1: continue
+        // Tolerance grows with harmonic number (piano inharmonicity)
+        tol = 0.04 + 0.005 * nearest_n
+        if abs(ratio - nearest_n) < tol:
+            hits += 1
+            total_power += power
+    return hits, total_power
+
+mpm_hits, mpm_hpwr   = count_harmonic_hits(peaks, mpm_freq)
+wpeak_hits, wpeak_hpwr = count_harmonic_hits(peaks, w_peak_freq)
+```
+
+**Inharmonicity tolerance:** Piano strings exhibit inharmonicity where upper partials are stretched sharp. The tolerance `0.04 + 0.005 * n` allows ~4% for the fundamental, growing to ~9% at the 10th harmonic.
+
+#### 3.3.3 Decision with power factor
+
+```
+power_factor = mpm_hpwr / max(wpeak_hpwr, 1e-10)
+
+if mpm_hits >= 3 AND mpm_hits > wpeak_hits AND power_factor > 8:
+    final_freq = mpm_freq    // MPM confirmed by strong harmonic series
+elif mpm_hits >= 3 AND mpm_hits == wpeak_hits AND power_factor > 8:
+    final_freq = mpm_freq    // Tied on count, MPM wins on power
+else:
+    final_freq = w_peak_freq // MPM not convincingly confirmed
+```
+
+**Why power_factor > 8?** A true fundamental's harmonics carry significantly more total energy than coincidental alignments from noise. Real fundamentals show power factors of 13–27+, while noise-based matches show 2–5. The threshold of 8 cleanly separates genuine from spurious.
+
+**Why this matters:** Low notes (A0–C2) can have very high ratios (30–66) because the frequency-weighted spectral peak emphasizes upper harmonics. But MPM correctly finds the fundamental. Without harmonic verification, these would be incorrectly discarded.
 
 ### 3.4 Harmonic relation check
 

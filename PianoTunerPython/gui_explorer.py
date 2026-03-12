@@ -200,6 +200,9 @@ class TuningGUI(tk.Tk):
         self.canvas = FigureCanvasTkAgg(self.figure, mid_frame)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
+        # Mouse wheel zoom on x-axis (centered on cursor position)
+        self.canvas.mpl_connect('scroll_event', self._on_scroll_zoom)
+
         # ---- Right Panel (Decision Log) ----
         right_frame = ttk.Frame(self, width=340)
         right_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=(5, 10), pady=10)
@@ -214,6 +217,29 @@ class TuningGUI(tk.Tk):
         self.log_text.tag_configure('fail', foreground=CLR_FAIL)
         self.log_text.tag_configure('arrow', foreground=CLR_WARN, font=('Consolas', 10, 'bold'))
         self.log_text.pack(fill=tk.BOTH, expand=True)
+
+    # ---------- Mouse wheel zoom ----------
+
+    def _on_scroll_zoom(self, event):
+        """Zoom x-axis only, centered on the mouse cursor position."""
+        if event.inaxes is None:
+            return
+        ax = event.inaxes
+        xdata = event.xdata
+        if xdata is None:
+            return
+
+        scale_factor = 0.8 if event.button == 'up' else 1.25
+        xlim = ax.get_xlim()
+
+        # Compute new limits centered on mouse position
+        left_frac = (xdata - xlim[0]) / (xlim[1] - xlim[0])
+        new_width = (xlim[1] - xlim[0]) * scale_factor
+        new_left = xdata - left_frac * new_width
+        new_right = new_left + new_width
+
+        ax.set_xlim(max(0, new_left), new_right)
+        self.canvas.draw_idle()
 
     # ---------- Formatting ----------
 
@@ -416,10 +442,16 @@ class TuningGUI(tk.Tk):
         bin_hz = debug_data['bin_hz']
         mag = debug_data['mag']
         freqs = np.arange(len(mag)) * bin_hz
-        max_f_display = min(10000, expected * 5 + 500)
-        max_bin = int(max_f_display / bin_hz)
         mpm_freq = debug_data['candidate_freq']
         w_peak_freq = debug_data.get('w_peak_freq', 0)
+        h_peaks = debug_data.get('harmonic_peaks', [])
+        h_peak_freqs = [p[0] for p in h_peaks] if h_peaks else []
+
+        # Auto-fit x-axis to include all relevant peaks
+        key_freqs = [expected, freq, mpm_freq, w_peak_freq] + h_peak_freqs
+        key_freqs = [f for f in key_freqs if f > 0]
+        max_f_display = min(10000, max(key_freqs) * 1.15 + 200) if key_freqs else 5000
+        max_bin = int(max_f_display / bin_hz)
 
         # ---- Plot 1: Waveform ----
         self._format_ax(self.ax_wave, "Waveform (analysis window)")
@@ -474,6 +506,12 @@ class TuningGUI(tk.Tk):
         self._vline(self.ax_raw, freq, color=CLR_WARN, linestyle='-', linewidth=1.5, alpha=0.8,
                     label=f'Final: {freq:.1f}Hz')
 
+        # Mark detected harmonic peaks
+        if h_peak_freqs:
+            h_peak_mags = [mag[min(len(mag)-1, int(round(f / bin_hz)))] for f in h_peak_freqs]
+            self.ax_raw.scatter(h_peak_freqs, h_peak_mags, color='#f472b6', marker='v', s=30,
+                                zorder=6, label=f'Harmonic peaks ({len(h_peak_freqs)})')
+
         self.ax_raw.set_yscale('log')
         self.ax_raw.set_xlim(0, max_f_display)
         self.ax_raw.set_xlabel("Frequency (Hz)", color=CLR_MUTED, fontsize=8)
@@ -497,6 +535,19 @@ class TuningGUI(tk.Tk):
                         label=f'Weighted peak: {w_peak_freq:.1f}Hz')
         self._vline(self.ax_weighted, freq, color=CLR_WARN, linestyle='-', linewidth=1.5, alpha=0.8,
                     label=f'Final: {freq:.1f}Hz')
+
+        # Mark detected harmonic peaks on weighted spectrum
+        if h_peak_freqs:
+            w_min = debug_data.get('min_bin', 0)
+            h_peak_w_vals = []
+            for hf in h_peak_freqs:
+                w_idx = int(round(hf / bin_hz)) - w_min
+                if 0 <= w_idx < len(weighted_mag):
+                    h_peak_w_vals.append(weighted_mag[w_idx])
+                else:
+                    h_peak_w_vals.append(0)
+            self.ax_weighted.scatter(h_peak_freqs, h_peak_w_vals, color='#f472b6', marker='v', s=30,
+                                     zorder=6, label=f'Harmonic peaks ({len(h_peak_freqs)})')
 
         self.ax_weighted.set_xlim(0, max_f_display)
         self.ax_weighted.set_xlabel("Frequency (Hz)", color=CLR_MUTED, fontsize=8)
