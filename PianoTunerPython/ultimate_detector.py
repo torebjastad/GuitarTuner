@@ -39,6 +39,9 @@ class UltimatePianoDetector:
         w_peak_freq = (w_peak_bin + adj) * bin_hz
         
         final_freq = mpm_freq
+        decision_log = []
+        decision_log.append(f"1. McLeod Picked: {mpm_freq:.1f} Hz")
+        decision_log.append(f"2. High-pass Weighted Spectral Peak: {w_peak_freq:.1f} Hz")
         
         def get_raw_power(freq):
             b = int(round(freq / bin_hz))
@@ -46,18 +49,26 @@ class UltimatePianoDetector:
             # Look at a slightly wider window to catch peak smearing
             return max(mag[max(1, b-2):min(len(mag), b+3)])
             
+        pwr_mpm = 0
+        pwr_wpeak = 0
+        
         # Pianos suffer from mechanically-dense low frequencies and sympathetic resonance octave drops.
         if w_peak_freq > 1000 and mpm_freq > 0:
             ratio = w_peak_freq / mpm_freq
             closest_int = round(ratio)
+            
+            decision_log.append(f"3. Ratio (w_peak / mpm): {ratio:.2f} (closest int: {closest_int})")
             
             # Subharmonics and overtones physically never exceed a ratio of ~8 for pianos.
             if closest_int <= 8:
                 is_close_to_int = abs(ratio - closest_int) < 0.2
                 
                 if is_close_to_int:
+                    decision_log.append(f"4. Harmonic Relation Detected! Checking raw power...")
                     pwr_mpm = get_raw_power(mpm_freq)
                     pwr_wpeak = get_raw_power(w_peak_freq)
+                    decision_log.append(f"   - Raw Power @ MPM ({mpm_freq:.1f}Hz): {pwr_mpm:.2f}")
+                    decision_log.append(f"   - Raw Power @ Peak ({w_peak_freq:.1f}Hz): {pwr_wpeak:.2f}")
                     
                     # If w_peak is extremely high (> 1800Hz), it is almost guaranteed to be the true note
                     # because high middle-range notes don't produce dominant 7th overtones.
@@ -66,17 +77,26 @@ class UltimatePianoDetector:
                     threshold_mult = 0.8 if w_peak_freq > 1800 else 0.05
                     
                     if pwr_mpm > pwr_wpeak * threshold_mult:
+                        decision_log.append(f"5. MPM fundamental power {(pwr_mpm):.2f} proved dominant over threshold {(pwr_wpeak * threshold_mult):.2f}.")
+                        decision_log.append(f"   -> Retaining MPM freq!")
                         final_freq = mpm_freq
                     else:
+                        decision_log.append(f"5. MPM power was weak compared to peak. MPM locked on subharmonic octave-drop.")
+                        decision_log.append(f"   -> Upgrade pitch to Spectral Peak!")
                         final_freq = w_peak_freq
                 else:
+                    decision_log.append(f"4. Ratio is far from integer. No harmonic relation.")
+                    decision_log.append(f"   -> MPM locked on noise, using Spectral Peak.")
                     final_freq = w_peak_freq
             else:
+                decision_log.append(f"4. Extreme Ratio > 8. MPM locked on low mechanical thud.")
+                decision_log.append(f"   -> Using Spectral Peak.")
                 # Extreme ratio. Mechanical impact thud / completely structural noise.
                 final_freq = w_peak_freq
                 
         # Fallback if MPM totally failed but we found a valid peak
         if final_freq < 0 and w_peak_freq > 0:
+            decision_log.append(f"MPM totally failed. Fallback to Spectral Peak.")
             final_freq = w_peak_freq
             
         if return_debug:
@@ -86,11 +106,15 @@ class UltimatePianoDetector:
                 'threshold': dbg['threshold'],
                 'selected_tau': dbg['selected_tau'],
                 'mag': mag,
+                'weighted_mag': weighted_mag,
+                'min_bin': min_bin,
                 'bin_hz': bin_hz,
                 'candidate_freq': mpm_freq,
+                'w_peak_freq': w_peak_freq,
                 'best_freq': final_freq,
-                'best_power': 0,
-                'interpolated_tau': 0
+                'pwr_mpm': pwr_mpm,
+                'pwr_wpeak': pwr_wpeak,
+                'decision_log': decision_log
             }
         return final_freq
 

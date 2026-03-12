@@ -22,7 +22,10 @@
       "Bash(curl -s -L --retry 3 -o /tmp/Piano.mf.F6.aiff \"https://web.archive.org/web/20220309211042/http://theremin.music.uiowa.edu/sound%20files/MIS/Piano_Other/piano/Piano.mf.F6.aiff\")",
       "Bash(xargs basename -a)",
       "Bash(netstat -ano)",
-      "Bash(python -m http.server 8080)"
+      "Bash(python -m http.server 8080)",
+      "Bash(python -c \"import gui_explorer; print\\(''Import OK''\\)\")",
+      "Bash(./venv/Scripts/python -c \"import gui_explorer; print\\(''Import OK''\\)\")",
+      "Bash(./venv/Scripts/python -c \"import gui_explorer; print\\(''OK''\\)\")"
     ]
   }
 }
