@@ -15,7 +15,8 @@ class Tuner {
             mcleod: new McLeodDetector(),
             autocorr: new AutocorrelationDetector(),
             hps: new HpsDetector(),
-            music: new MusicDetector()
+            music: new MusicDetector(),
+            ultimate: new UltimateDetector()
         };
         this.currentDetector = this.detectors.mcleod;
 
@@ -97,6 +98,7 @@ class Tuner {
                 this.detectors.autocorr.debug = on;
                 this.detectors.hps.debug = on;
                 this.detectors.music.debug = on;
+                this.detectors.ultimate.debug = on;
                 // Test samples
                 const samplesDiv = document.getElementById('test-samples');
                 if (samplesDiv) {
@@ -482,6 +484,9 @@ class Tuner {
         } else if (this.currentDetector === this.detectors.music) {
             this.debugPlot.drawMusic(dd);
             this.debugPlot.updateInfo('MUSIC', dd, perfMs);
+        } else if (this.currentDetector === this.detectors.ultimate) {
+            this.debugPlot.drawUltimate(dd);
+            this.debugPlot.updateInfo('Ultimate', dd, perfMs);
         } else {
             this.debugPlot.drawAutocorrelation(dd);
             this.debugPlot.updateInfo('Autocorr', dd, perfMs);
