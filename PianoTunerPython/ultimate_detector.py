@@ -1,17 +1,103 @@
 import numpy as np
 import math
 
-# Try to use McLeod, but heavily verify using spectral data.
 class UltimatePianoDetector:
     def __init__(self, cutoff=0.93, small_cutoff=0.4):
         self.cutoff = cutoff
         self.small_cutoff = small_cutoff
 
-    def get_pitch(self, buffer, sample_rate):
+    def get_pitch(self, buffer, sample_rate, return_debug=False):
+        mpm_freq, dbg = self._run_mcleod(buffer, sample_rate)
+        
+        fft_size = 65536
+        N = len(buffer)
+        window = np.hanning(N)
+        re = np.zeros(fft_size)
+        re[:N] = buffer * window
+        mag = np.abs(np.fft.rfft(re))
+        
+        bin_hz = sample_rate / fft_size
+        freqs = np.arange(len(mag)) * bin_hz
+        
+        min_bin = int(25 / bin_hz)
+        max_bin = int(10000 / bin_hz)
+        
+        valid_mag = mag[min_bin:max_bin]
+        valid_freqs = freqs[min_bin:max_bin]
+        
+        weighted_mag = valid_mag * valid_freqs
+        peak_idx = np.argmax(weighted_mag)
+        
+        w_peak_bin = min_bin + peak_idx
+        
+        alpha = mag[w_peak_bin - 1]
+        beta = mag[w_peak_bin]
+        gamma = mag[w_peak_bin + 1]
+        num = 0.5 * (alpha - gamma)
+        den = alpha - 2 * beta + gamma
+        adj = num / den if den != 0 else 0
+        w_peak_freq = (w_peak_bin + adj) * bin_hz
+        
+        final_freq = mpm_freq
+        
+        def get_raw_power(freq):
+            b = int(round(freq / bin_hz))
+            if b <= 0 or b >= len(mag)-1: return 0
+            # Look at a slightly wider window to catch peak smearing
+            return max(mag[max(1, b-2):min(len(mag), b+3)])
+            
+        # Pianos suffer from mechanically-dense low frequencies and sympathetic resonance octave drops.
+        if w_peak_freq > 1000 and mpm_freq > 0:
+            ratio = w_peak_freq / mpm_freq
+            closest_int = round(ratio)
+            
+            # Subharmonics and overtones physically never exceed a ratio of ~8 for pianos.
+            if closest_int <= 8:
+                is_close_to_int = abs(ratio - closest_int) < 0.2
+                
+                if is_close_to_int:
+                    pwr_mpm = get_raw_power(mpm_freq)
+                    pwr_wpeak = get_raw_power(w_peak_freq)
+                    
+                    # If w_peak is extremely high (> 1800Hz), it is almost guaranteed to be the true note
+                    # because high middle-range notes don't produce dominant 7th overtones.
+                    # If w_peak is lower, it could legitimately be an overtone of a low note,
+                    # so we make it much easier for mpm_freq to prove itself.
+                    threshold_mult = 0.8 if w_peak_freq > 1800 else 0.05
+                    
+                    if pwr_mpm > pwr_wpeak * threshold_mult:
+                        final_freq = mpm_freq
+                    else:
+                        final_freq = w_peak_freq
+                else:
+                    final_freq = w_peak_freq
+            else:
+                # Extreme ratio. Mechanical impact thud / completely structural noise.
+                final_freq = w_peak_freq
+                
+        # Fallback if MPM totally failed but we found a valid peak
+        if final_freq < 0 and w_peak_freq > 0:
+            final_freq = w_peak_freq
+            
+        if return_debug:
+            return final_freq, {
+                'nsdf': dbg['nsdf'],
+                'key_maxima': dbg['key_maxima'],
+                'threshold': dbg['threshold'],
+                'selected_tau': dbg['selected_tau'],
+                'mag': mag,
+                'bin_hz': bin_hz,
+                'candidate_freq': mpm_freq,
+                'best_freq': final_freq,
+                'best_power': 0,
+                'interpolated_tau': 0
+            }
+        return final_freq
+
+    def _run_mcleod(self, buffer, sample_rate):
         buf_len = len(buffer)
         max_tau = min(buf_len // 2, int(np.ceil(sample_rate / 20)))
         
-        # NSDF Calculation
         r = np.correlate(buffer, buffer, mode='full')
         center = len(buffer) - 1
         acf = r[center:center + max_tau]
@@ -29,7 +115,6 @@ class UltimatePianoDetector:
         with np.errstate(divide='ignore', invalid='ignore'):
             nsdf = np.where(m > 0, 2 * acf / m, 0)
 
-        # Peak Picking
         key_maxima = []
         in_positive_region = False
         current_max_tau = 0
@@ -52,13 +137,12 @@ class UltimatePianoDetector:
             key_maxima.append((current_max_tau, current_max_val))
             
         if not key_maxima:
-            return -1
+            return -1, {'nsdf': nsdf, 'key_maxima': [], 'threshold': 0, 'selected_tau': None}
             
         nmax = max(val for tau, val in key_maxima)
         if nmax < self.small_cutoff:
-            return -1
+            return -1, {'nsdf': nsdf, 'key_maxima': [], 'threshold': 0, 'selected_tau': None}
             
-        # Select best peak using McLeod
         threshold = self.cutoff * nmax
         selected_peak = None
         for tau, val in key_maxima:
@@ -67,59 +151,11 @@ class UltimatePianoDetector:
                 break
                 
         if not selected_peak:
-            return -1
+            return -1, {'nsdf': nsdf, 'key_maxima': [], 'threshold': 0, 'selected_tau': None}
             
         tau, clarity = selected_peak
-        
-        # FFT for spectral verification
-        fft_size = 16384
-        N = len(buffer)
-        window = np.hanning(N)
-        re = np.zeros(fft_size)
-        re[:N] = buffer * window
-        mag = np.abs(np.fft.rfft(re))
-        bin_hz = sample_rate / fft_size
-        
-        def get_spectral_power(freq):
-            b = int(round(freq / bin_hz))
-            if b <= 0 or b >= len(mag)-1: return 0
-            # Return max within a small neighborhood
-            return max(mag[max(1, b-2):min(len(mag), b+3)])
-            
         interpolated_tau = float(tau)
-        # Verify sub-harmonics!
-        # If the tau is very large (low freq), check if there is an earlier key_maximum 
-        # (higher freq) that represents a physically stronger spectral peak!
-        candidate_freq = sample_rate / tau
         
-        # Only bother checking octave errors if candidate is below 2000Hz, 
-        # because high notes are where McLeod tends to drop an octave.
-        # Check integer multiples of the candidate frequency
-        best_freq = candidate_freq
-        best_power = get_spectral_power(candidate_freq)
-        
-        # We will check exactly 1 octave up (2*f), 1.5 octaves (3*f) etc., and see if one is drastically stronger
-        for mult in [2, 3, 4, 5]:
-            higher_freq = candidate_freq * mult
-            if higher_freq > 6000: break # Exceeds piano range
-            
-            pwr = get_spectral_power(higher_freq)
-            
-            # If the higher harmonic is massively stronger (e.g. 3x stronger), 
-            # and it exists as a key_maximum in NSDF, upgrade!
-            if pwr > best_power * 2.5:
-                # Check if this period exists as a valid peak in NSDF
-                expected_tau = tau / mult
-                # Find matching key_maxima
-                for pk_tau, pk_val in key_maxima:
-                    # if it's within 1 sample
-                    if abs(pk_tau - expected_tau) < 2 and pk_val > 0.4:
-                        best_freq = sample_rate / pk_tau
-                        best_power = pwr
-                        interpolated_tau = float(pk_tau)
-                        break
-
-        # Parabolic interpolation
         tau_int = int(round(interpolated_tau))
         if 0 < tau_int < max_tau - 1:
             s0 = nsdf[tau_int - 1]
@@ -132,4 +168,6 @@ class UltimatePianoDetector:
                 if abs(adj) < 1:
                     interpolated_tau = tau_int + adj
                     
-        return sample_rate / interpolated_tau
+        return sample_rate / interpolated_tau, {
+            'nsdf': nsdf, 'key_maxima': key_maxima, 'threshold': threshold, 'selected_tau': tau
+        }

@@ -6,3 +6,4 @@ venv/
 __pycache__/
 *.pyc
 .pytest_cache/
+PianoTunerPython/diagnosis_C8.png
