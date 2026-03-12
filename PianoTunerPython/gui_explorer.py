@@ -6,6 +6,8 @@ import soundfile as sf
 import tkinter as tk
 from tkinter import ttk
 
+import sounddevice as sd
+
 import matplotlib
 matplotlib.use('TkAgg')
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -17,8 +19,6 @@ from ultimate_detector import UltimatePianoDetector
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEST_DATA_DIR = os.path.join(BASE_DIR, '..', 'TestData')
-UIOWA_DIR = os.path.join(TEST_DATA_DIR, 'UIowa-Piano-mf')
-SALAMANDER_DIR = os.path.join(TEST_DATA_DIR, 'SalamanderGrandPianoV3_OggVorbis', 'ogg')
 
 SEMI = {
     "C": 0, "C#": 1, "Db": 1, "D": 2, "D#": 3, "Eb": 3,
@@ -27,6 +27,9 @@ SEMI = {
 }
 
 NOTE_STRINGS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+
+# Standard guitar open string frequencies
+GUITAR_STRINGS = {"e": ("E", 2), "a": ("A", 2), "d": ("D", 3), "g": ("G", 3), "b": ("B", 3), "e1st": ("E", 4)}
 
 def calc_expected_freq(note, octave):
     midi = (octave + 1) * 12 + SEMI[note]
@@ -41,15 +44,50 @@ def get_note_name(freq):
     octave = (midi_round // 12) - 1
     return f"{note}{octave}"
 
-def parse_uiowa_filename(filename):
+def get_cents_tolerance(expected_freq):
+    """Octave-dependent tolerance to account for piano stretch tuning.
+    Octave 6 (~1047-2093 Hz): +/-50 cents
+    Octave 7+ (~2093+ Hz):    +/-100 cents
+    All others:                +/-25 cents
+    """
+    if expected_freq >= 2093.0:    # C7 and above
+        return 100
+    elif expected_freq >= 1047.0:  # C6 and above
+        return 50
+    return 25
+
+def parse_uiowa(filename):
     match = re.search(r'Piano\.mf\.([A-Ga-g][b#]?)(\d)\.ogg$', filename)
     if match: return match.group(1), int(match.group(2))
     return None, None
 
-def parse_salamander_filename(filename):
-    match = re.search(r'([A-Ga-g][b#]?)(\d)v\d\.ogg$', filename)
+def parse_salamander(filename):
+    match = re.search(r'([A-Ga-g][b#]?)(\d)v\d+\.ogg$', filename)
     if match: return match.group(1), int(match.group(2))
     return None, None
+
+def parse_plucked_guitar(filename):
+    match = re.search(r'__([a-g][#]?)(\d)\.wav$', filename)
+    if match:
+        note = match.group(1).upper()
+        return note, int(match.group(2))
+    return None, None
+
+def parse_nylon_guitar(filename):
+    match = re.search(r'clean_([a-g](?:1st)?)_str_(?:pick|pluck)\.wav$', filename)
+    if match:
+        string_key = match.group(1)
+        if string_key in GUITAR_STRINGS:
+            return GUITAR_STRINGS[string_key]
+    return None, None
+
+# Dataset definitions: (folder_name, subfolder, parser, file_extensions, display_name)
+DATASET_DEFS = [
+    ('UIowa-Piano-mf',                           None,  parse_uiowa,          ('.ogg',),       'UIowa'),
+    ('SalamanderGrandPianoV3_OggVorbis',          'ogg', parse_salamander,     ('.ogg',),       'Salamander'),
+    ('22511__skamos66__plucked-guitar-notes',     None,  parse_plucked_guitar, ('.wav',),       'Plucked'),
+    ('Nylon-guitar-single-notes',                 None,  parse_nylon_guitar,   ('.wav',),       'Nylon'),
+]
 
 # Colors
 BG_DARK = '#1e1e2f'
@@ -81,8 +119,9 @@ class TuningGUI(tk.Tk):
 
         self.configure(bg=BG_DARK)
         self.detector = UltimatePianoDetector()
-        self.test_cases = []
-        self.results_cache = {}
+        self.all_cases = []       # All loaded test cases
+        self.filtered_cases = []  # Currently visible (filtered by checkboxes)
+        self.results_cache = {}   # keyed by (dataset, path)
         self._load_datasets()
 
         # ---- Left Panel ----
@@ -90,7 +129,21 @@ class TuningGUI(tk.Tk):
         left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(10, 5), pady=10)
         left_frame.pack_propagate(False)
 
-        ttk.Label(left_frame, text="Test Audios", font=('Arial', 12, 'bold')).pack(anchor=tk.W, pady=(0, 3))
+        ttk.Label(left_frame, text="Datasets", font=('Arial', 12, 'bold')).pack(anchor=tk.W, pady=(0, 3))
+
+        # Dataset checkboxes
+        self.dataset_vars = {}
+        cb_frame = ttk.Frame(left_frame)
+        cb_frame.pack(fill=tk.X, pady=(0, 5))
+        for ds_name in self.available_datasets:
+            var = tk.BooleanVar(value=True)
+            self.dataset_vars[ds_name] = var
+            cb = tk.Checkbutton(cb_frame, text=ds_name, variable=var,
+                                command=self._refresh_listbox,
+                                bg=BG_DARK, fg=CLR_TEXT, selectcolor=BG_LIST,
+                                activebackground=BG_DARK, activeforeground=CLR_TEXT,
+                                font=('Consolas', 9), anchor='w')
+            cb.pack(anchor=tk.W)
 
         self.summary_label = ttk.Label(left_frame, text="Click 'Run All' to test", style='Summary.TLabel')
         self.summary_label.pack(anchor=tk.W, pady=(0, 5))
@@ -114,8 +167,7 @@ class TuningGUI(tk.Tk):
         self.listbox.config(yscrollcommand=scrollbar.set)
         self.listbox.bind('<<ListboxSelect>>', self._on_select)
 
-        for tc in self.test_cases:
-            self.listbox.insert(tk.END, f"[{tc['dataset'][:4]}] {tc['note_name']:>4} ({tc['expected_freq']:.1f}Hz)")
+        self._refresh_listbox()
 
         # Keyboard navigation
         self.bind('<Up>', self._nav_up)
@@ -186,26 +238,45 @@ class TuningGUI(tk.Tk):
 
     def _load_datasets(self):
         cases = []
-        for dirpath, parser, dataset_name in [
-            (UIOWA_DIR, parse_uiowa_filename, 'UIowa'),
-            (SALAMANDER_DIR, parse_salamander_filename, 'Salamander'),
-        ]:
+        found_datasets = []
+        for folder_name, subfolder, parser, extensions, display_name in DATASET_DEFS:
+            dirpath = os.path.join(TEST_DATA_DIR, folder_name)
+            if subfolder:
+                dirpath = os.path.join(dirpath, subfolder)
             if not os.path.exists(dirpath):
                 continue
+            found_datasets.append(display_name)
             for f in os.listdir(dirpath):
-                if not f.endswith('.ogg'):
+                if not any(f.endswith(ext) for ext in extensions):
                     continue
-                note, oct_val = parser(f)
-                if note:
-                    expected = calc_expected_freq(note, oct_val)
-                    cases.append({
-                        'dataset': dataset_name,
-                        'path': os.path.join(dirpath, f),
-                        'note_name': f"{note}{oct_val}",
-                        'expected_freq': expected,
-                    })
+                result = parser(f)
+                if result is None or result[0] is None:
+                    continue
+                note, oct_val = result
+                expected = calc_expected_freq(note, oct_val)
+                cases.append({
+                    'dataset': display_name,
+                    'path': os.path.join(dirpath, f),
+                    'note_name': f"{note}{oct_val}",
+                    'expected_freq': expected,
+                })
         cases.sort(key=lambda x: x['expected_freq'])
-        self.test_cases = cases
+        self.all_cases = cases
+        self.available_datasets = found_datasets
+
+    def _refresh_listbox(self):
+        self.listbox.delete(0, tk.END)
+        enabled = {name for name, var in self.dataset_vars.items() if var.get()}
+        self.filtered_cases = [tc for tc in self.all_cases if tc['dataset'] in enabled]
+        for tc in self.filtered_cases:
+            self.listbox.insert(tk.END, f"[{tc['dataset'][:4]}] {tc['note_name']:>4} ({tc['expected_freq']:.1f}Hz)")
+            # Restore cached pass/fail color
+            cache_key = (tc['dataset'], tc['path'])
+            if cache_key in self.results_cache:
+                ok, _, _ = self.results_cache[cache_key]
+                idx = self.listbox.size() - 1
+                self.listbox.itemconfig(idx, fg=CLR_PASS if ok else CLR_FAIL)
+        self.summary_label.config(text=f"{len(self.filtered_cases)} files shown")
 
     def _load_buffer(self, tc):
         data, sr = sf.read(tc['path'], always_2d=True)
@@ -213,10 +284,31 @@ class TuningGUI(tk.Tk):
             data = data.mean(axis=1)
         else:
             data = data[:, 0]
-        start_idx = int(sr * 0.1)
+
         buffer_size = 8192
+
+        # Find note onset: scan RMS in 1024-sample hops, trigger at 10% of peak RMS
+        hop = 1024
+        scan_end = min(len(data) - hop, int(sr * 2))
+        max_rms = 0
+        for i in range(0, scan_end, hop):
+            rms = np.sqrt(np.mean(data[i:i + hop] ** 2))
+            if rms > max_rms:
+                max_rms = rms
+
+        onset_threshold = max_rms * 0.1
+        onset_idx = 0
+        for i in range(0, scan_end, hop // 2):
+            rms = np.sqrt(np.mean(data[i:i + hop] ** 2))
+            if rms > onset_threshold:
+                onset_idx = i
+                break
+
+        # Start analysis slightly after onset to skip the initial transient
+        start_idx = onset_idx + int(sr * 0.05)
         if start_idx + buffer_size > len(data):
             start_idx = max(0, len(data) - buffer_size)
+
         buffer = data[start_idx : start_idx + buffer_size]
         return buffer, sr
 
@@ -234,7 +326,7 @@ class TuningGUI(tk.Tk):
     def _nav_down(self, event):
         sel = self.listbox.curselection()
         idx = (sel[0] + 1) if sel else 0
-        idx = min(len(self.test_cases) - 1, idx)
+        idx = min(len(self.filtered_cases) - 1, idx)
         self.listbox.selection_clear(0, tk.END)
         self.listbox.selection_set(idx)
         self.listbox.see(idx)
@@ -242,9 +334,9 @@ class TuningGUI(tk.Tk):
 
     def _on_select(self, event):
         sel = self.listbox.curselection()
-        if not sel:
+        if not sel or sel[0] >= len(self.filtered_cases):
             return
-        self._analyze(self.test_cases[sel[0]])
+        self._analyze(self.filtered_cases[sel[0]])
 
     # ---------- Batch run ----------
 
@@ -254,18 +346,20 @@ class TuningGUI(tk.Tk):
 
         passed = 0
         failed = 0
-        for i, tc in enumerate(self.test_cases):
+        for i, tc in enumerate(self.filtered_cases):
             buffer, sr = self._load_buffer(tc)
             freq = self.detector.get_pitch(buffer, sr)
 
             if freq > 0:
                 cents = 1200 * math.log2(freq / tc['expected_freq'])
-                ok = abs(cents) <= 25
+                tol = get_cents_tolerance(tc['expected_freq'])
+                ok = abs(cents) <= tol
             else:
                 ok = False
                 cents = None
 
-            self.results_cache[i] = (ok, freq, cents)
+            cache_key = (tc['dataset'], tc['path'])
+            self.results_cache[cache_key] = (ok, freq, cents)
 
             if ok:
                 passed += 1
@@ -279,9 +373,17 @@ class TuningGUI(tk.Tk):
         self.summary_label.config(text=f"{passed}/{total} passed ({pct:.0f}%)  |  {failed} failed")
         self.run_all_btn.config(state='normal', text='Run All')
 
+    # ---------- Audio playback ----------
+
+    def _play_audio(self, tc):
+        sd.stop()
+        data, sr = sf.read(tc['path'], always_2d=False)
+        sd.play(data, sr)
+
     # ---------- Analysis & plotting ----------
 
     def _analyze(self, tc):
+        self._play_audio(tc)
         buffer, sr = self._load_buffer(tc)
         freq, debug_data = self.detector.get_pitch(buffer, sr, return_debug=True)
         expected = tc['expected_freq']
@@ -296,12 +398,13 @@ class TuningGUI(tk.Tk):
             return
 
         cents = 1200 * math.log2(freq / expected)
+        tol = get_cents_tolerance(expected)
 
         # ---- Decision log with formatting ----
         self.log_text.insert(tk.END, f"Expected: {tc['note_name']} ({expected:.1f} Hz)\n", 'header')
         self.log_text.insert(tk.END, f"Detected: {get_note_name(freq)} ({freq:.1f} Hz)\n", 'header')
-        self.log_text.insert(tk.END, f"Error: {cents:+.1f} cents\n\n",
-                             'pass' if abs(cents) <= 25 else 'fail')
+        self.log_text.insert(tk.END, f"Error: {cents:+.1f} cents (tol: +/-{tol}c)\n\n",
+                             'pass' if abs(cents) <= tol else 'fail')
 
         for line in debug_data.get('decision_log', []):
             if '->' in line:
@@ -430,10 +533,11 @@ class TuningGUI(tk.Tk):
         self.canvas.draw()
 
         # ---- Info label ----
-        status = "PASSED" if abs(cents) <= 25 else "FAILED"
-        color = CLR_PASS if abs(cents) <= 25 else CLR_FAIL
+        ok = abs(cents) <= tol
+        status = "PASSED" if ok else "FAILED"
+        color = CLR_PASS if ok else CLR_FAIL
         self.info_label.config(
-            text=f"[{tc['dataset']}] {tc['note_name']}  |  Detected: {freq:.2f}Hz  (Expected: {expected:.2f}Hz)  |  {cents:+.1f} cents  |  {status}",
+            text=f"[{tc['dataset']}] {tc['note_name']}  |  Detected: {freq:.2f}Hz  (Expected: {expected:.2f}Hz)  |  {cents:+.1f} cents  |  tol: +/-{tol}c  |  {status}",
             foreground=color
         )
 

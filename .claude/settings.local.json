@@ -25,7 +25,9 @@
       "Bash(python -m http.server 8080)",
       "Bash(python -c \"import gui_explorer; print\\(''Import OK''\\)\")",
       "Bash(./venv/Scripts/python -c \"import gui_explorer; print\\(''Import OK''\\)\")",
-      "Bash(./venv/Scripts/python -c \"import gui_explorer; print\\(''OK''\\)\")"
+      "Bash(./venv/Scripts/python -c \"import gui_explorer; print\\(''OK''\\)\")",
+      "Bash(./venv/Scripts/pip install:*)",
+      "Bash(./venv/Scripts/python -c \":*)"
     ]
   }
 }
