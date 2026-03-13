@@ -92,13 +92,42 @@ def parse_kamoepiano(filename):
         return note, int(match.group(2))
     return None, None
 
+def parse_dk_gentle(filename):
+    """DK Gentle Grand: FSS6_Royers_L1_{note}{oct}_RR{n}.wav
+    Uses octave convention 1 lower than standard, so add 1."""
+    match = re.search(r'FSS6_Royers_L1_([A-G]#?)(\d)_RR(\d+)\.wav$', filename)
+    if match:
+        return match.group(1), int(match.group(2)) + 1, int(match.group(3))
+    return None, None, None
+
+def parse_legacy_knight(filename):
+    """Legacy Knight: {midi} {note}{oct}.wav  (skip Pad files).
+    Uses octave convention 1 lower than standard (their A0 = our A1), so add 1."""
+    if 'Pad' in filename:
+        return None, None
+    match = re.search(r'^\d+\s+([A-G]b?)(-?\d+)\.wav$', filename)
+    if match:
+        return match.group(1), int(match.group(2)) + 1
+    return None, None
+
+def parse_steinway(filename):
+    """Steinway Grand: Steinway_{note}{oct}_Dyn{n}_RR{n}.wav  (skip Release).
+    Uses octave convention 1 lower than standard, so add 1."""
+    match = re.search(r'^Steinway_([A-G]#?)(\d)_Dyn(\d+)_RR(\d+)\.wav$', filename)
+    if match:
+        return match.group(1), int(match.group(2)) + 1, int(match.group(3))
+    return None, None, None
+
 # Dataset definitions: (folder_name, subfolder, parser, file_extensions, display_name)
 DATASET_DEFS = [
-    ('UIowa-Piano-mf',                           None,      parse_uiowa,          ('.ogg',),       'UIowa'),
-    ('SalamanderGrandPianoV3_OggVorbis',          'ogg',     parse_salamander,     ('.ogg',),       'Salamander'),
-    ('kamoepiano301',                             'samples', parse_kamoepiano,     ('.wav',),       'Kamoe'),
-    ('22511__skamos66__plucked-guitar-notes',     None,      parse_plucked_guitar, ('.wav',),       'Plucked'),
-    ('Nylon-guitar-single-notes',                 None,      parse_nylon_guitar,   ('.wav',),       'Nylon'),
+    ('UIowa-Piano-mf',                           None,         parse_uiowa,          ('.ogg',),  'UIowa'),
+    ('SalamanderGrandPianoV3_OggVorbis',          'ogg',        parse_salamander,     ('.ogg',),  'Salamander'),
+    ('kamoepiano301',                             'samples',    parse_kamoepiano,     ('.wav',),  'Kamoe'),
+    ('DK Gentle Grand',                           'Samples/Clean NR', parse_dk_gentle, ('.wav',), 'DK Gentle'),
+    ('Legacy Knight 1.0 (DS)',                    'Samples',    parse_legacy_knight,  ('.wav',),  'Legacy'),
+    ('Steinway Grand  (DS)',                      'Samples',    parse_steinway,       ('.wav',),  'Steinway'),
+    ('22511__skamos66__plucked-guitar-notes',     None,         parse_plucked_guitar, ('.wav',),  'Plucked'),
+    ('Nylon-guitar-single-notes',                 None,         parse_nylon_guitar,   ('.wav',),  'Nylon'),
 ]
 
 # Colors
@@ -148,7 +177,7 @@ class TuningGUI(tk.Tk):
         cb_frame = ttk.Frame(left_frame)
         cb_frame.pack(fill=tk.X, pady=(0, 5))
         for ds_name in self.available_datasets:
-            var = tk.BooleanVar(value=True)
+            var = tk.BooleanVar(value=False)
             self.dataset_vars[ds_name] = var
             cb = tk.Checkbutton(cb_frame, text=ds_name, variable=var,
                                 command=self._refresh_listbox,
@@ -365,6 +394,33 @@ class TuningGUI(tk.Tk):
                 self.listbox.itemconfig(idx, fg=CLR_PASS if ok else CLR_FAIL)
         self.summary_label.config(text=f"{len(self.filtered_cases)} files shown")
 
+    def _find_onset(self, data):
+        """Find note onset sample index by scanning RMS in 1024-sample hops.
+        Requires 3 consecutive hops above threshold to avoid noise spikes."""
+        hop = 1024
+        step = hop // 2
+        scan_end = len(data) - hop  # Scan entire file (some datasets have >2s silence)
+        max_rms = 0
+        for i in range(0, scan_end, hop):
+            rms = np.sqrt(np.mean(data[i:i + hop] ** 2))
+            if rms > max_rms:
+                max_rms = rms
+
+        onset_threshold = max_rms * 0.2
+        consecutive = 0
+        onset_candidate = 0
+        for i in range(0, scan_end, step):
+            rms = np.sqrt(np.mean(data[i:i + hop] ** 2))
+            if rms > onset_threshold:
+                if consecutive == 0:
+                    onset_candidate = i
+                consecutive += 1
+                if consecutive >= 3:
+                    return onset_candidate
+            else:
+                consecutive = 0
+        return 0
+
     def _load_buffer(self, tc):
         data, sr = sf.read(tc['path'], always_2d=True)
         if data.shape[1] > 1:
@@ -373,23 +429,7 @@ class TuningGUI(tk.Tk):
             data = data[:, 0]
 
         buffer_size = self.buffer_size_var.get()
-
-        # Find note onset: scan RMS in 1024-sample hops, trigger at 10% of peak RMS
-        hop = 1024
-        scan_end = min(len(data) - hop, int(sr * 2))
-        max_rms = 0
-        for i in range(0, scan_end, hop):
-            rms = np.sqrt(np.mean(data[i:i + hop] ** 2))
-            if rms > max_rms:
-                max_rms = rms
-
-        onset_threshold = max_rms * 0.1
-        onset_idx = 0
-        for i in range(0, scan_end, hop // 2):
-            rms = np.sqrt(np.mean(data[i:i + hop] ** 2))
-            if rms > onset_threshold:
-                onset_idx = i
-                break
+        onset_idx = self._find_onset(data)
 
         # Start analysis slightly after onset to skip the initial transient
         start_idx = onset_idx + int(sr * 0.05)
@@ -464,8 +504,13 @@ class TuningGUI(tk.Tk):
 
     def _play_audio(self, tc):
         sd.stop()
-        data, sr = sf.read(tc['path'], always_2d=False)
-        sd.play(data, sr)
+        data, sr = sf.read(tc['path'], always_2d=True)
+        if data.shape[1] > 1:
+            mono = data.mean(axis=1)
+        else:
+            mono = data[:, 0]
+        onset_idx = self._find_onset(mono)
+        sd.play(data[onset_idx:], sr)
 
     # ---------- Analysis & plotting ----------
 

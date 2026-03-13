@@ -1,4 +1,4 @@
-"""Focused test: UIowa full dataset + Salamander v8 + Kamoe piano."""
+"""Focused test: UIowa + Salamander v8 + Kamoe + DK Gentle + Legacy Knight + Steinway."""
 import os, re, math
 import numpy as np
 import soundfile as sf
@@ -9,6 +9,9 @@ TEST_DATA_DIR = os.path.join(BASE_DIR, '..', 'TestData')
 UIOWA_DIR = os.path.join(TEST_DATA_DIR, 'UIowa-Piano-mf')
 SALAMANDER_DIR = os.path.join(TEST_DATA_DIR, 'SalamanderGrandPianoV3_OggVorbis', 'ogg')
 KAMOE_DIR = os.path.join(TEST_DATA_DIR, 'kamoepiano301', 'samples')
+DK_DIR = os.path.join(TEST_DATA_DIR, 'DK Gentle Grand', 'Samples', 'Clean NR')
+LEGACY_DIR = os.path.join(TEST_DATA_DIR, 'Legacy Knight 1.0 (DS)', 'Samples')
+STEINWAY_DIR = os.path.join(TEST_DATA_DIR, 'Steinway Grand  (DS)', 'Samples')
 
 SEMI = {
     "C": 0, "C#": 1, "Db": 1, "D": 2, "D#": 3, "Eb": 3,
@@ -70,6 +73,36 @@ def run_tests():
                     note = m.group(1).upper()
                     test_cases.append(('Kamoe', os.path.join(KAMOE_DIR, f), note, int(m.group(2)), f"{note}{m.group(2)}"))
 
+    # DK Gentle Grand - Royers L1 RR1 only (one round-robin per note)
+    # Octave convention is 1 lower than standard, so add 1
+    if os.path.exists(DK_DIR):
+        for f in os.listdir(DK_DIR):
+            if f.endswith('.wav'):
+                m = re.search(r'FSS6_Royers_L1_([A-G]#?)(\d)_RR1\.wav$', f)
+                if m:
+                    octave = int(m.group(2)) + 1
+                    test_cases.append(('DK-Gentle', os.path.join(DK_DIR, f), m.group(1), octave, f"{m.group(1)}{octave}"))
+
+    # Legacy Knight - all notes (skip Pad files, octave convention +1)
+    if os.path.exists(LEGACY_DIR):
+        for f in os.listdir(LEGACY_DIR):
+            if f.endswith('.wav') and 'Pad' not in f:
+                m = re.search(r'^\d+\s+([A-G]b?)(-?\d+)\.wav$', f)
+                if m:
+                    note = m.group(1)
+                    octave = int(m.group(2)) + 1  # Their convention is 1 lower
+                    test_cases.append(('Legacy', os.path.join(LEGACY_DIR, f), note, octave, f"{note}{octave}"))
+
+    # Steinway Grand - Dyn2 RR1 only (middle velocity, one round-robin)
+    # Octave convention is 1 lower than standard, so add 1
+    if os.path.exists(STEINWAY_DIR):
+        for f in os.listdir(STEINWAY_DIR):
+            if f.endswith('.wav'):
+                m = re.search(r'^Steinway_([A-G]#?)(\d)_Dyn2_RR1\.wav$', f)
+                if m:
+                    octave = int(m.group(2)) + 1
+                    test_cases.append(('Steinway', os.path.join(STEINWAY_DIR, f), m.group(1), octave, f"{m.group(1)}{octave}"))
+
     test_cases.sort(key=lambda t: calc_expected_freq(t[2], t[3]))
     detector = UltimatePianoDetector()
 
@@ -86,11 +119,8 @@ def run_tests():
         else:
             data = data[:, 0]
 
-        # Use onset detection for UIowa (long silence before note)
-        if dataset == 'UIowa':
-            start_idx = find_onset(data, sr)
-        else:
-            start_idx = int(sr * 0.1)
+        # Use onset detection for all datasets (many have silence before note)
+        start_idx = find_onset(data, sr)
 
         buffer_size = 8192
         if start_idx + buffer_size > len(data):

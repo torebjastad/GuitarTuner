@@ -156,12 +156,17 @@ class UltimatePianoDetector:
                 power_factor = mpm_hpwr / max(wpeak_hpwr, 1e-10)
                 decision_log.append(f"   - Power factor (mpm_hpwr/wpeak_hpwr): {power_factor:.1f}")
 
-                if mpm_hits >= 3 and mpm_hits > wpeak_hits and power_factor > 8:
-                    decision_log.append(f"5. MPM confirmed: {mpm_hits} harmonic peaks with {power_factor:.0f}x more power.")
+                # Require power_factor > 8, but relax to > 6 when MPM has
+                # overwhelmingly more harmonic hits (≥4x), indicating strong
+                # harmonic structure even if power ratio is moderate.
+                pf_threshold = 6 if mpm_hits >= 4 * max(wpeak_hits, 1) else 8
+
+                if mpm_hits >= 3 and mpm_hits > wpeak_hits and power_factor > pf_threshold:
+                    decision_log.append(f"5. MPM confirmed: {mpm_hits} harmonic peaks with {power_factor:.0f}x more power (threshold {pf_threshold}).")
                     decision_log.append(f"   -> Retaining MPM freq!")
                     final_freq = mpm_freq
                     harmonic_f0 = mpm_freq
-                elif mpm_hits >= 3 and mpm_hits == wpeak_hits and power_factor > 8:
+                elif mpm_hits >= 3 and mpm_hits == wpeak_hits and power_factor > pf_threshold:
                     decision_log.append(f"5. Tied at {mpm_hits} hits but MPM has {power_factor:.0f}x more harmonic power.")
                     decision_log.append(f"   -> Retaining MPM freq!")
                     final_freq = mpm_freq
