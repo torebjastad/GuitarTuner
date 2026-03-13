@@ -1,4 +1,4 @@
-"""Focused test: UIowa full dataset + Salamander v8 only."""
+"""Focused test: UIowa full dataset + Salamander v8 + Kamoe piano."""
 import os, re, math
 import numpy as np
 import soundfile as sf
@@ -8,6 +8,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEST_DATA_DIR = os.path.join(BASE_DIR, '..', 'TestData')
 UIOWA_DIR = os.path.join(TEST_DATA_DIR, 'UIowa-Piano-mf')
 SALAMANDER_DIR = os.path.join(TEST_DATA_DIR, 'SalamanderGrandPianoV3_OggVorbis', 'ogg')
+KAMOE_DIR = os.path.join(TEST_DATA_DIR, 'kamoepiano301', 'samples')
 
 SEMI = {
     "C": 0, "C#": 1, "Db": 1, "D": 2, "D#": 3, "Eb": 3,
@@ -22,6 +23,7 @@ def calc_expected_freq(note, octave):
 def get_cents_tolerance(freq):
     if freq >= 2093: return 100  # C7+
     if freq >= 1047: return 50   # C6+
+    if freq < 65.5:  return 35   # A0-C1 (high inharmonicity)
     return 25
 
 def find_onset(data, sr, hop=1024, threshold_ratio=0.1):
@@ -58,6 +60,15 @@ def run_tests():
                 m = re.search(r'([A-Ga-g][b#]?)(\d)v8\.ogg$', f)
                 if m:
                     test_cases.append(('Salamander-v8', os.path.join(SALAMANDER_DIR, f), m.group(1), int(m.group(2)), f"{m.group(1)}{m.group(2)}"))
+
+    # Kamoe piano - all files
+    if os.path.exists(KAMOE_DIR):
+        for f in os.listdir(KAMOE_DIR):
+            if f.endswith('.wav'):
+                m = re.search(r'(?:f|mf|p)_(?:hb_|hc_|lc_)?([a-g]#?)(\d)\.wav$', f)
+                if m:
+                    note = m.group(1).upper()
+                    test_cases.append(('Kamoe', os.path.join(KAMOE_DIR, f), note, int(m.group(2)), f"{note}{m.group(2)}"))
 
     test_cases.sort(key=lambda t: calc_expected_freq(t[2], t[3]))
     detector = UltimatePianoDetector()

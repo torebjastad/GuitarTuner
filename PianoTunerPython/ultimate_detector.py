@@ -7,20 +7,31 @@ class UltimatePianoDetector:
         self.small_cutoff = small_cutoff
 
     def _find_spectral_peaks(self, mag, bin_hz, min_freq=25, max_freq=10000, prominence_ratio=0.1):
-        """Find prominent spectral peaks with parabolic interpolation."""
-        min_bin = max(1, int(min_freq / bin_hz))
-        max_bin = min(len(mag) - 1, int(max_freq / bin_hz))
+        """Find prominent spectral peaks with parabolic interpolation (vectorized)."""
+        min_bin = max(2, int(min_freq / bin_hz))
+        max_bin = min(len(mag) - 2, int(max_freq / bin_hz))
 
-        threshold = np.max(mag[min_bin:max_bin]) * prominence_ratio
-        peaks = []
-        for i in range(min_bin + 1, max_bin - 1):
-            if mag[i] > mag[i-1] and mag[i] > mag[i+1] and mag[i] > threshold:
-                a = mag[i-1]; b = mag[i]; c = mag[i+1]
-                d = a - 2*b + c
-                adj = 0.5 * (a - c) / d if d != 0 else 0
-                freq = (i + adj) * bin_hz
-                peaks.append((freq, mag[i]))
+        region = mag[min_bin:max_bin]
+        threshold = np.max(region) * prominence_ratio
 
+        # Vectorized local-maximum detection
+        is_peak = ((region[1:-1] > region[:-2]) &
+                   (region[1:-1] > region[2:]) &
+                   (region[1:-1] > threshold))
+        peak_indices = np.where(is_peak)[0] + min_bin + 1
+
+        if len(peak_indices) == 0:
+            return []
+
+        # Vectorized parabolic interpolation
+        a = mag[peak_indices - 1]
+        b = mag[peak_indices]
+        c = mag[peak_indices + 1]
+        d = a - 2 * b + c
+        adj = np.where(d != 0, 0.5 * (a - c) / d, 0.0)
+        freqs = (peak_indices + adj) * bin_hz
+
+        peaks = list(zip(freqs.tolist(), b.tolist()))
         peaks.sort(key=lambda x: x[0])
         return peaks
 
@@ -34,19 +45,17 @@ class UltimatePianoDetector:
         if f0_candidate <= 0 or not peaks:
             return 0, 0.0
 
-        hits = 0
-        total_power = 0.0
-        for freq, power in peaks:
-            ratio = freq / f0_candidate
-            nearest_n = round(ratio)
-            if nearest_n < 1:
-                continue
-            # Allow slightly more tolerance for higher harmonics (inharmonicity)
-            tol = tolerance + 0.005 * nearest_n
-            if abs(ratio - nearest_n) < tol:
-                hits += 1
-                total_power += power
-        return hits, total_power
+        freqs = np.array([p[0] for p in peaks])
+        powers = np.array([p[1] for p in peaks])
+
+        ratios = freqs / f0_candidate
+        nearest_n = np.round(ratios).astype(int)
+
+        valid = nearest_n >= 1
+        tol = tolerance + 0.005 * nearest_n
+        is_harmonic = valid & (np.abs(ratios - nearest_n) < tol)
+
+        return int(np.sum(is_harmonic)), float(np.sum(powers[is_harmonic]))
 
     def get_pitch(self, buffer, sample_rate, return_debug=False):
         mpm_freq, dbg = self._run_mcleod(buffer, sample_rate)
@@ -167,7 +176,7 @@ class UltimatePianoDetector:
         if final_freq < 0 and w_peak_freq > 0:
             decision_log.append(f"MPM totally failed. Fallback to Spectral Peak.")
             final_freq = w_peak_freq
-            
+
         if return_debug:
             return final_freq, {
                 'nsdf': dbg['nsdf'],
@@ -192,20 +201,22 @@ class UltimatePianoDetector:
     def _run_mcleod(self, buffer, sample_rate):
         buf_len = len(buffer)
         max_tau = min(buf_len // 2, int(np.ceil(sample_rate / 20)))
-        
-        r = np.correlate(buffer, buffer, mode='full')
-        center = len(buffer) - 1
-        acf = r[center:center + max_tau]
-        
+
+        # FFT-based autocorrelation: O(N log N) instead of O(N^2) np.correlate
+        n_fft = 1 << int(np.ceil(np.log2(2 * buf_len)))
+        X = np.fft.rfft(buffer, n=n_fft)
+        r_full = np.fft.irfft(X * np.conj(X), n=n_fft)
+        acf = r_full[:max_tau]
+
+        # Vectorized NSDF normalization (replaces Python loop)
         sq = buffer ** 2
         sum_sq = np.sum(sq)
-        m = np.zeros(max_tau)
+        m = np.empty(max_tau)
         m[0] = 2 * sum_sq
-        
-        current_m = m[0]
-        for tau in range(1, max_tau):
-            current_m -= sq[buf_len - tau] + sq[tau - 1]
-            m[tau] = current_m
+        if max_tau > 1:
+            cumsum_sq = np.cumsum(sq)
+            taus = np.arange(1, max_tau)
+            m[1:] = (sum_sq - cumsum_sq[taus - 1]) + cumsum_sq[buf_len - taus - 1]
             
         with np.errstate(divide='ignore', invalid='ignore'):
             nsdf = np.where(m > 0, 2 * acf / m, 0)

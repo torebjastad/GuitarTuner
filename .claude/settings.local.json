@@ -30,7 +30,9 @@
       "Bash(./venv/Scripts/python -c \":*)",
       "Bash(./venv/Scripts/python mcleod_test.py)",
       "Bash(./venv/Scripts/python focused_test.py)",
-      "Bash(timeout 5 ./venv/Scripts/python -c \":*)"
+      "Bash(timeout 5 ./venv/Scripts/python -c \":*)",
+      "Bash(python focused_test.py)",
+      "Bash(python -c \":*)"
     ]
   }
 }

@@ -45,7 +45,9 @@ def get_note_name(freq):
     return f"{note}{octave}"
 
 def get_cents_tolerance(expected_freq):
-    """Octave-dependent tolerance to account for piano stretch tuning.
+    """Octave-dependent tolerance to account for piano stretch tuning
+    and inharmonicity at the extremes.
+    A0-B0 (~27.5-61.7 Hz):    +/-35 cents (high inharmonicity)
     Octave 6 (~1047-2093 Hz): +/-50 cents
     Octave 7+ (~2093+ Hz):    +/-100 cents
     All others:                +/-25 cents
@@ -54,6 +56,8 @@ def get_cents_tolerance(expected_freq):
         return 100
     elif expected_freq >= 1047.0:  # C6 and above
         return 50
+    elif expected_freq < 65.5:     # A0 to ~C1
+        return 35
     return 25
 
 def parse_uiowa(filename):
@@ -62,9 +66,9 @@ def parse_uiowa(filename):
     return None, None
 
 def parse_salamander(filename):
-    match = re.search(r'([A-Ga-g][b#]?)(\d)v\d+\.ogg$', filename)
-    if match: return match.group(1), int(match.group(2))
-    return None, None
+    match = re.search(r'([A-Ga-g][b#]?)(\d)v(\d+)\.ogg$', filename)
+    if match: return match.group(1), int(match.group(2)), int(match.group(3))
+    return None, None, None
 
 def parse_plucked_guitar(filename):
     match = re.search(r'__([a-g][#]?)(\d)\.wav$', filename)
@@ -81,12 +85,20 @@ def parse_nylon_guitar(filename):
             return GUITAR_STRINGS[string_key]
     return None, None
 
+def parse_kamoepiano(filename):
+    match = re.search(r'(?:f|mf|p)_(?:hb_|hc_|lc_)?([a-g]#?)(\d)\.wav$', filename)
+    if match:
+        note = match.group(1).upper()
+        return note, int(match.group(2))
+    return None, None
+
 # Dataset definitions: (folder_name, subfolder, parser, file_extensions, display_name)
 DATASET_DEFS = [
-    ('UIowa-Piano-mf',                           None,  parse_uiowa,          ('.ogg',),       'UIowa'),
-    ('SalamanderGrandPianoV3_OggVorbis',          'ogg', parse_salamander,     ('.ogg',),       'Salamander'),
-    ('22511__skamos66__plucked-guitar-notes',     None,  parse_plucked_guitar, ('.wav',),       'Plucked'),
-    ('Nylon-guitar-single-notes',                 None,  parse_nylon_guitar,   ('.wav',),       'Nylon'),
+    ('UIowa-Piano-mf',                           None,      parse_uiowa,          ('.ogg',),       'UIowa'),
+    ('SalamanderGrandPianoV3_OggVorbis',          'ogg',     parse_salamander,     ('.ogg',),       'Salamander'),
+    ('kamoepiano301',                             'samples', parse_kamoepiano,     ('.wav',),       'Kamoe'),
+    ('22511__skamos66__plucked-guitar-notes',     None,      parse_plucked_guitar, ('.wav',),       'Plucked'),
+    ('Nylon-guitar-single-notes',                 None,      parse_nylon_guitar,   ('.wav',),       'Nylon'),
 ]
 
 # Colors
@@ -144,6 +156,15 @@ class TuningGUI(tk.Tk):
                                 activebackground=BG_DARK, activeforeground=CLR_TEXT,
                                 font=('Consolas', 9), anchor='w')
             cb.pack(anchor=tk.W)
+
+        # Buffer size control
+        buf_frame = ttk.Frame(left_frame)
+        buf_frame.pack(fill=tk.X, pady=(0, 5))
+        ttk.Label(buf_frame, text="Buffer size:", font=('Consolas', 9)).pack(side=tk.LEFT)
+        self.buffer_size_var = tk.IntVar(value=8192)
+        buf_combo = ttk.Combobox(buf_frame, textvariable=self.buffer_size_var, width=7,
+                                  values=[2048, 4096, 8192, 16384, 32768, 65536], state='readonly')
+        buf_combo.pack(side=tk.LEFT, padx=(5, 0))
 
         self.summary_label = ttk.Label(left_frame, text="Click 'Run All' to test", style='Summary.TLabel')
         self.summary_label.pack(anchor=tk.W, pady=(0, 5))
@@ -203,6 +224,12 @@ class TuningGUI(tk.Tk):
         # Mouse wheel zoom on x-axis (centered on cursor position)
         self.canvas.mpl_connect('scroll_event', self._on_scroll_zoom)
 
+        # Click-and-drag pan on x-axis
+        self._pan_state = None
+        self.canvas.mpl_connect('button_press_event', self._on_pan_press)
+        self.canvas.mpl_connect('motion_notify_event', self._on_pan_motion)
+        self.canvas.mpl_connect('button_release_event', self._on_pan_release)
+
         # ---- Right Panel (Decision Log) ----
         right_frame = ttk.Frame(self, width=340)
         right_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=(5, 10), pady=10)
@@ -218,7 +245,7 @@ class TuningGUI(tk.Tk):
         self.log_text.tag_configure('arrow', foreground=CLR_WARN, font=('Consolas', 10, 'bold'))
         self.log_text.pack(fill=tk.BOTH, expand=True)
 
-    # ---------- Mouse wheel zoom ----------
+    # ---------- Mouse wheel zoom & click-drag pan ----------
 
     def _on_scroll_zoom(self, event):
         """Zoom x-axis only, centered on the mouse cursor position."""
@@ -232,7 +259,6 @@ class TuningGUI(tk.Tk):
         scale_factor = 0.8 if event.button == 'up' else 1.25
         xlim = ax.get_xlim()
 
-        # Compute new limits centered on mouse position
         left_frac = (xdata - xlim[0]) / (xlim[1] - xlim[0])
         new_width = (xlim[1] - xlim[0]) * scale_factor
         new_left = xdata - left_frac * new_width
@@ -240,6 +266,32 @@ class TuningGUI(tk.Tk):
 
         ax.set_xlim(max(0, new_left), new_right)
         self.canvas.draw_idle()
+
+    def _on_pan_press(self, event):
+        """Start panning on left-click inside an axes."""
+        if event.inaxes is None or event.button != 1:
+            return
+        self._pan_state = {
+            'ax': event.inaxes,
+            'x_start': event.xdata,
+            'xlim': event.inaxes.get_xlim(),
+        }
+
+    def _on_pan_motion(self, event):
+        """Drag to pan the x-axis."""
+        if self._pan_state is None:
+            return
+        ax = self._pan_state['ax']
+        if event.inaxes != ax or event.xdata is None:
+            return
+        dx = self._pan_state['x_start'] - event.xdata
+        lo, hi = self._pan_state['xlim']
+        ax.set_xlim(lo + dx, hi + dx)
+        self.canvas.draw_idle()
+
+    def _on_pan_release(self, event):
+        """End panning."""
+        self._pan_state = None
 
     # ---------- Formatting ----------
 
@@ -278,15 +330,22 @@ class TuningGUI(tk.Tk):
                 result = parser(f)
                 if result is None or result[0] is None:
                     continue
-                note, oct_val = result
+                # Salamander parser returns (note, octave, velocity)
+                if len(result) == 3:
+                    note, oct_val, velocity = result
+                else:
+                    note, oct_val = result
+                    velocity = 0
                 expected = calc_expected_freq(note, oct_val)
                 cases.append({
                     'dataset': display_name,
                     'path': os.path.join(dirpath, f),
                     'note_name': f"{note}{oct_val}",
                     'expected_freq': expected,
+                    'velocity': velocity,
                 })
-        cases.sort(key=lambda x: x['expected_freq'])
+        # Sort by frequency first, then velocity within each note
+        cases.sort(key=lambda x: (x['expected_freq'], x['velocity']))
         self.all_cases = cases
         self.available_datasets = found_datasets
 
@@ -295,7 +354,9 @@ class TuningGUI(tk.Tk):
         enabled = {name for name, var in self.dataset_vars.items() if var.get()}
         self.filtered_cases = [tc for tc in self.all_cases if tc['dataset'] in enabled]
         for tc in self.filtered_cases:
-            self.listbox.insert(tk.END, f"[{tc['dataset'][:4]}] {tc['note_name']:>4} ({tc['expected_freq']:.1f}Hz)")
+            vel = tc.get('velocity', 0)
+            vel_str = f" v{vel}" if vel > 0 else ""
+            self.listbox.insert(tk.END, f"[{tc['dataset'][:4]}] {tc['note_name']:>4}{vel_str} ({tc['expected_freq']:.1f}Hz)")
             # Restore cached pass/fail color
             cache_key = (tc['dataset'], tc['path'])
             if cache_key in self.results_cache:
@@ -311,7 +372,7 @@ class TuningGUI(tk.Tk):
         else:
             data = data[:, 0]
 
-        buffer_size = 8192
+        buffer_size = self.buffer_size_var.get()
 
         # Find note onset: scan RMS in 1024-sample hops, trigger at 10% of peak RMS
         hop = 1024
@@ -567,8 +628,9 @@ class TuningGUI(tk.Tk):
 
         self._vline(self.ax_zoom, expected, color='#60a5fa', linestyle='-.', alpha=0.7,
                     label=f'Expected: {expected:.1f}Hz')
+
         self._vline(self.ax_zoom, freq, color=CLR_WARN, linestyle='-', linewidth=2, alpha=0.9,
-                    label=f'Detected: {freq:.1f}Hz')
+                    label=f'Detected: {freq:.2f}Hz')
 
         # Shade the +/-5 cent "in tune" zone
         in_tune_lo = expected * 2**(-5/1200)
