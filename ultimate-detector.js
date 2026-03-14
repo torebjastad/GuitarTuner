@@ -76,79 +76,11 @@ class UltimateDetector extends PitchDetector {
      * Ensure autocorrelation FFT buffers are allocated for the given input size.
      */
     _ensureAcfBuffers(bufLen) {
-        const nFft = this._nextPow2(2 * bufLen);
+        const nFft = PitchFFT.nextPow2(2 * bufLen);
         if (this._acfFftSize === nFft) return;
         this._acfFftSize = nFft;
         this._acfReal = new Float64Array(nFft);
         this._acfImag = new Float64Array(nFft);
-    }
-
-    _nextPow2(n) {
-        let v = 1;
-        while (v < n) v <<= 1;
-        return v;
-    }
-
-    /**
-     * In-place radix-2 Cooley-Tukey FFT.
-     * Works on any power-of-2 sized arrays.
-     */
-    _fft(re, im) {
-        const n = re.length;
-
-        // Bit-reversal permutation
-        for (let i = 1, j = 0; i < n; i++) {
-            let bit = n >> 1;
-            while (j & bit) { j ^= bit; bit >>= 1; }
-            j ^= bit;
-            if (i < j) {
-                let tmp = re[i]; re[i] = re[j]; re[j] = tmp;
-                tmp = im[i]; im[i] = im[j]; im[j] = tmp;
-            }
-        }
-
-        // Butterfly stages
-        for (let len = 2; len <= n; len *= 2) {
-            const half = len >> 1;
-            const angle = -2 * Math.PI / len;
-            const wRe = Math.cos(angle);
-            const wIm = Math.sin(angle);
-            for (let i = 0; i < n; i += len) {
-                let curRe = 1, curIm = 0;
-                for (let j = 0; j < half; j++) {
-                    const idx1 = i + j;
-                    const idx2 = idx1 + half;
-                    const uRe = re[idx1], uIm = im[idx1];
-                    const vRe = re[idx2] * curRe - im[idx2] * curIm;
-                    const vIm = re[idx2] * curIm + im[idx2] * curRe;
-                    re[idx1] = uRe + vRe;
-                    im[idx1] = uIm + vIm;
-                    re[idx2] = uRe - vRe;
-                    im[idx2] = uIm - vIm;
-                    const tmpRe = curRe * wRe - curIm * wIm;
-                    curIm = curRe * wIm + curIm * wRe;
-                    curRe = tmpRe;
-                }
-            }
-        }
-    }
-
-    /**
-     * In-place inverse FFT using the forward FFT.
-     * IFFT(X) = conj(FFT(conj(X))) / N
-     */
-    _ifft(re, im) {
-        const n = re.length;
-        // Conjugate input
-        for (let i = 0; i < n; i++) im[i] = -im[i];
-        // Forward FFT
-        this._fft(re, im);
-        // Conjugate output and scale
-        const invN = 1 / n;
-        for (let i = 0; i < n; i++) {
-            re[i] *= invN;
-            im[i] = -im[i] * invN;
-        }
     }
 
     /**
@@ -243,7 +175,7 @@ class UltimateDetector extends PitchDetector {
         acfIm.fill(0);
 
         // Forward FFT
-        this._fft(acfRe, acfIm);
+        PitchFFT.fft(acfRe, acfIm);
 
         // Power spectrum: |X|² (real-only result for autocorrelation)
         for (let i = 0; i < nFft; i++) {
@@ -252,7 +184,7 @@ class UltimateDetector extends PitchDetector {
         }
 
         // Inverse FFT → autocorrelation
-        this._ifft(acfRe, acfIm);
+        PitchFFT.ifft(acfRe, acfIm);
         // acfRe[tau] now contains the autocorrelation r(tau)
 
         // ── Vectorized NSDF normalization via cumulative sums ──
@@ -397,7 +329,7 @@ class UltimateDetector extends PitchDetector {
         }
         im.fill(0);
 
-        this._fft(re, im);
+        PitchFFT.fft(re, im);
 
         // Magnitude spectrum
         const mag = this._magnitude;

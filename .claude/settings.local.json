@@ -36,7 +36,12 @@
       "Bash(node -e \":*)",
       "Bash(python export_test_buffers.py)",
       "Bash(python test_ch0_c8.py)",
-      "Bash(node test_js_buffers.js)"
+      "Bash(node test_js_buffers.js)",
+      "Bash(python compare_mpm_vs_ultimate.py)",
+      "Bash(python export_all_buffers.py)",
+      "Bash(node compare_mpm.js)",
+      "Bash(node compare_mpm2.js)",
+      "Bash(node verify_fft_refactor.js)"
     ]
   }
 }

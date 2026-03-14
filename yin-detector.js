@@ -1,6 +1,9 @@
 /**
  * YIN Algorithm Implementation
- * Depends on: pitch-common.js (TunerDefaults, PitchDetector)
+ *
+ * Uses FFT-based cross-correlation O(N log N) for the difference function
+ * instead of the direct O(N²) computation.
+ * Depends on: pitch-common.js (TunerDefaults, PitchDetector, PitchFFT)
  */
 class YinDetector extends PitchDetector {
     constructor(threshold = 0.1, probabilityThreshold = 0.6) {
@@ -9,6 +12,25 @@ class YinDetector extends PitchDetector {
         this.probabilityThreshold = probabilityThreshold;
         this.debug = false;
         this.debugData = null;
+
+        // Pre-allocate FFT buffers (resized lazily)
+        this._fftSize = 0;
+        this._aRe = null;
+        this._aIm = null;
+        this._bRe = null;
+        this._bIm = null;
+    }
+
+    _ensureBuffers(bufferSize) {
+        // Cross-correlation needs fftSize >= bufferSize + halfBuffer
+        const nFft = PitchFFT.nextPow2(2 * bufferSize);
+        if (this._fftSize !== nFft) {
+            this._fftSize = nFft;
+            this._aRe = new Float64Array(nFft);
+            this._aIm = new Float64Array(nFft);
+            this._bRe = new Float64Array(nFft);
+            this._bIm = new Float64Array(nFft);
+        }
     }
 
     getParams() {
@@ -42,28 +64,65 @@ class YinDetector extends PitchDetector {
 
         const halfBuffer = Math.floor(bufferSize / 2);
 
-        // Restrict tau range based on frequency limits:
-        // tau = sampleRate / frequency, so low freq → high tau, high freq → low tau
+        // Restrict tau range based on frequency limits
         const maxTau = Math.min(halfBuffer, Math.ceil(sampleRate / TunerDefaults.MIN_FREQUENCY));
         const minTau = Math.max(1, Math.floor(sampleRate / TunerDefaults.MAX_FREQUENCY));
 
         const yinBuffer = new Float32Array(maxTau);
 
-        // Step 1: Difference Function
-        // d(tau) = sum((x[i] - x[i+tau])^2)
-        for (let tau = 0; tau < maxTau; tau++) {
-            yinBuffer[tau] = 0;
+        // ── FFT-based difference function ──
+        // d(τ) = S1 + S2(τ) - 2·r_cross(τ)
+        // where S1 = Σ x[i]² (i=0..W-1), S2(τ) = Σ x[i+τ]² (i=0..W-1),
+        // r_cross(τ) = Σ x[i]·x[i+τ] (i=0..W-1)
+
+        this._ensureBuffers(bufferSize);
+        const nFft = this._fftSize;
+        const aRe = this._aRe;
+        const aIm = this._aIm;
+        const bRe = this._bRe;
+        const bIm = this._bIm;
+
+        // FFT of windowed signal a = x[0:halfBuffer]
+        for (let i = 0; i < halfBuffer; i++) aRe[i] = buffer[i];
+        for (let i = halfBuffer; i < nFft; i++) aRe[i] = 0;
+        aIm.fill(0);
+        PitchFFT.fft(aRe, aIm);
+
+        // FFT of full signal b = x[0:bufferSize]
+        for (let i = 0; i < bufferSize; i++) bRe[i] = buffer[i];
+        for (let i = bufferSize; i < nFft; i++) bRe[i] = 0;
+        bIm.fill(0);
+        PitchFFT.fft(bRe, bIm);
+
+        // Cross-correlation: R = IFFT(conj(A) · B)
+        for (let i = 0; i < nFft; i++) {
+            const cRe = aRe[i], cIm = -aIm[i]; // conj(A)
+            const xRe = bRe[i], xIm = bIm[i];  // B
+            aRe[i] = cRe * xRe - cIm * xIm;
+            aIm[i] = cRe * xIm + cIm * xRe;
+        }
+        PitchFFT.ifft(aRe, aIm);
+        // aRe[τ] = r_cross(τ)
+
+        // S1 = Σ x[i]² for i=0..halfBuffer-1 (constant)
+        let S1 = 0;
+        for (let i = 0; i < halfBuffer; i++) S1 += buffer[i] * buffer[i];
+
+        // S2(τ) via cumulative sum of x²
+        // S2(τ) = Σ x[i+τ]² for i=0..halfBuffer-1 = cumSq[τ+halfBuffer-1] - cumSq[τ-1]
+        const cumSq = new Float64Array(bufferSize);
+        cumSq[0] = buffer[0] * buffer[0];
+        for (let i = 1; i < bufferSize; i++) {
+            cumSq[i] = cumSq[i - 1] + buffer[i] * buffer[i];
         }
 
+        yinBuffer[0] = 0;
         for (let tau = 1; tau < maxTau; tau++) {
-            for (let i = 0; i < halfBuffer; i++) {
-                const delta = buffer[i] - buffer[i + tau];
-                yinBuffer[tau] += delta * delta;
-            }
+            const S2 = cumSq[tau + halfBuffer - 1] - cumSq[tau - 1];
+            yinBuffer[tau] = S1 + S2 - 2 * aRe[tau];
         }
 
         // Step 2: Cumulative Mean Normalized Difference Function
-        // d'(tau) = d(tau) / (1/tau * sum(d(j)))
         yinBuffer[0] = 1;
         let runningSum = 0;
         for (let tau = 1; tau < maxTau; tau++) {
@@ -76,7 +135,6 @@ class YinDetector extends PitchDetector {
         let thresholdUsed = true;
         for (let i = minTau; i < maxTau; i++) {
             if (yinBuffer[i] < this.threshold) {
-                // Found a dip below threshold
                 while (i + 1 < maxTau && yinBuffer[i + 1] < yinBuffer[i]) {
                     i++;
                 }
@@ -88,7 +146,7 @@ class YinDetector extends PitchDetector {
         // If no pitch found below threshold, look for global minimum
         if (tau === -1) {
             thresholdUsed = false;
-            let minVal = 100; // Arbitrary high
+            let minVal = 100;
             for (let i = minTau; i < maxTau; i++) {
                 if (yinBuffer[i] < minVal) {
                     minVal = yinBuffer[i];
@@ -102,10 +160,7 @@ class YinDetector extends PitchDetector {
         // Step 4: Octave-error correction (bidirectional)
         let octaveCorrected = false;
 
-        // 4a: Check tau/2 — if YIN locked onto a sub-harmonic (double the
-        // true period), the real fundamental will have a good dip at half tau.
-        // This fixes octave-down errors on mid/high strings (B3, E4) where
-        // the first CMND dip below threshold is at 2× the true period.
+        // 4a: Check tau/2
         const halfTau = Math.round(tau / 2);
         if (halfTau >= minTau && halfTau < maxTau - 1) {
             let bestTau = halfTau;
@@ -119,20 +174,13 @@ class YinDetector extends PitchDetector {
                     bestTau = k;
                 }
             }
-            // Accept the half-tau if it has a reasonable dip and is
-            // comparable to the current tau. Use a relaxed threshold (0.5)
-            // since the true fundamental may have a weaker CMND dip than
-            // the sub-harmonic, but still represents a valid period.
             if (bestVal < 0.5 && bestVal <= yinBuffer[tau] * 1.2) {
                 tau = bestTau;
                 octaveCorrected = true;
             }
         }
 
-        // 4b: Check 2*tau — if YIN locked onto a harmonic (half the true
-        // period), the real fundamental will have a good dip at double tau.
-        // This fixes octave-up errors on low strings (E2, A2) where the
-        // 2nd harmonic is stronger than the fundamental.
+        // 4b: Check 2*tau
         if (!octaveCorrected) {
             const doubleTau = Math.round(tau * 2);
             if (doubleTau > 0 && doubleTau < maxTau - 1) {
@@ -157,11 +205,8 @@ class YinDetector extends PitchDetector {
         const correctedTau = tau;
 
         // Step 5: Parabolic Interpolation
-        // Use 5-point least-squares quadratic fit when possible (more robust
-        // for broad or asymmetric dips), fall back to 3-point fit near edges.
         let interpolatedTau = tau;
         if (tau > 2 && tau < maxTau - 2) {
-            // 5-point least-squares: fit y = a*x^2 + b*x + c at x = {-2,-1,0,1,2}
             const sm2 = yinBuffer[tau - 2];
             const sm1 = yinBuffer[tau - 1];
             const s0 = yinBuffer[tau];
@@ -174,7 +219,6 @@ class YinDetector extends PitchDetector {
                 if (Math.abs(adjustment) < 2) interpolatedTau = tau + adjustment;
             }
         } else if (tau > 1 && tau < maxTau - 1) {
-            // 3-point fallback near buffer edges
             const s0 = yinBuffer[tau - 1];
             const s1 = yinBuffer[tau];
             const s2 = yinBuffer[tau + 1];
@@ -184,7 +228,6 @@ class YinDetector extends PitchDetector {
 
         const probability = 1 - yinBuffer[Math.floor(interpolatedTau)];
 
-        // Capture debug data if enabled
         if (this.debug) {
             this.debugData = {
                 cmnd: new Float32Array(yinBuffer),
@@ -201,7 +244,6 @@ class YinDetector extends PitchDetector {
             };
         }
 
-        // Noise gate
         if (probability < this.probabilityThreshold) return -1;
 
         return sampleRate / interpolatedTau;

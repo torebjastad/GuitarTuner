@@ -1,7 +1,9 @@
 /**
  * McLeod Pitch Method (MPM) Implementation
  * Based on "A Smarter Way to Find Pitch" by Philip McLeod & Geoff Wyvill (2005)
- * Depends on: pitch-common.js (TunerDefaults, PitchDetector)
+ *
+ * Uses FFT-based autocorrelation O(N log N) instead of direct O(N²) NSDF.
+ * Depends on: pitch-common.js (TunerDefaults, PitchDetector, PitchFFT)
  */
 class McLeodDetector extends PitchDetector {
     constructor(cutoff = 0.93, smallCutoff = 0.5) {
@@ -10,8 +12,28 @@ class McLeodDetector extends PitchDetector {
         this.smallCutoff = smallCutoff; // Minimum clarity to accept a reading
         this.debug = false;
         this.debugData = null;
-        // Pre-allocate NSDF buffer
-        this.nsdfBuffer = new Float32Array(TunerDefaults.FFTSIZE);
+
+        // Pre-allocate buffers (resized lazily in _ensureBuffers)
+        this._fftSize = 0;
+        this._fftRe = null;
+        this._fftIm = null;
+        this._nsdf = new Float64Array(TunerDefaults.FFTSIZE);
+        this._cumSq = new Float64Array(TunerDefaults.FFTSIZE);
+    }
+
+    _ensureBuffers(bufLen) {
+        const nFft = PitchFFT.nextPow2(2 * bufLen);
+        if (this._fftSize !== nFft) {
+            this._fftSize = nFft;
+            this._fftRe = new Float64Array(nFft);
+            this._fftIm = new Float64Array(nFft);
+        }
+        if (this._nsdf.length < bufLen) {
+            this._nsdf = new Float64Array(bufLen);
+        }
+        if (this._cumSq.length < bufLen) {
+            this._cumSq = new Float64Array(bufLen);
+        }
     }
 
     getParams() {
@@ -23,30 +45,47 @@ class McLeodDetector extends PitchDetector {
 
     getPitch(buffer, sampleRate) {
         const bufLen = buffer.length;
-        const nsdf = this.nsdfBuffer;
+        this._ensureBuffers(bufLen);
 
-        // Limit tau range: max tau = sampleRate / minFreq.
-        // Beyond that we'd be detecting sub-bass below the tuner's range.
-        // Also cap at bufLen/2 so the inner sum has enough samples for a meaningful result.
+        const nsdf = this._nsdf;
         const maxTau = Math.min(Math.floor(bufLen / 2), Math.ceil(sampleRate / TunerDefaults.MIN_FREQUENCY));
 
-        // Step 1: Normalized Square Difference Function (NSDF)
-        // NSDF(tau) = 2 * r(tau) / m(tau)
-        // where r(tau) = sum(x[i]*x[i+tau]) and m(tau) = sum(x[i]^2 + x[i+tau]^2)
-        for (let tau = 0; tau < maxTau; tau++) {
-            let acf = 0;
-            let div = 0;
-            const limit = bufLen - tau;
-            for (let i = 0; i < limit; i++) {
-                acf += buffer[i] * buffer[i + tau];
-                div += buffer[i] * buffer[i] + buffer[i + tau] * buffer[i + tau];
-            }
-            nsdf[tau] = div > 0 ? 2 * acf / div : 0;
+        // ── FFT-based autocorrelation: r(τ) = IFFT(|FFT(x)|²) ──
+        const nFft = this._fftSize;
+        const re = this._fftRe;
+        const im = this._fftIm;
+
+        for (let i = 0; i < bufLen; i++) re[i] = buffer[i];
+        for (let i = bufLen; i < nFft; i++) re[i] = 0;
+        im.fill(0);
+
+        PitchFFT.fft(re, im);
+
+        // Power spectrum |X|²
+        for (let i = 0; i < nFft; i++) {
+            re[i] = re[i] * re[i] + im[i] * im[i];
+            im[i] = 0;
         }
 
-        // Step 2: Peak Picking — find key maxima
-        // A key maximum is the highest NSDF value between a positive zero crossing
-        // (going up) and a negative zero crossing (going down).
+        PitchFFT.ifft(re, im);
+        // re[τ] now holds the autocorrelation r(τ)
+
+        // ── NSDF normalization via cumulative sums ──
+        // m(τ) = Σ x[i]² (i=τ..N-1) + Σ x[i]² (i=0..N-τ-1)
+        const cumSq = this._cumSq;
+        cumSq[0] = buffer[0] * buffer[0];
+        for (let i = 1; i < bufLen; i++) {
+            cumSq[i] = cumSq[i - 1] + buffer[i] * buffer[i];
+        }
+        const sumSq = cumSq[bufLen - 1];
+
+        nsdf[0] = sumSq > 0 ? 1 : 0; // nsdf[0] = 2*r(0) / (2*sumSq) = 1
+        for (let tau = 1; tau < maxTau; tau++) {
+            const mTau = (sumSq - cumSq[tau - 1]) + cumSq[bufLen - tau - 1];
+            nsdf[tau] = mTau > 0 ? (2 * re[tau] / mTau) : 0;
+        }
+
+        // ── Peak Picking — find key maxima ──
         const keyMaxima = [];
         let inPositiveRegion = false;
         let currentMaxTau = 0;
@@ -54,12 +93,10 @@ class McLeodDetector extends PitchDetector {
 
         for (let tau = 1; tau < maxTau; tau++) {
             if (nsdf[tau] > 0 && nsdf[tau - 1] <= 0) {
-                // Positive zero crossing (upward)
                 inPositiveRegion = true;
                 currentMaxTau = tau;
                 currentMaxVal = nsdf[tau];
             } else if (nsdf[tau] <= 0 && nsdf[tau - 1] > 0) {
-                // Negative zero crossing (downward) — end of positive region
                 if (inPositiveRegion) {
                     keyMaxima.push({ tau: currentMaxTau, val: currentMaxVal });
                 }
@@ -69,7 +106,6 @@ class McLeodDetector extends PitchDetector {
                 currentMaxVal = nsdf[tau];
             }
         }
-        // Handle case where signal ends while still in a positive region
         if (inPositiveRegion) {
             keyMaxima.push({ tau: currentMaxTau, val: currentMaxVal });
         }
@@ -79,9 +115,7 @@ class McLeodDetector extends PitchDetector {
             return -1;
         }
 
-        // Step 3: Relative threshold selection
-        // Find the global maximum among key maxima, then select the first
-        // key maximum whose value is >= cutoff * globalMax
+        // ── Relative threshold selection ──
         let nmax = -Infinity;
         for (let i = 0; i < keyMaxima.length; i++) {
             if (keyMaxima[i].val > nmax) nmax = keyMaxima[i].val;
@@ -101,7 +135,7 @@ class McLeodDetector extends PitchDetector {
             return -1;
         }
 
-        // Step 4: Parabolic interpolation around the selected peak
+        // ── Parabolic interpolation ──
         const tau = selectedPeak.tau;
         let interpolatedTau = tau;
         if (tau > 0 && tau < maxTau - 1) {
@@ -110,13 +144,13 @@ class McLeodDetector extends PitchDetector {
             const s2 = nsdf[tau + 1];
             const a = (s0 + s2 - 2 * s1) / 2;
             const b = (s2 - s0) / 2;
-            if (a < 0) { // Must be a true maximum (concave down)
+            if (a < 0) {
                 const adjustment = -b / (2 * a);
                 if (Math.abs(adjustment) < 1) interpolatedTau = tau + adjustment;
             }
         }
 
-        // Step 5: Clarity gate
+        // Clarity gate
         const clarity = selectedPeak.val;
         const frequency = sampleRate / interpolatedTau;
 
