@@ -33,7 +33,10 @@
       "Bash(timeout 5 ./venv/Scripts/python -c \":*)",
       "Bash(python focused_test.py)",
       "Bash(python -c \":*)",
-      "Bash(node -e \":*)"
+      "Bash(node -e \":*)",
+      "Bash(python export_test_buffers.py)",
+      "Bash(python test_ch0_c8.py)",
+      "Bash(node test_js_buffers.js)"
     ]
   }
 }

@@ -16,11 +16,10 @@
  * Depends on: pitch-common.js (TunerDefaults, PitchDetector)
  */
 class UltimateDetector extends PitchDetector {
-    constructor(cutoff = 0.93, smallCutoff = 0.40, rmsThreshold = 0.002) {
+    constructor(cutoff = 0.93, smallCutoff = 0.40) {
         super();
         this.cutoff = cutoff;
         this.smallCutoff = smallCutoff;
-        this.rmsThreshold = rmsThreshold;
         this.decisionFreq = 1000;
         this.debug = false;
         this.debugData = null;
@@ -56,7 +55,6 @@ class UltimateDetector extends PitchDetector {
         return [
             { key: 'cutoff', label: 'MPM Threshold', min: 0.5, max: 1.0, step: 0.01, value: this.cutoff, description: 'McLeod relative threshold — fraction of best NSDF peak. Higher values prefer the first (highest-frequency) strong peak, avoiding octave drops.' },
             { key: 'smallCutoff', label: 'Clarity Gate', min: 0.1, max: 0.9, step: 0.01, value: this.smallCutoff, description: 'Minimum NSDF clarity value. Rejects signals where the best periodicity peak is too weak (noisy/unpitched).' },
-            { key: 'rmsThreshold', label: 'RMS Noise Gate', min: 0.0001, max: 0.05, step: 0.0001, value: this.rmsThreshold, description: 'Minimum RMS volume level required to process the signal.' },
             { key: 'decisionFreq', label: 'Decision Freq', min: 500, max: 2000, step: 50, value: this.decisionFreq, description: 'Frequency threshold above which the decision engine activates to compare MPM vs spectral peak. Below this, MPM result is trusted.' }
         ];
     }
@@ -372,15 +370,12 @@ class UltimateDetector extends PitchDetector {
     getPitch(buffer, sampleRate) {
         const bufLen = buffer.length;
 
-        // RMS noise gate
-        let rmsSum = 0;
-        for (let i = 0; i < bufLen; i++) {
-            rmsSum += buffer[i] * buffer[i];
-        }
-        const rms = Math.sqrt(rmsSum / bufLen);
-        if (rms < this.rmsThreshold) {
-            if (this.debug) this.debugData = null;
-            return -1;
+        // RMS for debug display only (no gating — matches Python)
+        let rms = 0;
+        if (this.debug) {
+            let rmsSum = 0;
+            for (let i = 0; i < bufLen; i++) rmsSum += buffer[i] * buffer[i];
+            rms = Math.sqrt(rmsSum / bufLen);
         }
 
         // ── Stage 1: McLeod MPM ──

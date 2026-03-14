@@ -316,7 +316,20 @@
                 }
 
                 const sampleRate = audioBuffer.sampleRate;
-                const channelData = audioBuffer.getChannelData(0);
+                // Average all channels (matches Python: data.mean(axis=1))
+                let channelData;
+                if (audioBuffer.numberOfChannels === 1) {
+                    channelData = audioBuffer.getChannelData(0);
+                } else {
+                    const nCh = audioBuffer.numberOfChannels;
+                    const len = audioBuffer.length;
+                    channelData = new Float32Array(len);
+                    for (let ch = 0; ch < nCh; ch++) {
+                        const chData = audioBuffer.getChannelData(ch);
+                        for (let i = 0; i < len; i++) channelData[i] += chData[i];
+                    }
+                    for (let i = 0; i < len; i++) channelData[i] /= nCh;
+                }
 
                 // Onset detection — matches Python exactly (10%, no consecutive)
                 let startIdx = findOnsetPython(channelData, sampleRate);
