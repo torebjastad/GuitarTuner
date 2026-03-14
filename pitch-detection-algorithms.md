@@ -1,6 +1,27 @@
 # Pitch Detection Algorithms
 
-This document describes the five pitch detection algorithms used in the Guitar Tuner application. Three are time-domain methods, one (HPS) is frequency-domain, and one (MUSIC) is subspace-based.
+This document describes the six pitch detection algorithms used in the Guitar Tuner application. Three are time-domain methods, one (HPS) is frequency-domain, one (MUSIC) is subspace-based, and one (Ultimate) is a hybrid combining time-domain and frequency-domain stages with a decision engine.
+
+All time-domain algorithms (YIN, McLeod, Autocorrelation) and the Ultimate detector use **FFT-based correlation** via a shared `PitchFFT` utility for O(N log N) performance instead of direct O(N²) loops.
+
+---
+
+## Shared FFT Utility (`PitchFFT`)
+
+Defined in `pitch-common.js`, `PitchFFT` provides three functions used by YIN, McLeod, Autocorrelation, and Ultimate detectors:
+
+- **`nextPow2(n)`** — returns the smallest power of 2 ≥ n.
+- **`fft(re, im)`** — in-place radix-2 Cooley-Tukey FFT. Operates on Float64Array buffers of equal power-of-2 length. Uses bit-reversal permutation followed by butterfly stages.
+- **`ifft(re, im)`** — in-place inverse FFT via the conjugate trick: `IFFT(X) = conj(FFT(conj(X))) / N`.
+
+All three time-domain detectors exploit the **convolution theorem** to compute correlation in O(N log N):
+
+```
+Autocorrelation:    r(τ) = IFFT(|FFT(x)|²)
+Cross-correlation:  r(τ) = IFFT(conj(FFT(a)) · FFT(b))
+```
+
+The signal is zero-padded to `nextPow2(2N)` before the FFT to avoid circular convolution artifacts.
 
 ---
 
@@ -10,19 +31,36 @@ This document describes the five pitch detection algorithms used in the Guitar T
 
 ### Overview
 
-YIN is a refined autocorrelation-based method that uses a difference function and cumulative mean normalization to reliably detect the fundamental period of a signal. It offers high accuracy, particularly with its built-in octave-error correction step.
+YIN is a refined autocorrelation-based method that uses a difference function and cumulative mean normalization to reliably detect the fundamental period of a signal. It offers high accuracy, particularly with its built-in bidirectional octave-error correction.
 
 ### Steps
 
-#### 1. Difference Function
+#### 1. Difference Function (FFT-based)
 
 For each candidate period (lag) `tau`, compute the squared difference between the signal and a delayed copy of itself:
 
 ```
-d(tau) = sum( (x[i] - x[i + tau])^2 )   for i = 0..N/2
+d(tau) = sum( (x[i] - x[i + tau])^2 )   for i = 0..W-1
 ```
 
-where `N` is the buffer length. The lag `tau` that corresponds to the true period will produce a minimum in `d(tau)`, since the signal closely matches its shifted copy at that lag.
+where `W = N/2` (half the buffer length). Expanding the square:
+
+```
+d(tau) = S1 + S2(tau) - 2·r_cross(tau)
+```
+
+where:
+- `S1 = Σ x[i]²` for `i = 0..W-1` (constant, computed once)
+- `S2(tau) = Σ x[i+tau]²` for `i = 0..W-1` (computed via cumulative sum of x²)
+- `r_cross(tau) = Σ x[i]·x[i+tau]` for `i = 0..W-1` (cross-correlation)
+
+The cross-correlation is computed efficiently via FFT:
+
+```
+r_cross = IFFT( conj(FFT(a)) · FFT(b) )
+```
+
+where `a = x[0:W]` (first half) and `b = x[0:N]` (full buffer), both zero-padded to `nextPow2(2N)`. This replaces the O(N²) direct loop with O(N log N) FFT operations using 4 pre-allocated Float64Array buffers.
 
 #### 2. Cumulative Mean Normalized Difference Function (CMND)
 
@@ -40,15 +78,21 @@ Scan `d'(tau)` for the first value that falls below a configurable threshold (de
 
 If no value falls below the threshold, the global minimum of `d'(tau)` is used as a fallback.
 
-#### 4. Octave-Error Correction (Sub-harmonic Check)
+#### 4. Bidirectional Octave-Error Correction
 
-Guitar low strings (E2, A2) often have a stronger 2nd harmonic than the fundamental, which can cause YIN to lock onto half the true period. To correct this, the algorithm checks whether a valid dip exists at `2 * tau` (the sub-harmonic / true fundamental period):
+YIN applies two octave-correction checks in sequence. Only one correction is applied (the first that matches):
+
+**4a. Check tau/2 (octave-down correction):** If YIN locked onto a sub-harmonic (double the true period), the real fundamental will have a good dip at half tau. This fixes octave-down errors on mid/high strings (B3, E4) where the first CMND dip below threshold is at 2× the true period.
+
+1. Compute `halfTau = round(tau / 2)`.
+2. Search a small radius around `halfTau` (±10% of halfTau, minimum ±2 samples) for the local minimum.
+3. Accept if the minimum's CMND value is below `0.5` AND ≤ `1.2 × d'(tau)`.
+
+**4b. Check 2*tau (octave-up correction):** If YIN locked onto a harmonic (half the true period), the real fundamental will have a good dip at double tau. This fixes octave-up errors on low strings (E2, A2) where the 2nd harmonic is stronger than the fundamental.
 
 1. Compute `doubleTau = round(tau * 2)`.
-2. Search a small radius around `doubleTau` (±10% of `tau`, minimum ±4 samples) for the local minimum in the CMND buffer.
-3. If that minimum's CMND value is below `0.3` (a relaxed threshold), accept it as the true fundamental and replace `tau` with `bestTau`.
-
-This step significantly improves accuracy on low E and A strings.
+2. Search a small radius around `doubleTau` (±10% of `tau`, minimum ±4 samples) for the local minimum.
+3. Accept if the minimum's CMND value is below `0.3` AND < `0.85 × d'(tau)`.
 
 #### 5. Sub-sample Interpolation
 
@@ -96,13 +140,14 @@ frequency = sampleRate / tau_refined
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `threshold` | `0.1` | CMND threshold for period detection. Lower = stricter. |
-| Sub-harmonic threshold | `0.3` | CMND threshold for octave-error correction. Accepts fundamental at `2*tau` if below this. |
+| Half-tau threshold | `0.5` | CMND threshold for octave-down correction at `tau/2`. |
+| Double-tau threshold | `0.3` | CMND threshold for octave-up correction at `2*tau`. |
 | `probabilityThreshold` | `0.6` | Minimum confidence to accept a reading. |
 
 ### Characteristics
 
 - **Accuracy:** High — the CMND normalization greatly reduces octave errors compared to plain autocorrelation.
-- **Latency:** Moderate — requires O(N²) operations where N = maxTau (restricted by `MIN_FREQUENCY`, capped at bufferSize / 2).
+- **Latency:** Low — O(N log N) via FFT-based cross-correlation (4 FFT calls per frame).
 - **Best for:** General-purpose tuning where accuracy matters more than speed.
 
 ---
@@ -113,7 +158,7 @@ frequency = sampleRate / tau_refined
 
 ### Overview
 
-This algorithm computes the autocorrelation of the signal to find repeating patterns. The lag at which the autocorrelation peaks corresponds to the fundamental period. It is simpler and faster than YIN but more prone to octave errors.
+This algorithm computes the autocorrelation of the signal to find repeating patterns. The lag at which the autocorrelation peaks corresponds to the fundamental period. It is simpler than YIN or McLeod but more prone to octave errors.
 
 ### Steps
 
@@ -129,7 +174,7 @@ If `rms < 0.002` (default `rmsThreshold`), the signal is considered silence and 
 
 #### 2. Signal Trimming
 
-The buffer is trimmed from both ends by finding the first sample from each side whose absolute value falls below a threshold of `0.2`. This removes leading/trailing low-amplitude noise and focuses the analysis on the strongest part of the waveform.
+The buffer is normalized to a target RMS of 0.1 for amplitude-invariant processing, then trimmed from both ends by finding the first sample from each side whose absolute value falls below a threshold of `0.2`. This removes leading/trailing low-amplitude noise and focuses the analysis on the strongest part of the waveform.
 
 ```
 r1 = first index from start where |x[i]| < 0.2
@@ -137,19 +182,21 @@ r2 = first index from end where |x[i]| < 0.2
 subBuffer = buffer[r1..r2]
 ```
 
-#### 3. Autocorrelation
+#### 3. Autocorrelation (FFT-based)
 
-The autocorrelation function is computed for lags up to `maxLag = sampleRate / MIN_FREQUENCY` (capped at the trimmed buffer size):
+The autocorrelation function is computed via the convolution theorem:
 
 ```
-c(lag) = sum( subBuffer[j] * subBuffer[j + lag] )   for j = 0..N-lag
+r(lag) = IFFT(|FFT(x)|²)
 ```
 
-At lag 0, this equals the signal's energy. At the lag matching the fundamental period, a strong secondary peak appears.
+The trimmed signal is zero-padded to `nextPow2(2 * trimmedSize)` before the forward FFT. The power spectrum `|X|²` is computed, then inverse-transformed to yield the autocorrelation at all lags. This replaces the O(N²) direct loop with O(N log N) FFT operations.
+
+The lag range is restricted to `maxLag = sampleRate / MIN_FREQUENCY` (capped at trimmed buffer size) and `minLag = sampleRate / MAX_FREQUENCY`.
 
 #### 4. Find First Dip, Then Peak
 
-To avoid selecting lag 0 (which is always the maximum), the algorithm first walks forward from `minLag = sampleRate / MAX_FREQUENCY` past the initial decline — finding the first index `d` where `c[d] > c[d+1]` stops being true (i.e., the autocorrelation stops decreasing).
+To avoid selecting lag 0 (which is always the maximum), the algorithm first walks forward from `minLag` past the initial decline — finding the first index `d` where `c[d] > c[d+1]` stops being true (i.e., the autocorrelation stops decreasing).
 
 From that point onward, it searches for the maximum value up to `maxLag`, which corresponds to the fundamental period:
 
@@ -159,7 +206,7 @@ T0 = argmax( c[i] )   for i = d..maxLag
 
 #### 5. Parabolic Interpolation
 
-As with YIN, a parabola is fit through the three points around the peak to refine the period estimate to sub-sample precision:
+A parabola is fit through the three points around the peak to refine the period estimate to sub-sample precision:
 
 ```
 a = (x1 + x3 - 2*x2) / 2
@@ -185,8 +232,8 @@ frequency = sampleRate / T0_refined
 ### Characteristics
 
 - **Accuracy:** Moderate — susceptible to octave errors (may lock onto harmonics instead of the fundamental).
-- **Latency:** Lower than YIN — simpler computation, though still O(N²). Search range restricted by `MIN_FREQUENCY` / `MAX_FREQUENCY`.
-- **Best for:** Situations where speed is preferred over precision, or as a quick alternative for comparison.
+- **Latency:** Low — O(N log N) via FFT-based autocorrelation. Search range restricted by `MIN_FREQUENCY` / `MAX_FREQUENCY`.
+- **Best for:** Situations where simplicity is preferred, or as a quick alternative for comparison.
 
 ---
 
@@ -200,7 +247,7 @@ The McLeod Pitch Method (MPM) uses a Normalized Square Difference Function (NSDF
 
 ### Steps
 
-#### 1. Normalized Square Difference Function (NSDF)
+#### 1. Normalized Square Difference Function (NSDF) — FFT-based
 
 The NSDF is defined as:
 
@@ -211,6 +258,23 @@ NSDF(tau) = 2 * r(tau) / m(tau)
 where:
 - `r(tau) = sum(x[i] * x[i + tau])` for `i = 0..N-tau-1` (autocorrelation at lag tau)
 - `m(tau) = sum(x[i]^2 + x[i + tau]^2)` for `i = 0..N-tau-1` (normalization term)
+
+**Autocorrelation via FFT:** The autocorrelation `r(tau)` is computed using the convolution theorem:
+
+```
+r(tau) = IFFT(|FFT(x)|²)
+```
+
+The input is zero-padded to `nextPow2(2N)` to avoid circular convolution. This replaces the O(N²) direct sum with O(N log N) FFT operations.
+
+**NSDF normalization via cumulative sums:** The normalization term `m(tau)` is computed efficiently using a prefix sum of squared samples:
+
+```
+cumSq[i] = Σ x[k]²  for k = 0..i
+m(tau) = (sumSq - cumSq[tau-1]) + cumSq[N-tau-1]
+```
+
+where `sumSq = cumSq[N-1]`. This avoids an O(N) computation per lag, reducing the total normalization cost to O(N).
 
 The normalization by `m(tau)` ensures NSDF values lie in `[-1, +1]`. A value of `+1` indicates perfect periodicity at that lag, `0` indicates no correlation, and `-1` indicates perfect anti-correlation.
 
@@ -290,7 +354,7 @@ frequency = sampleRate / tau_refined
 ### Characteristics
 
 - **Accuracy:** High — the relative threshold adapts to signal quality and effectively rejects harmonics without requiring octave-correction heuristics.
-- **Latency:** Moderate — O(N^2) computation like YIN, where N = buffer length.
+- **Latency:** Low — O(N log N) via FFT-based autocorrelation + O(N) cumulative-sum normalization.
 - **Octave errors:** Resistant — the "first peak above relative threshold" strategy inherently prefers the fundamental over harmonics. No explicit octave-correction step needed.
 - **Clarity metric:** Direct — the NSDF value at the peak is a meaningful confidence measure, unlike YIN where `1 - CMND` is an indirect proxy.
 - **Best for:** Musical instrument tuning where adaptive harmonic rejection and a built-in clarity metric are valued. **Default algorithm** in this tuner.
@@ -304,6 +368,8 @@ frequency = sampleRate / tau_refined
 ### Overview
 
 HPS is a **frequency-domain** method, fundamentally different from the three time-domain algorithms above. It computes the FFT of the signal, then multiplies the magnitude spectrum with downsampled copies of itself. Because harmonics of a periodic signal appear at integer multiples of the fundamental (F0, 2×F0, 3×F0, ...), downsampling by factor *k* aligns the *k*-th harmonic with the fundamental. The product of all downsampled spectra therefore peaks sharply at the fundamental frequency.
+
+HPS uses its own private radix-2 FFT implementation rather than the shared `PitchFFT` utility.
 
 ### Steps
 
@@ -325,13 +391,17 @@ X[k] = FFT(x_windowed, padded to 32768)
 mag[k] = |X[k]| = sqrt(Re[k]² + Im[k]²)
 ```
 
-#### 3. Harmonic Product Spectrum (Log Domain)
+#### 3. Harmonic Product Spectrum (Log Domain, Adaptive Depth)
 
-Instead of multiplying magnitude spectra directly (which causes overflow), the algorithm sums their logarithms:
+Instead of multiplying magnitude spectra directly (which causes overflow), the algorithm sums their logarithms and normalizes by the number of valid harmonics:
 
 ```
-HPS[k] = log(mag[k]) + log(mag[2k]) + log(mag[3k]) + log(mag[4k]) + log(mag[5k])
+HPS[k] = (1/H_k) * Σ_{h=1}^{H_k} log(mag[h·k])
 ```
+
+where `H_k = min(numHarmonics, floor((N/2 - 1) / k))` is the number of harmonics that fit below Nyquist for bin `k`. This **adaptive depth** means low-frequency bins use more harmonics (up to `numHarmonics`) while high-frequency bins automatically use fewer as their harmonics approach Nyquist. The averaging (dividing by count) instead of raw summation prevents bins with more valid harmonics from having an unfair advantage.
+
+Bins with fewer than 2 valid harmonics are excluded (set to -100).
 
 For a signal with fundamental at bin `k₀`:
 - `mag[k₀]` — fundamental (strong)
@@ -343,15 +413,18 @@ All these contribute to `HPS[k₀]`, making it the dominant peak. At any non-fun
 
 #### 4. Peak Detection
 
-The algorithm finds the maximum of the HPS in the valid frequency range (`MIN_FREQUENCY` to `MAX_FREQUENCY`).
+The algorithm finds the maximum of the HPS in the frequency range `MIN_FREQUENCY` to 10000 Hz (internal search range wider than the tuner's display range).
 
 #### 5. Octave-Error Correction
 
 HPS can occasionally lock onto the octave above the fundamental (especially for low strings with weak fundamentals). The algorithm checks if a valid peak exists near `peakBin / 2`:
 
-- Search a small neighborhood around the half-frequency bin
-- If the sub-harmonic's HPS value is within 1.5 (log domain) of the main peak, prefer it
-- This corresponds to the sub-harmonic being at least ~22% of the main peak's power
+- Search a small neighborhood around the half-frequency bin (±5% of halfBin, minimum ±2 bins)
+- Accept the sub-harmonic if **both** conditions are met:
+  1. Its HPS score is within 0.8 (log domain) of the main peak
+  2. Its raw magnitude is at least 30% of the main peak's magnitude
+
+The dual requirement (HPS score AND raw magnitude) prevents false octave-down corrections caused by spectral leakage creating phantom sub-harmonic peaks in the HPS product.
 
 #### 6. Two-Stage DTFT Refinement
 
@@ -361,19 +434,21 @@ The HPS peak identifies the correct harmonic bin but with limited frequency prec
 
 **Stage B — Assess harmonic quality:** Before refinement, each harmonic's reliability is assessed from the FFT magnitude spectrum by comparing the peak at the expected harmonic bin to the local noise floor (average of bins 3–5 positions away). The weight for each harmonic is `max(0, localSNR - 1.5)`. Harmonics buried in noise get weight ≈0 and are excluded, preventing corrupted harmonics from pulling the estimate. The fundamental always gets at least weight 1.
 
+For low frequencies (< 150 Hz), the number of DTFT harmonics is adaptively increased (up to the number that fit below 40% of Nyquist, minimum 4) to exploit the typically cleaner harmonic structure of low notes.
+
 **Stage C — SNR-weighted multi-harmonic DTFT refinement:** Evaluate a weighted multi-harmonic score at arbitrary sub-bin frequencies:
 
 ```
-S(f) = w₁·|DTFT(f)|² + w₂·|DTFT(2f)|²
+S(f) = Σ_{k=1}^{numH} w_k · |DTFT(k·f)|²
 ```
 
-Uses 2 harmonics (fundamental + 2nd) for refinement. The 3rd harmonic is excluded because guitar string inharmonicity (fₖ = k·f₀·√(1 + B·k²)) causes higher partials to deviate sharp, biasing the result especially on hard attacks.
+Uses 2 harmonics (fundamental + 2nd) by default for refinement. The 3rd harmonic is excluded because guitar string inharmonicity (fₖ = k·f₀·√(1 + B·k²)) causes higher partials to deviate sharp, biasing the result especially on hard attacks.
 
 This combined score is sharper and more stable than the fundamental alone. Uses two rounds of least-squares parabolic fitting (7+5 points) for ~0.005 bin accuracy. At 32768 FFT / 48kHz: **0.007 Hz ≈ 0.1 cent at E2**.
 
 #### 7. SNR Noise Gate
 
-The peak must be significantly above the noise floor (measured as the median HPS value). In log domain, a difference of ≥4 means the peak is exp(4) ≈ 55× stronger than median noise.
+The peak must be above the noise floor (measured as the median HPS value). The log-domain difference must exceed `snrThreshold` (default: 0.8).
 
 ### Parameters
 
@@ -381,20 +456,21 @@ The peak must be significantly above the noise floor (measured as the median HPS
 
 | Parameter | Default | Purpose |
 |-----------|---------|-------------|
-| `numHarmonics` | `5` | HPS downsampling factors for harmonic identification. |
+| `numHarmonics` | `8` | Maximum HPS downsampling depth. Adaptive: fewer harmonics used at higher frequencies. |
 | `fftSize` | `32768` | Zero-padded FFT. Gives ~1.46 Hz/bin for HPS. |
-| `dtftHarmonics` | `2` | Harmonics in DTFT refinement (f and 2f only, to avoid inharmonicity bias). |
+| `dtftHarmonics` | `2` | Harmonics in DTFT refinement (adaptively increased for low frequencies). |
 | Harmonic weighting | SNR-adaptive | Each harmonic weighted by its local SNR; noisy harmonics excluded automatically. |
 | Window | Blackman-Harris 4-term | −92 dB sidelobes for clean spectral peaks. |
-| `snrThreshold` | `4` | Minimum log-domain SNR (peak vs median). |
+| `snrThreshold` | `0.8` | Minimum log-domain SNR (peak vs median). |
 | `rmsThreshold` | `0.002` | Same RMS noise gate as Autocorrelation. |
+| `windowSizeExp` | `12` | Input buffer size as power of 2 (2^12 = 4096). Adjustable via UI. |
 
 ### Characteristics
 
 - **Accuracy:** Very high — SNR-weighted multi-harmonic DTFT refinement gives ~0.007 Hz effective resolution (~0.1 cent at E2).
 - **Latency:** Low — O(N log N) for FFT + O(H·N·P) for DTFT refinement. Total typically < 1 ms.
 - **Stability:** High — 7-point least-squares fit averages out noise; adaptive harmonic weighting excludes corrupted partials automatically.
-- **Octave errors:** Moderate — mitigated by sub-harmonic check.
+- **Octave errors:** Moderate — mitigated by dual-criteria sub-harmonic check (HPS score + raw magnitude).
 - **Best for:** High-accuracy pitch detection with lower computational cost than time-domain methods.
 
 ---
@@ -535,7 +611,7 @@ The pseudospectrum shows peaks at the fundamental and all harmonics. To identify
 - **Accuracy:** High — super-resolution property can resolve frequencies below FFT bin spacing.
 - **Latency:** Higher — O(M³) for eigendecomposition + O(P·M·(M−p)) for pseudospectrum scan. Typically 4–8 ms per frame.
 - **Octave errors:** Low — harmonic validation explicitly identifies the fundamental among all detected sinusoidal components.
-- **Noise rejection:** Inherent — the eigendecomposition explicitly separates signal from noise. The eigenvalue gap threshold acts as a signal quality gate.
+- **Noise rejection:** Inherent — the eigendecomposition explicitly separates signal from noise. The eigenvalue gap threshold acts a signal quality gate.
 - **Best for:** Exploring subspace/PCA-based signal analysis. Higher CPU cost than other algorithms.
 
 ### Debug Visualization
@@ -546,17 +622,92 @@ The debug display shows two panels:
 
 ---
 
+## Ultimate Hybrid Detector (`UltimateDetector`)
+
+**Source:** Original hybrid algorithm, ported from `PianoTunerPython/ultimate_detector.py`. Combines McLeod MPM (time-domain) with frequency-weighted spectral analysis (frequency-domain) and a decision engine.
+
+### Overview
+
+The Ultimate detector is a **three-stage hybrid** algorithm designed to handle the full piano range (A0 to C8) where pure time-domain or frequency-domain methods each fail in different registers. McLeod MPM excels at low/mid frequencies but struggles with high notes (where the fundamental period is only a few samples). Spectral methods handle high frequencies well but are prone to locking onto harmonics at low frequencies. The Ultimate detector runs both in parallel and uses a decision engine to pick the best result.
+
+It requests a larger input buffer (8192 samples vs 4096 default) for better low-frequency resolution.
+
+### Steps
+
+#### Stage 1: McLeod MPM (Time-Domain)
+
+A full McLeod Pitch Method implementation using FFT-based autocorrelation (identical algorithm to `McLeodDetector`):
+
+1. **FFT-based autocorrelation:** `r(τ) = IFFT(|FFT(x)|²)` via the shared `PitchFFT` utility, zero-padded to `nextPow2(2N)`.
+2. **NSDF normalization via cumulative sums:** Same `m(τ) = (sumSq - cumSq[τ-1]) + cumSq[N-τ-1]` approach as the standalone McLeod detector.
+3. **Key maxima extraction, relative threshold selection, parabolic interpolation** — identical to McLeod.
+4. **Clarity gate:** If the best NSDF peak value < `smallCutoff` (default: 0.40, lower than standalone McLeod's 0.5), MPM returns no pitch. The lower threshold allows weaker signals through since the decision engine provides a second opinion.
+
+**No RMS noise gate:** Unlike the standalone detectors, the Ultimate detector does not reject signals based on RMS amplitude. The clarity gate (NSDF-based) is sufficient, and removing the RMS gate matches the Python reference implementation.
+
+#### Stage 2: Frequency-Weighted Spectral Peak (Frequency-Domain)
+
+1. **Hanning window + zero-padded FFT:** Apply a Hanning window to the 8192-sample input, zero-pad to 65536 samples (~0.73 Hz/bin at 48 kHz), and compute the magnitude spectrum via `PitchFFT.fft`.
+
+2. **+6 dB/octave highpass weighting:** Multiply each bin's magnitude by its frequency (`weighted[k] = mag[k] × f_k`). This suppresses low-frequency mechanical/structural noise and emphasizes the spectral region where the strongest pitched content usually lies. The weighting is applied only for **peak selection** — parabolic interpolation uses raw (unweighted) magnitudes for accurate frequency estimation.
+
+3. **Parabolic interpolation:** 3-point fit on the raw magnitude spectrum around the weighted peak for sub-bin frequency precision.
+
+The spectral search range is 25 Hz to 10000 Hz — wider than the tuner's display range to avoid missing edge cases.
+
+#### Stage 3: Decision Engine
+
+The decision engine compares the MPM result (`mpmFreq`) against the spectral peak (`wPeakFreq`) using several strategies. It only activates when `wPeakFreq > decisionFreq` (default: 1000 Hz) — below this threshold, MPM is trusted directly.
+
+**Case 1: Harmonic ratio ≤ 8** — The ratio `wPeakFreq / mpmFreq` is computed. If close to an integer (within 0.2), the two results are harmonically related:
+- Compare raw spectral power at each candidate's frequency
+- For very high frequencies (> 1800 Hz), MPM needs only 80% of the spectral peak's power to win; otherwise it needs 5%
+- If not harmonically related, the spectral peak wins (MPM likely locked onto noise)
+
+**Case 2: Harmonic ratio > 8** — Run full **harmonic verification**: find all spectral peaks above 10% prominence, then count how many align with integer multiples of each candidate (4% tolerance, growing with harmonic number to accommodate piano inharmonicity: `tol = 0.04 + 0.005·n`).
+
+- If MPM has ≥3 harmonic hits, more hits than the spectral peak, and sufficient total power, MPM wins
+- **Adaptive power factor threshold:** If MPM has ≥4× more hits than the spectral peak, the power threshold is relaxed from 8× to 6× (since overwhelming harmonic evidence outweighs moderate power differences)
+- Otherwise, the spectral peak wins
+
+**Fallback:** If MPM completely failed (returned -1), the spectral peak is used. If the final frequency is below `MIN_FREQUENCY`, the reading is rejected. There is no upper frequency limit, allowing detection of the full piano range.
+
+### Configuration
+
+*Note: All algorithms now expose their parameters dynamically via the Tuning UI.*
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `cutoff` | `0.93` | McLeod relative threshold — fraction of best NSDF peak. |
+| `smallCutoff` | `0.40` | Minimum NSDF clarity. Lower than standalone McLeod (0.5) since the decision engine provides a safety net. |
+| `decisionFreq` | `1000` | Frequency above which the decision engine activates. Below this, MPM is trusted. |
+| Buffer size | `8192` | Requested via `getRequiredBufferSize()`. Larger than default 4096 for better low-frequency resolution. |
+| Spectral FFT size | `65536` | Zero-padded spectral FFT. ~0.73 Hz/bin at 48 kHz. |
+
+### Characteristics
+
+- **Accuracy:** Very high — combines MPM's time-domain robustness (low/mid frequencies) with spectral peak precision (high frequencies). Passes 269/271 piano test files across 6 datasets spanning A0 to C8.
+- **Latency:** Moderate — O(N log N) for MPM autocorrelation (N=8192) + O(N log N) for 65536-point spectral FFT. Typically ~8 ms per frame.
+- **Octave errors:** Very low — the decision engine cross-validates time-domain and frequency-domain results using harmonic verification.
+- **Noise rejection:** Clarity-based (NSDF gate) with no RMS gate. Spectral peak provides fallback when MPM fails.
+- **Frequency range:** No upper limit (unlike other detectors which cap at `MAX_FREQUENCY`). Handles the full piano range.
+- **Best for:** Wide-range pitch detection (piano, multi-octave instruments) where a single algorithm's weaknesses would cause failures at the extremes.
+
+---
+
 ## Comparison
 
-| Property | YIN | McLeod (MPM) | Autocorrelation | HPS | MUSIC |
-|----------|-----|--------------|-----------------|-----|-------|
-| Domain | Time | Time | Time | Frequency | Subspace |
-| Core function | Difference (finds **minima**) | NSDF (finds **maxima**) | Autocorrelation (finds **maxima**) | HPS + multi-harmonic DTFT refinement | Eigendecomposition + pseudospectrum |
-| Normalization | Cumulative mean (CMNDF) | Per-lag `m(tau)` (NSDF) | None | Log-domain sum + least-squares | Autocorrelation matrix decomposition |
-| Threshold type | Absolute (`0.1`) | Relative (`k * nmax`) | None (argmax) | SNR vs median | Eigenvalue gap ratio |
-| Octave error resistance | High (CMND + correction step) | High (relative threshold) | Low | Moderate (sub-harmonic check) | High (harmonic validation) |
-| Noise rejection | Confidence-based (probability > 0.6) | Clarity-based (NSDF value > 0.5) | RMS threshold (> 0.002) | RMS + SNR gate + adaptive harmonic weighting | RMS + eigenvalue gap + subspace separation |
-| Sub-sample interpolation | Yes (5-point least-squares) | Yes (3-point parabolic) | Yes (3-point parabolic) | Yes (SNR-weighted multi-harmonic DTFT, 7+5 point LS) | Yes (fine scan + parabolic) |
-| Computational cost | O(N²) | O(N²) | O(N²) | O(N log N) + O(H·N·P) | O(M³) + O(P·M·(M−p)) |
-| Default in tuner | No | **Yes** | No | No | No |
-| Explicit octave correction | Yes (sub-harmonic check) | No (not needed) | No | Yes (half-frequency check) | Yes (harmonic validation) |
+| Property | YIN | McLeod (MPM) | Autocorrelation | HPS | MUSIC | Ultimate |
+|----------|-----|--------------|-----------------|-----|-------|----------|
+| Domain | Time | Time | Time | Frequency | Subspace | Hybrid (Time + Freq) |
+| Core function | Difference (finds **minima**) | NSDF (finds **maxima**) | Autocorrelation (finds **maxima**) | HPS + multi-harmonic DTFT refinement | Eigendecomposition + pseudospectrum | MPM + spectral peak + decision engine |
+| Normalization | Cumulative mean (CMNDF) | Per-lag `m(tau)` (NSDF, cumsum) | None | Log-domain average + least-squares | Autocorrelation matrix decomposition | NSDF (cumsum) + raw magnitude |
+| Threshold type | Absolute (`0.1`) | Relative (`k * nmax`) | None (argmax) | SNR vs median | Eigenvalue gap ratio | Relative (MPM) + harmonic verification |
+| Octave error resistance | High (CMND + bidirectional correction) | High (relative threshold) | Low | Moderate (dual-criteria sub-harmonic check) | High (harmonic validation) | Very high (cross-domain validation) |
+| Noise rejection | Confidence-based (probability > 0.6) | Clarity-based (NSDF value > 0.5) | RMS threshold (> 0.002) | RMS + SNR gate + adaptive harmonic weighting | RMS + eigenvalue gap + subspace separation | Clarity-based (NSDF > 0.4, no RMS gate) |
+| Sub-sample interpolation | Yes (5-point least-squares) | Yes (3-point parabolic) | Yes (3-point parabolic) | Yes (SNR-weighted multi-harmonic DTFT, 7+5 point LS) | Yes (fine scan + parabolic) | Yes (3-point parabolic, both stages) |
+| Computational cost | O(N log N) | O(N log N) | O(N log N) | O(N log N) + O(H·N·P) | O(M³) + O(P·M·(M−p)) | O(N log N) × 2 stages |
+| Default in tuner | No | **Yes** | No | No | No | No |
+| Explicit octave correction | Yes (bidirectional tau/2 and 2*tau) | No (not needed) | No | Yes (dual-criteria half-frequency check) | Yes (harmonic validation) | Yes (harmonic verification in decision engine) |
+| Buffer size | 4096 | 4096 | 4096 | Configurable (default 4096) | 4096 | 8192 |
+| FFT utility | Shared (`PitchFFT`) | Shared (`PitchFFT`) | Shared (`PitchFFT`) | Private (own `_fft`) | N/A (no FFT) | Shared (`PitchFFT`) |

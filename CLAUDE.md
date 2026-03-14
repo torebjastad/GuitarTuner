@@ -2,26 +2,28 @@
 
 ## Project Overview
 
-A lightweight, browser-based guitar tuner with no build step or external dependencies. It captures microphone audio via the Web Audio API and performs real-time pitch detection using one of five selectable algorithms.
+A lightweight, browser-based guitar tuner with no build step or external dependencies. It captures microphone audio via the Web Audio API and performs real-time pitch detection using one of six selectable algorithms.
 
 ## Repository Structure
 
 ```
 GuitarTuner/
 ├── index.html                    # Single-page UI shell
-├── pitch-common.js               # TunerDefaults constants & PitchDetector base class
-├── yin-detector.js               # YIN pitch detection algorithm
-├── autocorrelation-detector.js   # Autocorrelation pitch detection algorithm
-├── mcleod-detector.js            # McLeod Pitch Method (MPM) algorithm
+├── pitch-common.js               # TunerDefaults, PitchDetector base class, PitchFFT utility
+├── yin-detector.js               # YIN pitch detection algorithm (FFT-based)
+├── autocorrelation-detector.js   # Autocorrelation pitch detection algorithm (FFT-based)
+├── mcleod-detector.js            # McLeod Pitch Method (MPM) algorithm (FFT-based)
 ├── hps-detector.js               # Harmonic Product Spectrum (FFT-based) algorithm
 ├── music-detector.js             # MUSIC (subspace/eigendecomposition-based) algorithm
+├── ultimate-detector.js          # Ultimate hybrid detector (MPM + spectral + decision engine)
 ├── debug-plot.js                 # Debug visualization (canvas plots for all algorithms)
 ├── tuner.js                      # Tuner orchestrator (Web Audio API, UI, smoothing)
 ├── test-tone-generator.js        # Realistic guitar test tone synthesis
 ├── app.js                        # Entry point (initialization only)
 ├── style.css                     # Full styling with CSS custom properties
 ├── test-bench.html               # Algorithm comparison test bench (batch testing against audio files)
-├── pitch-detection-algorithms.md # Detailed documentation of all five pitch detection algorithms
+├── focused-test.html             # Python-equivalent focused test harness for Ultimate detector
+├── pitch-detection-algorithms.md # Detailed documentation of all six pitch detection algorithms
 └── test-data-description.md      # Description of test datasets (Nylon, Plucked, UIowa Piano)
 ```
 
@@ -30,19 +32,21 @@ GuitarTuner/
 | File | Role |
 |---|---|
 | `index.html` | Markup — loads `style.css` and all JS files in dependency order. No JS frameworks. |
-| `pitch-common.js` | Shared constants (`TunerDefaults`) and `PitchDetector` abstract base class. Loaded first. |
-| `yin-detector.js` | `YinDetector` — YIN algorithm with CMND, octave correction, 5-point interpolation. |
-| `autocorrelation-detector.js` | `AutocorrelationDetector` — Classic autocorrelation with RMS gate and signal trimming. |
-| `mcleod-detector.js` | `McLeodDetector` — McLeod MPM with NSDF, key maxima, relative threshold. |
-| `hps-detector.js` | `HpsDetector` — Harmonic Product Spectrum with Blackman-Harris windowed FFT, log-domain product, octave-error check, and SNR-weighted multi-harmonic DTFT refinement. |
+| `pitch-common.js` | Shared constants (`TunerDefaults`), `PitchDetector` abstract base class, and `PitchFFT` utility (radix-2 FFT/IFFT used by YIN, McLeod, Autocorrelation, and Ultimate). Loaded first. |
+| `yin-detector.js` | `YinDetector` — YIN algorithm with FFT-based cross-correlation, CMND, bidirectional octave correction, 5-point interpolation. |
+| `autocorrelation-detector.js` | `AutocorrelationDetector` — FFT-based autocorrelation with RMS gate and signal trimming. |
+| `mcleod-detector.js` | `McLeodDetector` — McLeod MPM with FFT-based autocorrelation, cumulative-sum NSDF normalization, key maxima, relative threshold. |
+| `hps-detector.js` | `HpsDetector` — Harmonic Product Spectrum with Blackman-Harris windowed FFT, adaptive-depth log-domain average, dual-criteria octave-error check, and SNR-weighted multi-harmonic DTFT refinement. |
 | `music-detector.js` | `MusicDetector` — MUSIC (subspace) algorithm with Jacobi eigendecomposition of the autocorrelation matrix, pseudospectrum scanning, and harmonic validation. |
-| `debug-plot.js` | `DebugPlot` — Canvas-based real-time visualization for all five algorithms. |
+| `ultimate-detector.js` | `UltimateDetector` — Hybrid three-stage detector: McLeod MPM (FFT-based) + frequency-weighted spectral peak (65536-point FFT) + decision engine with harmonic verification. Ported from Python. |
+| `debug-plot.js` | `DebugPlot` — Canvas-based real-time visualization for all six algorithms. |
 | `tuner.js` | `Tuner` — Main orchestrator: Web Audio API, microphone, smoothing, UI updates. |
 | `test-tone-generator.js` | `TestToneGenerator` — Guitar-like test tones with harmonics, vibrato, noise. |
 | `app.js` | Entry point — instantiates `Tuner` and `TestToneGenerator`. |
 | `style.css` | Dark-theme glassmorphism UI using CSS custom properties (no preprocessor). |
-| `test-bench.html` | Standalone test bench — batch-runs all detectors against audio test files, with configurable sample offset, window size, averaging (ms), and per-algorithm checkboxes. |
-| `pitch-detection-algorithms.md` | In-depth documentation of all five pitch detection algorithms. |
+| `test-bench.html` | Standalone test bench — batch-runs all detectors against audio test files, with onset detection, configurable window size, averaging (ms), and per-algorithm checkboxes. Averages stereo channels. |
+| `focused-test.html` | Python-equivalent focused test harness — tests Ultimate detector against 6 piano datasets with onset detection and tolerance tiers matching `PianoTunerPython/focused_test.py`. |
+| `pitch-detection-algorithms.md` | In-depth documentation of all six pitch detection algorithms. |
 | `test-data-description.md` | Descriptions and metadata for test audio datasets. |
 
 ## Architecture
@@ -53,12 +57,15 @@ The codebase uses the Strategy design pattern for swappable pitch detection:
 
 ```
 PitchDetector (abstract base)
-├── YinDetector              — YIN algorithm (accurate, CMND-based)
-├── McLeodDetector           — McLeod MPM (default, adaptive threshold)
-├── AutocorrelationDetector  — Autocorrelation (faster, simpler)
-├── HpsDetector              — Harmonic Product Spectrum (FFT-based, frequency domain)
-└── MusicDetector            — MUSIC (subspace-based, eigendecomposition)
+├── YinDetector              — YIN algorithm (accurate, CMND-based, FFT-accelerated)
+├── McLeodDetector           — McLeod MPM (default, adaptive threshold, FFT-accelerated)
+├── AutocorrelationDetector  — Autocorrelation (simpler, FFT-accelerated)
+├── HpsDetector              — Harmonic Product Spectrum (frequency domain, DTFT refinement)
+├── MusicDetector            — MUSIC (subspace-based, eigendecomposition)
+└── UltimateDetector         — Hybrid (MPM + spectral peak + decision engine, full piano range)
 ```
+
+All time-domain detectors (YIN, McLeod, Autocorrelation) and the Ultimate detector use the shared `PitchFFT` utility for O(N log N) FFT-based correlation, replacing the original O(N²) direct loops.
 
 All implement a single method:
 ```js
@@ -88,11 +95,12 @@ getPitch(float32AudioBuffer, sampleRate) -> Hz | -1
 
 `DebugPlot` renders a real-time canvas visualization for the active algorithm when the "Show Algorithm Debug" checkbox is enabled. It supports five drawing modes:
 
-- **YIN:** Draws the CMND curve with threshold lines (step 3 threshold at 0.1, octave-correction threshold at 0.3), initial/corrected tau markers with arrows, and the parabolic-interpolated final tau (green triangle).
+- **YIN:** Draws the CMND curve with threshold lines (step 3 threshold at 0.1, octave-correction thresholds at 0.3/0.5), initial/corrected tau markers with arrows, and the parabolic-interpolated final tau (green triangle).
 - **McLeod MPM:** Draws the NSDF curve with positive/negative lobes, key maxima (orange dots), the selected peak (red dot), relative threshold line, and interpolated tau.
 - **Autocorrelation:** Draws the autocorrelation function, first-dip marker, detected peak, and interpolated T₀.
 - **HPS:** Draws the magnitude spectrum (faint blue) and HPS product spectrum (green) on a frequency (Hz) x-axis, with detected peak (red dot) and DTFT-refined frequency (green triangle). Shows both DTFT-refined and HPS-only frequencies for comparison.
 - **MUSIC:** Dual-panel display. Upper panel shows the eigenvalue spectrum (bar chart, log scale) with signal subspace (orange) and noise subspace (gray) separated by a dashed boundary. Lower panel shows the MUSIC pseudospectrum (dB) with detected peaks (red dots) and identified fundamental (green triangle).
+- **Ultimate:** Dual-panel display. Upper panel shows the NSDF curve (MPM stage) with key maxima and selected peak. Lower panel shows the frequency-weighted spectral magnitude with the spectral peak and final decision. Info panel includes decision reason and both candidate frequencies.
 
 All modes include an info panel showing algorithm name, frequency, confidence/clarity metrics, and CPU load (avg/peak/percentage).
 
@@ -160,15 +168,14 @@ There is no automated test framework. Testing is done manually:
 2. **Class-based OOP** — new pitch algorithms must extend `PitchDetector` and implement `getPitch(buffer, sampleRate)`.
 3. **Register new detectors in `Tuner`** — add to `this.detectors` map and add a corresponding `<option>` in `index.html`.
 4. **CSS custom properties** — use existing tokens for all colours. Do not hardcode hex/rgb values.
-5. **Frequency range** — `MIN_FREQUENCY` and `MAX_FREQUENCY` in `TunerDefaults` control both the post-detection filter and the tau/bin search range in all five algorithms. Lowering `MIN_FREQUENCY` increases CPU cost.
+5. **Frequency range** — `MIN_FREQUENCY` and `MAX_FREQUENCY` in `TunerDefaults` control both the post-detection filter and the tau/bin search range in most algorithms. The Ultimate detector has no upper frequency limit (to handle the full piano range). Lowering `MIN_FREQUENCY` increases CPU cost.
 6. **Tuning reference** — A4 = 440 Hz. Cent calculations use standard 12-TET: `cents = 1200 * log2(f / f_target)`.
 7. **In-tune tolerance** — currently ±5 cents (`isPerfect = Math.abs(cents) < 5` in `updateUI`).
-8. **Noise gates & Parameters** — YIN rejects reads with probability < 0.6; McLeod rejects clarity < 0.5; Autocorrelation rejects RMS < 0.002; HPS rejects RMS < 0.002 and SNR < 4 (log-domain); MUSIC rejects RMS < 0.002 and eigenvalue gap ratio < 2.0. These and other algorithm parameters are exposed dynamically via `PitchDetector.getParams()` / `setParam()`, rendered as sliders in the debug UI.
+8. **Noise gates & Parameters** — YIN rejects reads with probability < 0.6; McLeod rejects clarity < 0.5; Autocorrelation rejects RMS < 0.002; HPS rejects RMS < 0.002 and SNR < 0.8 (log-domain); MUSIC rejects RMS < 0.002 and eigenvalue gap ratio < 2.0; Ultimate rejects clarity < 0.4 (no RMS gate). These and other algorithm parameters are exposed dynamically via `PitchDetector.getParams()` / `setParam()`, rendered as sliders in the debug UI.
 
 ## Branch / Git Conventions
 
-- Development branch: `claude/claude-md-mmcjx127o7mmwj1r-hHkSm`
-- Main branch: `master`
+- Main branch: `main`
 - Commit style: `feat:`, `fix:`, `refactor:` prefixes (imperative, present tense).
 
 ## Browser Requirements
