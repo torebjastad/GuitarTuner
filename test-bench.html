@@ -297,6 +297,7 @@
         <label><input type="checkbox" class="algo-check" value="autocorr" checked> Autocorr</label>
         <label><input type="checkbox" class="algo-check" value="hps" checked> HPS</label>
         <label><input type="checkbox" class="algo-check" value="music" checked> MUSIC</label>
+        <label><input type="checkbox" class="algo-check" value="ultimate" checked> Ultimate</label>
     </div>
 
     <table id="results">
@@ -319,13 +320,14 @@
     <script src="mcleod-detector.js"></script>
     <script src="hps-detector.js"></script>
     <script src="music-detector.js"></script>
+    <script src="ultimate-detector.js"></script>
 
     <script>
         // ---- Helpers ----
 
         const NOTE_STRINGS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-        const ALL_ALGO_KEYS = ['yin', 'mcleod', 'autocorr', 'hps', 'music'];
-        const ALGO_LABELS = { yin: 'YIN', mcleod: 'McLeod', autocorr: 'Autocorr', hps: 'HPS', music: 'MUSIC' };
+        const ALL_ALGO_KEYS = ['yin', 'mcleod', 'autocorr', 'hps', 'music', 'ultimate'];
+        const ALGO_LABELS = { yin: 'YIN', mcleod: 'McLeod', autocorr: 'Autocorr', hps: 'HPS', music: 'MUSIC', ultimate: 'Ultimate' };
 
         function getSelectedAlgos() {
             return Array.from(document.querySelectorAll('.algo-check:checked')).map(cb => cb.value);
@@ -764,7 +766,8 @@
                 mcleod: new McLeodDetector(),
                 autocorr: new AutocorrelationDetector(),
                 hps: new HpsDetector(),
-                music: new MusicDetector()
+                music: new MusicDetector(),
+                ultimate: new UltimateDetector()
             };
 
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();

@@ -32,7 +32,8 @@
       "Bash(./venv/Scripts/python focused_test.py)",
       "Bash(timeout 5 ./venv/Scripts/python -c \":*)",
       "Bash(python focused_test.py)",
-      "Bash(python -c \":*)"
+      "Bash(python -c \":*)",
+      "Bash(node -e \":*)"
     ]
   }
 }

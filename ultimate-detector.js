@@ -3,15 +3,15 @@
  *
  * Two-stage algorithm combining McLeod Pitch Method (time-domain) with a
  * frequency-weighted spectral peak (frequency-domain) and a decision engine
- * that intelligently selects the best result.
+ * that intelligently selects the best result using harmonic verification.
  *
  * Ported from PianoTunerPython/ultimate_detector.py
  *
- * Stage 1 — McLeod MPM via NSDF for reliable low/mid-frequency detection
+ * Stage 1 — McLeod MPM via FFT-based autocorrelation (O(N log N)) and NSDF
  * Stage 2 — High-resolution FFT (65536-point) with +6 dB/octave highpass
  *           weighting to suppress mechanical/structural noise
  * Stage 3 — Decision engine comparing both candidates via harmonic ratio
- *           analysis and spectral power comparison
+ *           analysis, spectral power comparison, and harmonic verification
  *
  * Depends on: pitch-common.js (TunerDefaults, PitchDetector)
  */
@@ -28,15 +28,20 @@ class UltimateDetector extends PitchDetector {
         // Spectral FFT size — 65536 gives ~0.73 Hz resolution at 48 kHz
         this.spectralFftSize = 65536;
 
-        // Pre-allocate FFT buffers
+        // Pre-allocate spectral FFT buffers
         this._fftReal = new Float64Array(this.spectralFftSize);
         this._fftImag = new Float64Array(this.spectralFftSize);
         this._magnitude = new Float64Array(this.spectralFftSize / 2 + 1);
 
-        // Pre-allocate McLeod buffers (sized for max expected buffer)
+        // Pre-allocate McLeod FFT-based autocorrelation buffers
+        // For N=8192 input, acfFftSize = nextPow2(2*8192) = 16384
+        this._acfFftSize = 0;
+        this._acfReal = null;
+        this._acfImag = null;
+
+        // Pre-allocate NSDF normalization buffers
         this._nsdf = new Float64Array(8192);
-        this._sq = new Float64Array(8192);
-        this._m = new Float64Array(8192);
+        this._cumSq = new Float64Array(8192);
 
         // Hanning window cache
         this._hanningWindow = null;
@@ -70,8 +75,25 @@ class UltimateDetector extends PitchDetector {
     }
 
     /**
+     * Ensure autocorrelation FFT buffers are allocated for the given input size.
+     */
+    _ensureAcfBuffers(bufLen) {
+        const nFft = this._nextPow2(2 * bufLen);
+        if (this._acfFftSize === nFft) return;
+        this._acfFftSize = nFft;
+        this._acfReal = new Float64Array(nFft);
+        this._acfImag = new Float64Array(nFft);
+    }
+
+    _nextPow2(n) {
+        let v = 1;
+        while (v < n) v <<= 1;
+        return v;
+    }
+
+    /**
      * In-place radix-2 Cooley-Tukey FFT.
-     * Identical to the proven implementation in hps-detector.js.
+     * Works on any power-of-2 sized arrays.
      */
     _fft(re, im) {
         const n = re.length;
@@ -114,7 +136,87 @@ class UltimateDetector extends PitchDetector {
     }
 
     /**
-     * McLeod Pitch Method (time-domain).
+     * In-place inverse FFT using the forward FFT.
+     * IFFT(X) = conj(FFT(conj(X))) / N
+     */
+    _ifft(re, im) {
+        const n = re.length;
+        // Conjugate input
+        for (let i = 0; i < n; i++) im[i] = -im[i];
+        // Forward FFT
+        this._fft(re, im);
+        // Conjugate output and scale
+        const invN = 1 / n;
+        for (let i = 0; i < n; i++) {
+            re[i] *= invN;
+            im[i] = -im[i] * invN;
+        }
+    }
+
+    /**
+     * Find spectral peaks in the magnitude spectrum with parabolic interpolation.
+     * Returns array of { freq, power } sorted by frequency.
+     */
+    _findSpectralPeaks(mag, binHz, minFreq, maxFreq, prominenceRatio) {
+        const minBin = Math.max(2, Math.floor(minFreq / binHz));
+        const maxBin = Math.min(mag.length - 2, Math.floor(maxFreq / binHz));
+        const peaks = [];
+
+        // Find max in region for threshold
+        let regionMax = 0;
+        for (let i = minBin; i < maxBin; i++) {
+            if (mag[i] > regionMax) regionMax = mag[i];
+        }
+        const threshold = regionMax * prominenceRatio;
+
+        for (let i = minBin + 1; i < maxBin - 1; i++) {
+            if (mag[i] > mag[i - 1] && mag[i] > mag[i + 1] && mag[i] > threshold) {
+                // Parabolic interpolation
+                const a = mag[i - 1], b = mag[i], c = mag[i + 1];
+                const d = a - 2 * b + c;
+                const adj = d !== 0 ? 0.5 * (a - c) / d : 0;
+                peaks.push({ freq: (i + adj) * binHz, power: b });
+            }
+        }
+
+        peaks.sort((a, b) => a.freq - b.freq);
+        return peaks;
+    }
+
+    /**
+     * Count how many spectral peaks fall near integer multiples of f0Candidate.
+     * Uses a tolerance that grows with harmonic number for piano inharmonicity.
+     * Returns { hits, totalPower }.
+     */
+    _countHarmonicHits(peaks, f0Candidate, baseTolerance) {
+        if (f0Candidate <= 0 || peaks.length === 0) return { hits: 0, totalPower: 0 };
+
+        let hits = 0;
+        let totalPower = 0;
+
+        for (let p = 0; p < peaks.length; p++) {
+            const ratio = peaks[p].freq / f0Candidate;
+            const nearestN = Math.round(ratio);
+            if (nearestN < 1) continue;
+            const tol = baseTolerance + 0.005 * nearestN;
+            if (Math.abs(ratio - nearestN) < tol) {
+                hits++;
+                totalPower += peaks[p].power;
+            }
+        }
+
+        return { hits, totalPower };
+    }
+
+    /**
+     * McLeod Pitch Method (time-domain) with FFT-based autocorrelation.
+     *
+     * Uses the convolution theorem for O(N log N) autocorrelation:
+     *   r[τ] = IFFT(|FFT(x)|²)
+     *
+     * This replaces the O(N²) direct loop, giving ~3x speedup at N=8192
+     * and ~32x at N=65536.
+     *
      * Returns { freq, clarity, debugData }.
      */
     _runMcleod(buffer, sampleRate) {
@@ -124,41 +226,58 @@ class UltimateDetector extends PitchDetector {
         // Ensure pre-allocated buffers are large enough
         if (this._nsdf.length < maxTau) {
             this._nsdf = new Float64Array(maxTau);
-            this._sq = new Float64Array(bufLen);
-            this._m = new Float64Array(maxTau);
+        }
+        if (this._cumSq.length < bufLen) {
+            this._cumSq = new Float64Array(bufLen);
         }
 
         const nsdf = this._nsdf;
-        const sq = this._sq;
-        const m = this._m;
 
-        // Compute squared samples
-        for (let i = 0; i < bufLen; i++) {
-            sq[i] = buffer[i] * buffer[i];
+        // ── FFT-based autocorrelation: O(N log N) ──
+        this._ensureAcfBuffers(bufLen);
+        const nFft = this._acfFftSize;
+        const acfRe = this._acfReal;
+        const acfIm = this._acfImag;
+
+        // Zero-pad buffer into FFT input
+        for (let i = 0; i < bufLen; i++) acfRe[i] = buffer[i];
+        for (let i = bufLen; i < nFft; i++) acfRe[i] = 0;
+        acfIm.fill(0);
+
+        // Forward FFT
+        this._fft(acfRe, acfIm);
+
+        // Power spectrum: |X|² (real-only result for autocorrelation)
+        for (let i = 0; i < nFft; i++) {
+            acfRe[i] = acfRe[i] * acfRe[i] + acfIm[i] * acfIm[i];
+            acfIm[i] = 0;
         }
 
-        // Running sum of squares normalization
+        // Inverse FFT → autocorrelation
+        this._ifft(acfRe, acfIm);
+        // acfRe[tau] now contains the autocorrelation r(tau)
+
+        // ── Vectorized NSDF normalization via cumulative sums ──
+        const cumSq = this._cumSq;
         let sumSq = 0;
-        for (let i = 0; i < bufLen; i++) sumSq += sq[i];
-        m[0] = 2 * sumSq;
+        cumSq[0] = buffer[0] * buffer[0];
+        for (let i = 1; i < bufLen; i++) {
+            cumSq[i] = cumSq[i - 1] + buffer[i] * buffer[i];
+        }
+        sumSq = cumSq[bufLen - 1];
 
-        let currentM = m[0];
+        // m[0] = 2 * sumSq
+        // m[tau] = (sumSq - cumSq[tau-1]) + cumSq[N-tau-1]
+        // nsdf[tau] = 2 * acf[tau] / m[tau]
+        const m0 = 2 * sumSq;
+        nsdf[0] = m0 > 0 ? (2 * acfRe[0] / m0) : 0;
+
         for (let tau = 1; tau < maxTau; tau++) {
-            currentM -= sq[bufLen - tau] + sq[tau - 1];
-            m[tau] = currentM;
+            const mTau = (sumSq - cumSq[tau - 1]) + cumSq[bufLen - tau - 1];
+            nsdf[tau] = mTau > 0 ? (2 * acfRe[tau] / mTau) : 0;
         }
 
-        // Autocorrelation and NSDF
-        nsdf[0] = 1;
-        for (let tau = 1; tau < maxTau; tau++) {
-            let acf = 0;
-            for (let i = 0; i < bufLen - tau; i++) {
-                acf += buffer[i] * buffer[i + tau];
-            }
-            nsdf[tau] = m[tau] > 0 ? (2 * acf / m[tau]) : 0;
-        }
-
-        // Key maxima extraction
+        // ── Key maxima extraction ──
         const keyMaxima = [];
         let inPositiveRegion = false;
         let currentMaxTau = 0;
@@ -329,6 +448,7 @@ class UltimateDetector extends PitchDetector {
         let decisionReason = 'MPM (default)';
         let pwrMpm = 0;
         let pwrWpeak = 0;
+        let harmonicPeaks = null;
 
         const getRawPower = (freq) => {
             const b = Math.round(freq / binHz);
@@ -346,11 +466,7 @@ class UltimateDetector extends PitchDetector {
             const ratio = wPeakFreq / mpmFreq;
             const closestInt = Math.round(ratio);
 
-            if (closestInt > 8) {
-                // Extreme ratio — MPM locked on mechanical thud
-                finalFreq = wPeakFreq;
-                decisionReason = 'Spectral peak (ratio > 8, MPM on noise)';
-            } else {
+            if (closestInt <= 8) {
                 const isCloseToInt = Math.abs(ratio - closestInt) < 0.2;
 
                 if (!isCloseToInt) {
@@ -371,6 +487,29 @@ class UltimateDetector extends PitchDetector {
                         finalFreq = wPeakFreq;
                         decisionReason = 'Spectral peak (MPM power weak)';
                     }
+                }
+            } else {
+                // Ratio > 8: Run harmonic verification — count spectral peaks
+                // that align with integer multiples of each candidate.
+                harmonicPeaks = this._findSpectralPeaks(mag, binHz, 25, 10000, 0.1);
+
+                const mpmResult = this._countHarmonicHits(harmonicPeaks, mpmFreq, 0.04);
+                const wpeakResult = this._countHarmonicHits(harmonicPeaks, wPeakFreq, 0.04);
+
+                const powerFactor = mpmResult.totalPower / Math.max(wpeakResult.totalPower, 1e-10);
+
+                // Adaptive threshold: relax when MPM has overwhelmingly more hits (≥4x)
+                const pfThreshold = mpmResult.hits >= 4 * Math.max(wpeakResult.hits, 1) ? 6 : 8;
+
+                if (mpmResult.hits >= 3 && mpmResult.hits > wpeakResult.hits && powerFactor > pfThreshold) {
+                    finalFreq = mpmFreq;
+                    decisionReason = `MPM (harmonic verified: ${mpmResult.hits} hits, pf=${powerFactor.toFixed(0)}, thr=${pfThreshold})`;
+                } else if (mpmResult.hits >= 3 && mpmResult.hits === wpeakResult.hits && powerFactor > pfThreshold) {
+                    finalFreq = mpmFreq;
+                    decisionReason = `MPM (tied hits, power dominant: pf=${powerFactor.toFixed(0)})`;
+                } else {
+                    finalFreq = wPeakFreq;
+                    decisionReason = `Spectral peak (MPM unconfirmed: ${mpmResult.hits} hits, pf=${powerFactor.toFixed(1)})`;
                 }
             }
         }
@@ -416,6 +555,7 @@ class UltimateDetector extends PitchDetector {
                 decisionReason,
                 pwrMpm,
                 pwrWpeak,
+                harmonicPeaks,
                 // General
                 sampleRate,
                 fftSize,
