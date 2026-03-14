@@ -279,8 +279,9 @@
             <label>Sample at:
                 <input type="number" id="sample-time" value="1.0" min="0.1" max="5" step="0.1"> sec
             </label>
+            <label><input type="checkbox" id="onset-detect" checked> Onset detection</label>
             <label>Window:
-                <input type="number" id="window-size" value="4096" min="2048" max="65536" step="1024">
+                <input type="number" id="window-size" value="8192" min="2048" max="65536" step="1024">
                 samples
             </label>
             <label>Averaging:
@@ -676,6 +677,47 @@
             }
         }
 
+        // ---- Onset detection ----
+
+        /**
+         * Find note onset sample index by scanning RMS in 1024-sample hops.
+         * Matches Python focused_test.py: 10% of max RMS threshold,
+         * first hop above threshold wins (no consecutive requirement).
+         * Returns sample index of onset, or 0 if none found.
+         */
+        function findOnset(channelData, sampleRate) {
+            const hop = 1024;
+            const len = channelData.length;
+
+            // Pass 1: compute RMS per hop, find max
+            const rmsVals = [];
+            for (let i = 0; i + hop <= len; i += hop) {
+                let sum = 0;
+                for (let j = i; j < i + hop; j++) {
+                    sum += channelData[j] * channelData[j];
+                }
+                rmsVals.push(Math.sqrt(sum / hop));
+            }
+
+            if (rmsVals.length === 0) return 0;
+
+            let peakRms = 0;
+            for (let i = 0; i < rmsVals.length; i++) {
+                if (rmsVals[i] > peakRms) peakRms = rmsVals[i];
+            }
+
+            const threshold = peakRms * 0.1;
+
+            // Pass 2: first hop above threshold
+            for (let i = 0; i < rmsVals.length; i++) {
+                if (rmsVals[i] > threshold) {
+                    const onsetSample = i * hop + Math.floor(sampleRate * 0.05);
+                    return Math.min(onsetSample, len - 8192);
+                }
+            }
+            return 0;
+        }
+
         // ---- Main test runner ----
 
         /**
@@ -757,6 +799,7 @@
             const sampleTime = parseFloat(document.getElementById('sample-time').value);
             const windowSize = parseInt(document.getElementById('window-size').value);
             const avgMs = parseInt(document.getElementById('avg-ms').value) || 0;
+            const useOnset = document.getElementById('onset-detect').checked;
 
             const testList = getActiveTestList(datasetKey);
 
@@ -854,7 +897,13 @@
 
                 const sampleRate = audioBuffer.sampleRate;
                 const channelData = audioBuffer.getChannelData(0);
-                const startSample = Math.floor(sampleTime * sampleRate);
+                let startSample;
+                if (useOnset) {
+                    // findOnset already includes 50ms skip past onset
+                    startSample = findOnset(channelData, sampleRate);
+                } else {
+                    startSample = Math.floor(sampleTime * sampleRate);
+                }
 
                 // Run each detector (with averaging)
                 for (const key of algoKeys) {

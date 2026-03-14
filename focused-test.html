@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Focused Test — JS vs Python Comparison</title>
+    <style>
+        :root { --bg: #1a1a2e; --card: #16213e; --text: #e0e0e0; --muted: #888;
+                --green: #4caf50; --yellow: #ff9800; --red: #f44336; --blue: #42a5f5; --border: #2a2a4a; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg);
+               color: var(--text); padding: 24px; line-height: 1.5; }
+        h1 { font-size: 1.4rem; margin-bottom: 12px; }
+        button { background: var(--blue); color: #fff; border: none; padding: 8px 20px;
+                 border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+        #status { font-size: 0.85rem; color: var(--muted); margin-left: 12px; }
+        #output { margin-top: 16px; font-family: 'Cascadia Code', 'Consolas', monospace;
+                  font-size: 0.82rem; white-space: pre-wrap; line-height: 1.4; background: var(--card);
+                  padding: 16px; border-radius: 8px; border: 1px solid var(--border); min-height: 200px; }
+        .pass { color: var(--green); }
+        .fail { color: var(--red); }
+        .summary { color: var(--blue); font-weight: bold; font-size: 0.95rem; margin-top: 8px; }
+    </style>
+</head>
+<body>
+    <h1>Focused Test — JS UltimateDetector (mirrors Python focused_test.py)</h1>
+    <div>
+        <button id="run-btn">Run Tests</button>
+        <span id="status">Ready</span>
+    </div>
+    <div id="output"></div>
+
+    <script src="pitch-common.js"></script>
+    <script src="ultimate-detector.js"></script>
+    <script>
+        const SEMI = {
+            'C': 0, 'C#': 1, 'Db': 1, 'D': 2, 'D#': 3, 'Eb': 3,
+            'E': 4, 'F': 5, 'F#': 6, 'Gb': 6, 'G': 7, 'G#': 8,
+            'Ab': 8, 'A': 9, 'A#': 10, 'Bb': 10, 'B': 11
+        };
+
+        function calcExpectedFreq(note, octave) {
+            const midi = (octave + 1) * 12 + SEMI[note];
+            return 440.0 * Math.pow(2, (midi - 69) / 12);
+        }
+
+        function getCentsTolerance(freq) {
+            if (freq >= 2093) return 100;  // C7+
+            if (freq >= 1047) return 50;   // C6+
+            if (freq < 65.5) return 35;    // A0-C1 (high inharmonicity)
+            return 25;
+        }
+
+        /**
+         * Onset detection matching Python focused_test.py exactly:
+         * - 10% of max RMS threshold (NOT 20%)
+         * - NO consecutive-hop requirement (first hop above threshold wins)
+         * - 50ms skip past onset
+         * - Clamp so buffer fits
+         */
+        function findOnsetPython(channelData, sampleRate) {
+            const hop = 1024;
+            const len = channelData.length;
+
+            // Pass 1: compute RMS per hop, find max
+            const rmsVals = [];
+            for (let i = 0; i + hop <= len; i += hop) {
+                let sum = 0;
+                for (let j = i; j < i + hop; j++) {
+                    sum += channelData[j] * channelData[j];
+                }
+                rmsVals.push(Math.sqrt(sum / hop));
+            }
+
+            if (rmsVals.length === 0) return 0;
+
+            let peakRms = 0;
+            for (let i = 0; i < rmsVals.length; i++) {
+                if (rmsVals[i] > peakRms) peakRms = rmsVals[i];
+            }
+
+            const threshold = peakRms * 0.1; // 10% — matches Python
+
+            // Pass 2: first hop above threshold (no consecutive requirement)
+            for (let i = 0; i < rmsVals.length; i++) {
+                if (rmsVals[i] > threshold) {
+                    const onsetSample = i * hop + Math.floor(sampleRate * 0.05); // 50ms past
+                    return Math.min(onsetSample, len - 8192);
+                }
+            }
+            return 0;
+        }
+
+        // ---- Build test case lists (mirrors Python exactly) ----
+
+        function buildUIowaTests() {
+            const notes = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+            const cases = [];
+            // B0
+            cases.push({ dataset: 'UIowa', file: 'Piano.mf.B0.ogg', note: 'B', octave: 0 });
+            for (let oct = 1; oct <= 7; oct++) {
+                for (const n of notes) {
+                    cases.push({ dataset: 'UIowa', file: `Piano.mf.${n}${oct}.ogg`, note: n, octave: oct });
+                }
+            }
+            // C8
+            cases.push({ dataset: 'UIowa', file: 'Piano.mf.C8.ogg', note: 'C', octave: 8 });
+            return cases.map(c => ({
+                ...c,
+                dir: 'TestData/UIowa-Piano-mf/',
+                noteName: `${c.note}${c.octave}`
+            }));
+        }
+
+        function buildSalamanderTests() {
+            const noteOrder = ['C', 'D#', 'F#', 'A'];
+            const cases = [];
+            cases.push({ note: 'A', octave: 0 });
+            for (let oct = 1; oct <= 7; oct++) {
+                for (const n of noteOrder) cases.push({ note: n, octave: oct });
+            }
+            cases.push({ note: 'C', octave: 8 });
+            return cases.map(c => ({
+                dataset: 'Salamander-v8',
+                dir: 'TestData/SalamanderGrandPianoV3_OggVorbis/ogg/',
+                file: `${c.note}${c.octave}v8.ogg`,
+                note: c.note, octave: c.octave,
+                noteName: `${c.note}${c.octave}`
+            }));
+        }
+
+        function buildKamoeTests() {
+            // Matches Python regex: (?:f|mf|p)_(?:hb_|hc_|lc_)?([a-g]#?)(\d)\.wav$
+            const files = [
+                'f_a0.wav','f_a1.wav','f_a4.wav','f_a5.wav','f_a6.wav','f_a7.wav',
+                'f_c1.wav','f_c2.wav','f_c4.wav','f_c5.wav','f_c6.wav','f_c7.wav','f_c8.wav',
+                'f_d#4.wav','f_d#5.wav','f_d#7.wav',
+                'f_f#1.wav','f_f#2.wav','f_f#5.wav','f_f#6.wav','f_f#7.wav',
+                'f_hb_d#1.wav','f_hc_a2.wav','f_hc_c3.wav',
+                'f_lc_a3.wav','f_lc_d#2.wav','f_lc_d#3.wav','f_lc_d#6.wav',
+                'f_lc_f#3.wav','f_lc_f#4.wav',
+                'mf_a0.wav','mf_a1.wav','mf_a2.wav','mf_a4.wav','mf_a5.wav','mf_a6.wav','mf_a7.wav',
+                'mf_c1.wav','mf_c2.wav','mf_c3.wav','mf_c4.wav','mf_c5.wav','mf_c7.wav','mf_c8.wav',
+                'mf_d#1.wav','mf_d#2.wav','mf_d#4.wav','mf_d#5.wav','mf_d#7.wav',
+                'mf_f#1.wav','mf_f#2.wav','mf_f#5.wav','mf_f#7.wav',
+                'mf_lc_a3.wav','mf_lc_c6.wav','mf_lc_d#3.wav','mf_lc_d#6.wav',
+                'mf_lc_f#3.wav','mf_lc_f#4.wav','mf_lc_f#6.wav',
+                'p_a0.wav','p_a1.wav','p_a2.wav','p_a5.wav','p_a7.wav',
+                'p_c1.wav','p_c2.wav','p_c3.wav','p_c4.wav','p_c8.wav',
+                'p_d#1.wav','p_d#2.wav','p_d#5.wav','p_d#7.wav',
+                'p_f#1.wav','p_f#2.wav','p_f#7.wav',
+                'p_lc_a3.wav','p_lc_a4.wav','p_lc_a6.wav',
+                'p_lc_c5.wav','p_lc_c6.wav','p_lc_c7.wav',
+                'p_lc_d#3.wav','p_lc_d#4.wav','p_lc_d#6.wav',
+                'p_lc_f#3.wav','p_lc_f#4.wav','p_lc_f#5.wav','p_lc_f#6.wav'
+            ];
+            const re = /^(?:f|mf|p)_(?:hb_|hc_|lc_)?([a-g]#?)(\d)\.wav$/;
+            return files.map(f => {
+                const m = f.match(re);
+                if (!m) return null;
+                const note = m[1].toUpperCase();
+                const octave = parseInt(m[2]);
+                return {
+                    dataset: 'Kamoe',
+                    dir: 'TestData/kamoepiano301/samples/',
+                    file: f,
+                    note, octave,
+                    noteName: `${note}${octave}`
+                };
+            }).filter(Boolean);
+        }
+
+        function buildDKTests() {
+            // FSS6_Royers_L1_<note><octave>_RR1.wav — octave convention +1
+            const files = [
+                'FSS6_Royers_L1_A#5_RR1.wav','FSS6_Royers_L1_A1_RR1.wav',
+                'FSS6_Royers_L1_A3_RR1.wav','FSS6_Royers_L1_A6_RR1.wav',
+                'FSS6_Royers_L1_B0_RR1.wav','FSS6_Royers_L1_B2_RR1.wav',
+                'FSS6_Royers_L1_B4_RR1.wav','FSS6_Royers_L1_C#2_RR1.wav',
+                'FSS6_Royers_L1_C#4_RR1.wav','FSS6_Royers_L1_C0_RR1.wav',
+                'FSS6_Royers_L1_D#0_RR1.wav','FSS6_Royers_L1_D#3_RR1.wav',
+                'FSS6_Royers_L1_D#5_RR1.wav','FSS6_Royers_L1_D#6_RR1.wav',
+                'FSS6_Royers_L1_D1_RR1.wav','FSS6_Royers_L1_E2_RR1.wav',
+                'FSS6_Royers_L1_E4_RR1.wav','FSS6_Royers_L1_F#1_RR1.wav',
+                'FSS6_Royers_L1_F#3_RR1.wav','FSS6_Royers_L1_F#5_RR1.wav',
+                'FSS6_Royers_L1_G#2_RR1.wav','FSS6_Royers_L1_G#4_RR1.wav',
+                'FSS6_Royers_L1_G0_RR1.wav'
+            ];
+            const re = /FSS6_Royers_L1_([A-G]#?)(\d)_RR1\.wav$/;
+            return files.map(f => {
+                const m = f.match(re);
+                if (!m) return null;
+                const note = m[1];
+                const octave = parseInt(m[2]) + 1; // +1 convention
+                return {
+                    dataset: 'DK-Gentle',
+                    dir: 'TestData/DK Gentle Grand/Samples/Clean NR/',
+                    file: f,
+                    note, octave,
+                    noteName: `${note}${octave}`
+                };
+            }).filter(Boolean);
+        }
+
+        function buildLegacyTests() {
+            // "21 A-1.wav" -> note=A, octave=-1+1=0
+            const files = [
+                '21 A-1.wav','24 C0.wav','27 Eb0.wav','30 Gb0.wav','33 A0.wav',
+                '36 C1.wav','39 Eb1.wav','42 Gb1.wav','45 A1.wav','48 C2.wav',
+                '51 Eb2.wav','54 Gb2.wav','57 A2.wav','60 C3.wav','63 Eb3.wav',
+                '66 Gb3.wav','69 A3.wav','72 C4.wav','75 Eb4.wav','78 Gb4.wav',
+                '81 A4.wav','84 C5.wav','87 Eb5.wav','90 Gb5.wav','93 A5.wav',
+                '96 C6.wav','99 Eb6.wav','102 Gb6.wav','105 A6.wav','108 C7.wav'
+            ];
+            const re = /^\d+\s+([A-G]b?)([-]?\d+)\.wav$/;
+            return files.map(f => {
+                const m = f.match(re);
+                if (!m) return null;
+                const note = m[1];
+                const octave = parseInt(m[2]) + 1; // +1 convention
+                return {
+                    dataset: 'Legacy',
+                    dir: 'TestData/Legacy Knight 1.0 (DS)/Samples/',
+                    file: f,
+                    note, octave,
+                    noteName: `${note}${octave}`
+                };
+            }).filter(Boolean);
+        }
+
+        function buildSteinwayTests() {
+            const files = [
+                'Steinway_A#5_Dyn2_RR1.wav','Steinway_A1_Dyn2_RR1.wav',
+                'Steinway_B2_Dyn2_RR1.wav','Steinway_C#4_Dyn2_RR1.wav',
+                'Steinway_C0_Dyn2_RR1.wav','Steinway_D#5_Dyn2_RR1.wav',
+                'Steinway_D1_Dyn2_RR1.wav','Steinway_E2_Dyn2_RR1.wav',
+                'Steinway_F#3_Dyn2_RR1.wav','Steinway_F6_Dyn2_RR1.wav',
+                'Steinway_G#4_Dyn2_RR1.wav','Steinway_G0_Dyn2_RR1.wav'
+            ];
+            const re = /^Steinway_([A-G]#?)(\d)_Dyn2_RR1\.wav$/;
+            return files.map(f => {
+                const m = f.match(re);
+                if (!m) return null;
+                const note = m[1];
+                const octave = parseInt(m[2]) + 1; // +1 convention
+                return {
+                    dataset: 'Steinway',
+                    dir: 'TestData/Steinway Grand  (DS)/Samples/',
+                    file: f,
+                    note, octave,
+                    noteName: `${note}${octave}`
+                };
+            }).filter(Boolean);
+        }
+
+        // ---- Main test runner ----
+
+        async function runTests() {
+            const btn = document.getElementById('run-btn');
+            const statusEl = document.getElementById('status');
+            const outputEl = document.getElementById('output');
+            btn.disabled = true;
+            outputEl.innerHTML = '';
+            const lines = [];
+
+            function log(text, cls) {
+                const span = document.createElement('span');
+                if (cls) span.className = cls;
+                span.textContent = text + '\n';
+                outputEl.appendChild(span);
+            }
+
+            // Build all test cases
+            let testCases = [
+                ...buildUIowaTests(),
+                ...buildSalamanderTests(),
+                ...buildKamoeTests(),
+                ...buildDKTests(),
+                ...buildLegacyTests(),
+                ...buildSteinwayTests()
+            ];
+
+            // Add expected freq and sort by it (matches Python)
+            for (const tc of testCases) {
+                tc.expectedFreq = calcExpectedFreq(tc.note, tc.octave);
+            }
+            testCases.sort((a, b) => a.expectedFreq - b.expectedFreq);
+
+            const detector = new UltimateDetector();
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const bufferSize = 8192;
+
+            let success = 0;
+            let total = 0;
+            let failures = [];
+            let loadErrors = [];
+            const datasetScores = {};
+
+            for (let idx = 0; idx < testCases.length; idx++) {
+                const tc = testCases[idx];
+                statusEl.textContent = `Testing ${idx + 1}/${testCases.length}: [${tc.dataset}] ${tc.noteName}...`;
+
+                // Load audio
+                let audioBuffer;
+                try {
+                    const url = tc.dir + encodeURIComponent(tc.file);
+                    const response = await fetch(url);
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    const arrayBuf = await response.arrayBuffer();
+                    audioBuffer = await new Promise((resolve, reject) => {
+                        audioCtx.decodeAudioData(arrayBuf, resolve, reject);
+                    });
+                } catch (err) {
+                    loadErrors.push(`[${tc.dataset}] ${tc.noteName}: ${tc.file} — ${err.message}`);
+                    continue;
+                }
+
+                const sampleRate = audioBuffer.sampleRate;
+                const channelData = audioBuffer.getChannelData(0);
+
+                // Onset detection — matches Python exactly (10%, no consecutive)
+                let startIdx = findOnsetPython(channelData, sampleRate);
+
+                if (startIdx + bufferSize > channelData.length) {
+                    startIdx = Math.max(0, channelData.length - bufferSize);
+                }
+
+                const buf = channelData.slice(startIdx, startIdx + bufferSize);
+                const freq = detector.getPitch(buf, sampleRate);
+
+                const tolerance = getCentsTolerance(tc.expectedFreq);
+
+                if (!datasetScores[tc.dataset]) {
+                    datasetScores[tc.dataset] = { pass: 0, fail: 0, total: 0 };
+                }
+                datasetScores[tc.dataset].total++;
+                total++;
+
+                if (freq > 0) {
+                    const cents = 1200 * Math.log2(freq / tc.expectedFreq);
+                    if (Math.abs(cents) < tolerance) {
+                        success++;
+                        datasetScores[tc.dataset].pass++;
+                    } else {
+                        failures.push({
+                            text: `[${tc.dataset}] ${tc.noteName} FAIL: ${freq.toFixed(1)}Hz (exp ${tc.expectedFreq.toFixed(1)}Hz), ${cents >= 0 ? '+' : ''}${cents.toFixed(0)}c (tol ±${tolerance}c)`,
+                            dataset: tc.dataset
+                        });
+                        datasetScores[tc.dataset].fail++;
+                    }
+                } else {
+                    failures.push({
+                        text: `[${tc.dataset}] ${tc.noteName} FAIL: No freq detected (exp ${tc.expectedFreq.toFixed(1)}Hz)`,
+                        dataset: tc.dataset
+                    });
+                    datasetScores[tc.dataset].fail++;
+                }
+
+                // Yield to UI every 10 files
+                if (idx % 10 === 0) await new Promise(r => setTimeout(r, 0));
+            }
+
+            await audioCtx.close();
+
+            // Output results (matches Python format)
+            if (loadErrors.length > 0) {
+                log(`\n--- Load Errors (${loadErrors.length}) ---`);
+                for (const e of loadErrors) log(e, 'fail');
+            }
+
+            log('\n--- Failures ---');
+            if (failures.length === 0) {
+                log('None!', 'pass');
+            } else {
+                for (const f of failures) log(f.text, 'fail');
+            }
+
+            log('');
+            log(`Result: ${success}/${total} passed.`, 'summary');
+            log(`(Python reference: 269/271 passed)`, 'summary');
+
+            log('\n--- Per-Dataset Breakdown ---');
+            for (const [ds, s] of Object.entries(datasetScores).sort((a, b) => a[0].localeCompare(b[0]))) {
+                const cls = s.fail === 0 ? 'pass' : 'fail';
+                log(`  ${ds}: ${s.pass}/${s.total}`, cls);
+            }
+
+            statusEl.textContent = `Done — ${success}/${total} passed.`;
+            btn.disabled = false;
+        }
+
+        document.getElementById('run-btn').addEventListener('click', runTests);
+    </script>
+</body>
+</html>

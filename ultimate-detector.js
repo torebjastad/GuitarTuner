@@ -520,8 +520,8 @@ class UltimateDetector extends PitchDetector {
             decisionReason = 'Spectral peak (MPM failed, fallback)';
         }
 
-        // Frequency range filter
-        if (finalFreq > 0 && (finalFreq < TunerDefaults.MIN_FREQUENCY || finalFreq > TunerDefaults.MAX_FREQUENCY)) {
+        // Frequency range filter (lower bound only — no upper limit for piano range)
+        if (finalFreq > 0 && finalFreq < TunerDefaults.MIN_FREQUENCY) {
             if (this.debug) this.debugData = null;
             return -1;
         }
