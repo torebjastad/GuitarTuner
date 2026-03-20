@@ -1,120 +1,82 @@
 // app.js — Hoved-orkestrator for PianoHelse Pianoeier-appen.
 //
 // Avhenger av (i lastingsrekkefølge):
-//   pitch-common.js, ultimate-detector.js  → fra ../
+//   pitch-common.js, ultimate-detector.js  → fra ../../
 //   piano-scanner.js, health-scorer.js, tuning-curve.js → fra ./
 //   router.js, piano-keyboard.js → fra ./
-//
-// Ingen import/export — alt er globale klasser.
 
 'use strict';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 1. Service Worker-registrering
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Service Worker er deaktivert under utvikling — reaktiver for produksjon.
+// Service Worker deaktivert under utvikling
 // if ('serviceWorker' in navigator) {
 //     window.addEventListener('load', () => {
-//         navigator.serviceWorker.register('./sw.js')
-//             .then(reg => console.log('[PianoHelse] SW registrert:', reg.scope))
-//             .catch(err => console.warn('[PianoHelse] SW-registrering feilet:', err));
+//         navigator.serviceWorker.register('./sw.js').catch(() => {});
 //     });
 // }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. Globale mock-data for stemmere (Fase 1 — ingen backend)
+// Mock stemmere (Fase 1)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MOCK_STEMMERE = [
-    {
-        navn:      'Lars Mikkelsen',
-        by:        'Oslo',
-        avstand:   '3,2 km',
-        erfaring:  '18 år',
-        pris:      '1 400–1 800 kr',
-        tlf:       '+47 97 23 45 67',
-        stjerner:  5,
-        anmeldelser: 142
-    },
-    {
-        navn:      'Kari Thorshaug',
-        by:        'Bærum',
-        avstand:   '8,5 km',
-        erfaring:  '11 år',
-        pris:      '1 200–1 600 kr',
-        tlf:       '+47 91 67 89 01',
-        stjerner:  5,
-        anmeldelser: 87
-    },
-    {
-        navn:      'Erik Bergström',
-        by:        'Sandvika',
-        avstand:   '12 km',
-        erfaring:  '25 år',
-        pris:      '1 600–2 200 kr',
-        tlf:       '+47 99 12 34 56',
-        stjerner:  4,
-        anmeldelser: 213
-    }
+    { navn: 'Lars Mikkelsen',  by: 'Oslo',     avstand: '3,2 km',  erfaring: '18 år', pris: '1 400–1 800 kr', tlf: '+47 97 23 45 67', stjerner: 5, anmeldelser: 142 },
+    { navn: 'Kari Thorshaug',  by: 'Bærum',    avstand: '8,5 km',  erfaring: '11 år', pris: '1 200–1 600 kr', tlf: '+47 91 67 89 01', stjerner: 5, anmeldelser: 87 },
+    { navn: 'Erik Bergström',  by: 'Sandvika', avstand: '12 km',   erfaring: '25 år', pris: '1 600–2 200 kr', tlf: '+47 99 12 34 56', stjerner: 4, anmeldelser: 213 }
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. Applikasjonstilstand
+// App-tilstand
 // ─────────────────────────────────────────────────────────────────────────────
 
 const AppTilstand = {
-    pianoInfo:        null,   // { type, merke, alder, sistStemt }
-    skanneResultater: null,   // Array[88]
-    scoreResultat:    null,   // { score, status, detaljer }
-    kurveData:        null,   // { kurve, chartConfig }
+    pianoInfo:        null,
+    skanneResultater: null,
+    scoreResultat:    null,
+    kurveData:        null,
     aktivtNoteIndex:  -1,
     skannerAktiv:     false,
+    skanneValg:       'hvite',  // 'hvite' (52 taster) eller 'alle' (88 taster)
 
-    // Objekter
     scanner:          null,
     tastatur:         null,
-    stemningskurve:   null   // Chart.js-instans
+    stemningskurve:   null,
+    beepCtx:          null      // AudioContext for bekreftelseslyd
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. Router-oppsett
+// Router
 // ─────────────────────────────────────────────────────────────────────────────
 
 const router = new Router();
 
 router
-    .registrer('velkomst',    _visVelkomst)
-    .registrer('piano-info',  _visPianoInfo)
+    .registrer('velkomst',     _visVelkomst)
+    .registrer('piano-info',   _visPianoInfo)
     .registrer('forberedelse', _visForberedelse)
-    .registrer('skanning',    _visSkanning)
-    .registrer('analyse',     _visAnalyse)
-    .registrer('rapport',     _visRapport)
+    .registrer('skanning',     _visSkanning)
+    .registrer('analyse',      _visAnalyse)
+    .registrer('rapport',      _visRapport)
     .registrer('finn-stemmer', _visFinnStemmer);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 5. Skjerm-handlerfunksjoner
+// Skjerm-handlers
 // ─────────────────────────────────────────────────────────────────────────────
 
-function _visVelkomst() {
-    // Ingenting å initialisere — kun visning
-}
+function _visVelkomst() {}
 
 function _visPianoInfo() {
-    // Fylte inn eventuelle eksisterende verdier
     if (AppTilstand.pianoInfo) {
-        const info = AppTilstand.pianoInfo;
         const merkeEl = document.getElementById('piano-merke');
-        if (merkeEl && info.merke) merkeEl.value = info.merke;
+        if (merkeEl && AppTilstand.pianoInfo.merke) merkeEl.value = AppTilstand.pianoInfo.merke;
     }
 }
 
 function _visForberedelse() {
-    // Ingenting dynamisk
+    // Oppdater tidsestimat og tast-info basert på valg
+    _oppdaterForberedelseTekst();
 }
 
 function _visSkanning() {
-    // Klargjør tastaturkomponent hvis det ikke allerede er opprettet
     const canvas = document.getElementById('tastatur-canvas');
     if (canvas && !AppTilstand.tastatur) {
         AppTilstand.tastatur = new PianoKeyboard(canvas);
@@ -122,16 +84,13 @@ function _visSkanning() {
         AppTilstand.tastatur.nullstill();
     }
 
-    // Nullstill scanner
-    if (AppTilstand.scanner) {
-        AppTilstand.scanner.avslutt();
-    }
+    // Opprett scanner
+    if (AppTilstand.scanner) AppTilstand.scanner.avslutt();
     try {
         AppTilstand.scanner = new PianoScanner();
     } catch (initErr) {
-        console.error('[PianoHelse] Klarte ikke opprette PianoScanner:', initErr);
         AppTilstand.scanner = null;
-        _visSkannFeil('Kritisk feil: Kunne ikke starte diagnosemodellen. Last siden på nytt. (' + initErr.message + ')');
+        _visSkannFeil('Kunne ikke starte diagnosemodellen. Last siden på nytt. (' + initErr.message + ')');
         return;
     }
 
@@ -139,63 +98,46 @@ function _visSkanning() {
     AppTilstand.scanner.onNoteMalt = (noteIndex, hz) => {
         _oppdaterSanntidsVisning(noteIndex, hz);
     };
-
     AppTilstand.scanner.onNoteBekreft = (noteIndex, resultat) => {
         _bekreftTast(noteIndex, resultat);
     };
-
     AppTilstand.scanner.onNoteIkkeDetektert = (noteIndex) => {
         _tastIkkeDetektert(noteIndex);
     };
-
     AppTilstand.scanner.onSkanningFullfort = (resultater) => {
         _skanningFullfort(resultater);
     };
-
     AppTilstand.scanner.onFremdrift = (indeks, totalt) => {
         _oppdaterFremdrift(indeks, totalt);
-        // Oppdater label med neste tast
         _oppdaterNesteTastLabel(indeks, totalt);
-        // Vis bass-mikrofon-advarsel for de 10 laveste tastene
         _oppdaterBassAdvarsel(indeks);
     };
 
-    // Nullstill UI
+    const antall = AppTilstand.skanneValg === 'alle' ? 88 : 52;
     _settSkanneStatus('venter');
-    _oppdaterFremdrift(0, 52);
+    _oppdaterFremdrift(0, antall);
 }
 
 function _visAnalyse() {
-    // Spinner starter automatisk via CSS
-    // Beregn score her hvis vi har resultater
     if (AppTilstand.skanneResultater) {
-        // Simuler kort behandlingstid
         const startTid = performance.now();
-        const MINIMUMVIS_MS = 2000;
-
         const scoreResultat = HealthScorer.score(AppTilstand.skanneResultater);
         const kurveData     = TuningCurve.generer(AppTilstand.skanneResultater);
-
         AppTilstand.scoreResultat = scoreResultat;
         AppTilstand.kurveData     = kurveData;
-
-        const ventetid = Math.max(0, MINIMUMVIS_MS - (performance.now() - startTid));
+        const ventetid = Math.max(0, 2000 - (performance.now() - startTid));
         setTimeout(() => router.navigate('rapport'), ventetid);
     } else {
-        // Ingen data — gå tilbake
         router.navigate('velkomst');
     }
 }
 
 function _visRapport() {
     if (!AppTilstand.scoreResultat) return;
-
     const { score, status, detaljer } = AppTilstand.scoreResultat;
 
-    // Oppdater score-sirkel
     _oppdaterScoreSirkel(score, status);
 
-    // Beskrivelse
     const beskrivelseEl = document.getElementById('rapport-beskrivelse');
     if (beskrivelseEl) {
         beskrivelseEl.textContent = HealthScorer.lagBeskrivelse(AppTilstand.scoreResultat);
@@ -217,20 +159,14 @@ function _visRapport() {
             score !== null ? Math.round(score) + '/100' : '—/100';
     }
 
-    // Detaljer-statistikk
     _oppdaterDetaljerPanel(detaljer);
-
-    // Stemningskurve (Chart.js)
     _tegnStemningskurve();
-
-    // Per-oktav-tabell
     _oppdaterOktavTabell(detaljer.perOktav);
 }
 
 function _visFinnStemmer() {
     const listEl = document.getElementById('stemmer-liste');
     if (!listEl) return;
-
     listEl.innerHTML = MOCK_STEMMERE.map(s => `
         <div class="stemmer-kort">
             <div class="stemmer-hode">
@@ -265,15 +201,33 @@ function _visFinnStemmer() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 6. Skannings-UI-hjelp
+// Forberedelse: tast-valg og tidsestimat
+// ─────────────────────────────────────────────────────────────────────────────
+
+function _oppdaterForberedelseTekst() {
+    const erAlle = AppTilstand.skanneValg === 'alle';
+    const antall = erAlle ? 88 : 52;
+    const minutter = Math.ceil(antall * 2 / 60);  // ca 2 sek per tast
+    const tidsEl = document.getElementById('forberedelse-tidsestimat');
+    if (tidsEl) {
+        tidsEl.textContent = `Ca. ${minutter} minutter · ${antall} taster · Hold hver tast i ~2 sekunder`;
+    }
+
+    // Oppdater radio-knapper
+    const hviteRadio = document.getElementById('valg-hvite');
+    const alleRadio  = document.getElementById('valg-alle');
+    if (hviteRadio) hviteRadio.checked = !erAlle;
+    if (alleRadio)  alleRadio.checked  = erAlle;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Skannings-UI
 // ─────────────────────────────────────────────────────────────────────────────
 
 function _oppdaterSanntidsVisning(noteIndex, hz) {
     const forventet = PianoScanner.idealHz(noteIndex);
     const cents     = 1200 * Math.log2(hz / forventet);
-    const centsBegr = Math.max(-50, Math.min(50, cents));
 
-    // Cents-visning
     const centsEl = document.getElementById('skanning-cents');
     if (centsEl) {
         const tegn = cents > 0 ? '+' : '';
@@ -284,17 +238,14 @@ function _oppdaterSanntidsVisning(noteIndex, hz) {
              :                         'cents-kritisk');
     }
 
-    // Frekvensdisplay
     const hzEl = document.getElementById('skanning-hz');
     if (hzEl) hzEl.textContent = hz.toFixed(1) + ' Hz';
 
-    // Puls-animasjon — sett aktiv klasse
     const pulsEl = document.getElementById('mikrofon-puls');
     if (pulsEl) pulsEl.classList.add('puls-aktiv');
 }
 
 function _bekreftTast(noteIndex, resultat) {
-    // Oppdater tastaturet
     const status = Math.abs(resultat.cents) <= 5  ? 'bekreftet'
                  : Math.abs(resultat.cents) <= 15 ? 'advarsel'
                  :                                  'kritisk';
@@ -303,16 +254,49 @@ function _bekreftTast(noteIndex, resultat) {
         AppTilstand.tastatur.oppdaterTast(noteIndex, status, resultat.cents);
     }
 
-    // Bekreftelsesvisning
     const statusEl = document.getElementById('skanning-status');
     if (statusEl) {
         const notaNavn = resultat.noteNavn + resultat.oktav;
-        statusEl.textContent = `✓ ${notaNavn} registrert!`;
+        statusEl.textContent = `✓ ${notaNavn} registrert`;
         statusEl.className   = 'skanning-status status-bekreftet';
     }
 
-    // Haptic feedback (iOS/Android støtter dette)
-    if (navigator.vibrate) navigator.vibrate(50);
+    // Kort bekreftelseslyd — diskret men tydelig "klikk/pling"
+    _spillBekreftelseslyd();
+
+    // Haptic feedback
+    if (navigator.vibrate) navigator.vibrate(30);
+}
+
+/**
+ * Spiller en kort, diskret bekreftelsestone (~50ms, 880 Hz).
+ * Lavt volum så den ikke forstyrrer pianolyttingen.
+ */
+function _spillBekreftelseslyd() {
+    try {
+        if (!AppTilstand.beepCtx) {
+            AppTilstand.beepCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        const ctx = AppTilstand.beepCtx;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.value = 880;  // A5 — tydelig uten å forstyrre pianotoner
+        gain.gain.value = 0.06;     // Lavt volum
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        const nå = ctx.currentTime;
+        gain.gain.setValueAtTime(0.06, nå);
+        gain.gain.exponentialRampToValueAtTime(0.001, nå + 0.05);
+
+        osc.start(nå);
+        osc.stop(nå + 0.06);
+    } catch {
+        // Ignorer — lyd er valgfritt
+    }
 }
 
 function _tastIkkeDetektert(noteIndex) {
@@ -342,8 +326,9 @@ function _oppdaterFremdrift(indeks, totalt) {
 function _oppdaterNesteTastLabel(indeks, totalt) {
     if (indeks >= totalt) return;
 
-    // Finn noteIndex for tast nr. `indeks` i standardsekvensen
-    const sekvens = _lagHvitTastSekvens();
+    const sekvens = AppTilstand.skanneValg === 'alle'
+        ? _lagAlleTasterSekvens()
+        : _lagHvitTastSekvens();
     const noteIndex = sekvens[indeks];
     if (noteIndex === undefined) return;
 
@@ -351,11 +336,9 @@ function _oppdaterNesteTastLabel(indeks, totalt) {
     if (!info) return;
 
     const label = info.noteNavn + info.oktav;
-
     const spillEl = document.getElementById('spill-tast-label');
     if (spillEl) spillEl.textContent = `Spill: ${label}`;
 
-    // Oppdater tastaturet
     if (AppTilstand.tastatur) {
         AppTilstand.tastatur.settAktiv(noteIndex);
     }
@@ -364,7 +347,6 @@ function _oppdaterNesteTastLabel(indeks, totalt) {
 function _settSkanneStatus(status) {
     const pulsEl   = document.getElementById('mikrofon-puls');
     const statusEl = document.getElementById('skanning-status');
-
     if (!pulsEl || !statusEl) return;
 
     switch (status) {
@@ -385,19 +367,18 @@ function _settSkanneStatus(status) {
 }
 
 function _oppdaterBassAdvarsel(skanneIndeks) {
-    // Finn noteIndex for gjeldende posisjon i sekvensen
-    const sekvens   = _lagHvitTastSekvens();
-    const noteIndex = sekvens[skanneIndeks];
+    const sekvens    = AppTilstand.skanneValg === 'alle'
+        ? _lagAlleTasterSekvens() : _lagHvitTastSekvens();
+    const noteIndex  = sekvens[skanneIndeks];
     const advarselEl = document.getElementById('bass-mikrofon-advarsel');
     if (!advarselEl) return;
-    // Vis advarsel dersom noteIndex < 10 (A0–E1, ca. 10 laveste taster)
     advarselEl.style.display = (noteIndex !== undefined && noteIndex < 10)
         ? '' : 'none';
 }
 
 function _lagHvitTastSekvens() {
     const hviteOffsets = [0, 2, 4, 5, 7, 9, 11];
-    const sekvens      = [];
+    const sekvens = [];
     for (let okt = 0; okt <= 7; okt++) {
         for (const offset of hviteOffsets) {
             const midi = (okt + 1) * 12 + offset;
@@ -407,37 +388,37 @@ function _lagHvitTastSekvens() {
     return sekvens;
 }
 
+function _lagAlleTasterSekvens() {
+    const sekvens = [];
+    for (let i = 0; i < 88; i++) sekvens.push(i);
+    return sekvens;
+}
+
 function _skanningFullfort(resultater) {
     AppTilstand.skanneResultater = resultater;
     AppTilstand.skannerAktiv    = false;
 
-    // Oppdater knapp-tilstand
     const startKnapp = document.getElementById('start-skanning-knapp');
     const stoppKnapp = document.getElementById('stopp-skanning-knapp');
     if (startKnapp) startKnapp.style.display = '';
     if (stoppKnapp) stoppKnapp.style.display = 'none';
 
-    // Gå til analyse-skjerm
     router.navigate('analyse');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 7. Rapport-hjelp
+// Rapport
 // ─────────────────────────────────────────────────────────────────────────────
 
 function _oppdaterScoreSirkel(score, status) {
-    const sirkelEl  = document.getElementById('score-sirkel');
-    const scoreEl   = document.getElementById('score-tall');
-    const statusEl  = document.getElementById('score-status-tekst');
-    const ikonEl    = document.getElementById('score-ikon');
-
+    const sirkelEl = document.getElementById('score-sirkel');
+    const scoreEl  = document.getElementById('score-tall');
+    const statusEl = document.getElementById('score-status-tekst');
+    const ikonEl   = document.getElementById('score-ikon');
     if (!sirkelEl) return;
 
-    // Fjern alle statusklasser
     sirkelEl.classList.remove('score-god', 'score-tilsyn', 'score-kritisk', 'score-mangler');
-
     const scoreRund = score !== null ? Math.round(score) : null;
-
     if (scoreEl) scoreEl.textContent = scoreRund !== null ? scoreRund : '—';
 
     switch (status) {
@@ -462,10 +443,9 @@ function _oppdaterScoreSirkel(score, status) {
             if (ikonEl)   ikonEl.textContent   = '?';
     }
 
-    // Animer SVG-ring
     const svgRing = document.getElementById('score-ring-bue');
     if (svgRing && scoreRund !== null) {
-        const omkrets = 2 * Math.PI * 54; // r=54
+        const omkrets = 2 * Math.PI * 54;
         const fylt    = (scoreRund / 100) * omkrets;
         svgRing.style.strokeDasharray  = `${fylt} ${omkrets}`;
         svgRing.style.strokeDashoffset = '0';
@@ -474,7 +454,6 @@ function _oppdaterScoreSirkel(score, status) {
 
 function _oppdaterDetaljerPanel(detaljer) {
     const el = (id) => document.getElementById(id);
-
     const gjEl = el('detalj-gjennomsnitt');
     const mxEl = el('detalj-maks');
     const krEl = el('detalj-kritiske');
@@ -494,16 +473,28 @@ function _tegnStemningskurve() {
     const canvas = document.getElementById('stemningskurve-canvas');
     if (!canvas || typeof Chart === 'undefined') return;
 
-    // Ødelegg forrige instans
     if (AppTilstand.stemningskurve) {
         AppTilstand.stemningskurve.destroy();
         AppTilstand.stemningskurve = null;
     }
 
+    // Gjør canvas bred nok til å vise alle toner uten komprimering
+    // Minimum 12px per datapunkt, minimum 900px total
+    const antallPunkter = AppTilstand.kurveData.chartConfig.data.labels.length;
+    const bredde = Math.max(900, antallPunkter * 16);
+    canvas.style.width  = bredde + 'px';
+    canvas.style.height = '340px';
+    canvas.width  = bredde * 2;  // Retina
+    canvas.height = 680;
+
     const morkModus = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const config    = morkModus
         ? TuningCurve.morkModusConfig(AppTilstand.kurveData.chartConfig)
         : AppTilstand.kurveData.chartConfig;
+
+    // Overstyr responsive for bred kurve
+    config.options.responsive = false;
+    config.options.maintainAspectRatio = false;
 
     AppTilstand.stemningskurve = new Chart(canvas, config);
 }
@@ -532,7 +523,7 @@ function _oppdaterOktavTabell(perOktav) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 8. Event-binding: knapper
+// Event-binding
 // ─────────────────────────────────────────────────────────────────────────────
 
 function _bindAlleKnapper() {
@@ -542,30 +533,29 @@ function _bindAlleKnapper() {
     // Piano-info → forberedelse
     _bind('piano-info-neste-knapp', () => {
         AppTilstand.pianoInfo = {
-            type:       _verdi('piano-type'),
-            merke:      _verdi('piano-merke'),
-            alder:      _verdi('piano-alder'),
-            sistStemt:  _verdi('piano-sist-stemt')
+            type:      _verdi('piano-type'),
+            merke:     _verdi('piano-merke'),
+            alder:     _verdi('piano-alder'),
+            sistStemt: _verdi('piano-sist-stemt')
         };
         router.navigate('forberedelse');
     });
     _bind('piano-info-hopp-knapp', () => router.navigate('forberedelse'));
 
-    // Forberedelse → ansvarsfraskrivelse-modal → skanning
-    _bind('forberedelse-start-knapp', () => {
-        const modal = document.getElementById('ansvarsfraskrivelse-modal');
-        if (modal && typeof modal.showModal === 'function') {
-            modal.showModal();
-        } else {
-            // Fallback: naviger direkte dersom <dialog> ikke støttes
-            router.navigate('skanning');
-        }
+    // Tast-valg radio-knapper i forberedelse
+    const valgHvite = document.getElementById('valg-hvite');
+    const valgAlle  = document.getElementById('valg-alle');
+    if (valgHvite) valgHvite.addEventListener('change', () => {
+        AppTilstand.skanneValg = 'hvite';
+        _oppdaterForberedelseTekst();
     });
-    _bind('modal-bekreft-knapp', () => {
-        const modal = document.getElementById('ansvarsfraskrivelse-modal');
-        if (modal) modal.close();
-        router.navigate('skanning');
+    if (valgAlle) valgAlle.addEventListener('change', () => {
+        AppTilstand.skanneValg = 'alle';
+        _oppdaterForberedelseTekst();
     });
+
+    // Forberedelse → skanning (direkte, ingen modal)
+    _bind('forberedelse-start-knapp', () => router.navigate('skanning'));
     _bind('forberedelse-avbryt-knapp', () => router.navigate('velkomst'));
 
     // Skanning — start
@@ -588,7 +578,13 @@ function _bindAlleKnapper() {
 
         try {
             await AppTilstand.scanner.startMikrofon();
-            await AppTilstand.scanner.skannAlle();
+
+            // Velg sekvens basert på brukerens valg
+            const sekvens = AppTilstand.skanneValg === 'alle'
+                ? AppTilstand.scanner._alleTasterSekvens()
+                : null;  // null = standard hvite taster
+
+            await AppTilstand.scanner.skannAlle(sekvens);
         } catch (err) {
             AppTilstand.skannerAktiv = false;
             if (startKnapp) startKnapp.style.display = '';
@@ -604,7 +600,6 @@ function _bindAlleKnapper() {
             } else {
                 melding = 'Feil ved oppstart av mikrofon: ' + err.message;
             }
-
             _visSkannFeil(melding);
         }
     });
@@ -620,16 +615,10 @@ function _bindAlleKnapper() {
         _settSkanneStatus('venter');
     });
 
-    // Rapport → finn stemmer
+    // Rapport
     _bind('book-stemmer-knapp', () => router.navigate('finn-stemmer'));
-
-    // Rapport → del (Web Share API eller fallback)
-    _bind('del-rapport-knapp', () => _delRapport());
-
-    // Finn stemmer → tilbake
+    _bind('del-rapport-knapp',  () => _delRapport());
     _bind('finn-stemmer-tilbake-knapp', () => router.navigate('rapport'));
-
-    // Rapport → ny analyse
     _bind('ny-analyse-knapp', () => {
         AppTilstand.skanneResultater = null;
         AppTilstand.scoreResultat    = null;
@@ -640,9 +629,7 @@ function _bindAlleKnapper() {
 
 function _bind(id, fn) {
     const el = document.getElementById(id);
-    if (el) {
-        el.addEventListener('click', fn);
-    }
+    if (el) el.addEventListener('click', fn);
 }
 
 function _verdi(id) {
@@ -664,29 +651,23 @@ function _visSkannFeil(melding) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 9. Deling
+// Deling
 // ─────────────────────────────────────────────────────────────────────────────
 
 function _delRapport() {
     if (!AppTilstand.scoreResultat) return;
     const { score, status } = AppTilstand.scoreResultat;
     const statusTekst = {
-        god:               'God form',
-        trenger_tilsyn:    'Trenger tilsyn',
-        kritisk:           'Kritisk tilstand',
-        utilstrekkelig_data: 'Mangler data'
+        god: 'God form', trenger_tilsyn: 'Trenger tilsyn',
+        kritisk: 'Kritisk tilstand', utilstrekkelig_data: 'Mangler data'
     }[status] ?? 'Ukjent';
 
     const tekst = `Min piano-helsesjekk via PianoHelse:\nHelsescore: ${Math.round(score ?? 0)}/100 — ${statusTekst}`;
 
     if (navigator.share) {
-        navigator.share({
-            title: 'PianoHelse-rapport',
-            text:  tekst,
-            url:   window.location.href
-        }).catch(err => console.log('Del avbrutt:', err));
+        navigator.share({ title: 'PianoHelse-rapport', text: tekst, url: window.location.href })
+            .catch(() => {});
     } else {
-        // Fallback: kopier til utklippstavlen
         navigator.clipboard.writeText(tekst)
             .then(() => alert('Rapporten er kopiert til utklippstavlen.'))
             .catch(() => alert(tekst));
@@ -694,28 +675,10 @@ function _delRapport() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 10. iOS PWA-installasjonshint
-// ─────────────────────────────────────────────────────────────────────────────
-
-function _sjekkIOSInstallasjon() {
-    const erIOS      = /iphone|ipad|ipod/i.test(navigator.userAgent) &&
-                       /safari/i.test(navigator.userAgent) &&
-                       !/crios|fxios|opios/i.test(navigator.userAgent);
-    const erInstallert = navigator.standalone === true ||
-                         window.matchMedia('(display-mode: standalone)').matches;
-
-    if (erIOS && !erInstallert) {
-        const banner = document.getElementById('ios-installer-banner');
-        if (banner) banner.style.display = 'flex';
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 11. Initialisering
+// Init
 // ─────────────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
     _bindAlleKnapper();
-    _sjekkIOSInstallasjon();
     router.init();
 });

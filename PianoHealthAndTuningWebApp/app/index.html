@@ -744,57 +744,7 @@
         }
         #bass-mikrofon-advarsel { display: none; }
 
-        /* ── Ansvarsfraskrivelse-modal ── */
-        #ansvarsfraskrivelse-modal {
-            border: none;
-            border-radius: var(--radius-xl);
-            padding: 0;
-            max-width: 440px;
-            width: calc(100% - var(--space-2xl));
-            box-shadow: var(--skygge-4);
-            background: var(--overflate-primer);
-        }
-        #ansvarsfraskrivelse-modal::backdrop {
-            background: rgba(10, 15, 26, 0.72);
-            backdrop-filter: blur(2px);
-        }
-        .modal-innhold {
-            padding: var(--space-xl) var(--space-lg);
-        }
-        .modal-ikon {
-            font-size: 2.5rem;
-            text-align: center;
-            margin-bottom: var(--space-md);
-        }
-        .modal-tittel {
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: var(--tekst-primer);
-            text-align: center;
-            margin-bottom: var(--space-md);
-        }
-        .modal-tekst {
-            font-size: 0.9rem;
-            color: var(--tekst-sekundaer);
-            line-height: 1.65;
-            margin-bottom: var(--space-xl);
-            text-align: center;
-        }
-        #modal-bekreft-knapp {
-            width: 100%;
-            background: var(--primary);
-            color: var(--primary-text);
-            border: none;
-            border-radius: var(--radius-lg);
-            padding: var(--space-md) var(--space-lg);
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            min-height: 48px;
-            transition: background var(--tid-rask);
-        }
-        #modal-bekreft-knapp:hover  { background: var(--primary-light); }
-        #modal-bekreft-knapp:active { transform: scale(0.98); }
+        /* Modal fjernet — CSS oppryddet */
     </style>
 </head>
 <body>
@@ -946,13 +896,25 @@
 
     <div class="side-innhold">
         <h1 style="margin-bottom:var(--space-sm)">Klar for analyse?</h1>
-        <p style="color:var(--tekst-tersiaer);margin-bottom:var(--space-lg)">
-            Ca. 5–8 minutter · Spill tastene én for én
+        <p id="forberedelse-tidsestimat" style="color:var(--tekst-tersiaer);margin-bottom:var(--space-lg)">
+            Ca. 2 minutter · 52 taster · Hold hver tast i ~2 sekunder
         </p>
 
-        <!-- Illustrasjon -->
-        <div style="text-align:center;margin:var(--space-xl) 0;font-size:4rem" aria-hidden="true">
-            🎹
+        <!-- Valg av taster -->
+        <div style="background:var(--overflate-sekundaer);border:1px solid var(--kant);border-radius:var(--radius-lg);padding:var(--space-md);margin-bottom:var(--space-lg)">
+            <h2 style="font-size:1rem;margin-bottom:var(--space-sm);font-weight:600">Hvilke taster vil du skanne?</h2>
+            <div class="radio-gruppe" role="radiogroup" aria-label="Velg skanneomfang">
+                <label class="radio-valg">
+                    <input type="radio" name="skanne-valg" id="valg-hvite" value="hvite" checked>
+                    <span><strong>Kun hvite taster</strong> (52 taster, ~2 min)<br>
+                    <small style="color:var(--tekst-tersiaer)">Raskere — gir en god oversikt over pianoets helse</small></span>
+                </label>
+                <label class="radio-valg">
+                    <input type="radio" name="skanne-valg" id="valg-alle" value="alle">
+                    <span><strong>Alle 88 taster</strong> (hvite + svarte, ~3 min)<br>
+                    <small style="color:var(--tekst-tersiaer)">Grundigere — inkluderer kromatiske toner</small></span>
+                </label>
+            </div>
         </div>
 
         <h2 style="font-size:1.1rem;margin-bottom:var(--space-md)">Før du starter:</h2>
@@ -1175,10 +1137,13 @@
                 </p>
             </div>
 
-            <!-- Stemningskurve (Chart.js) -->
+            <!-- Stemningskurve (Chart.js) — horisontalt scrollbar som Wikipedia-Railsback -->
             <div class="rapport-seksjon">
                 <h3>Stemningskurve</h3>
-                <div class="kurve-container">
+                <p style="font-size:0.8rem;color:var(--tekst-tersiaer);margin-bottom:var(--space-sm)">
+                    Sveip sidelengs for å se alle toner →
+                </p>
+                <div class="kurve-container" style="overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;border:1px solid var(--kant);border-radius:var(--radius-md);padding:var(--space-sm)">
                     <canvas id="stemningskurve-canvas"
                             aria-label="Stemningskurve — cents-avvik per tone"></canvas>
                 </div>
@@ -1228,6 +1193,15 @@
         </button>
     </div>
 
+    <!-- Ansvarsfraskrivelse (fotnote) -->
+    <div style="padding:0 var(--space-lg) var(--space-lg);background:var(--overflate-sekundaer)">
+        <p style="font-size:0.7rem;color:var(--tekst-tersiaer);line-height:1.5;text-align:center">
+            PianoHelse gir en indikasjon basert på mobilmikrofonmålinger.
+            Resultatet er veiledende — ikke en erstatning for profesjonell faglig vurdering.
+            Nøyaktigheten varierer med romakustikk, mikrofonkvalitet og spilleteknikk.
+        </p>
+    </div>
+
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
@@ -1264,27 +1238,7 @@
     </div>
 </section>
 
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     ANSVARSFRASKRIVELSE-MODAL
-══════════════════════════════════════════════════════════════════════════════ -->
-<dialog id="ansvarsfraskrivelse-modal"
-        aria-labelledby="modal-tittel-id"
-        aria-describedby="modal-tekst-id">
-    <div class="modal-innhold">
-        <div class="modal-ikon" aria-hidden="true">🎹</div>
-        <h2 class="modal-tittel" id="modal-tittel-id">Om diagnoseresultatet</h2>
-        <p class="modal-tekst" id="modal-tekst-id">
-            PianoHelse gir en indikasjon på pianoets stemmetilstand basert på
-            mobilmikrofonmålinger. Resultatet er ment som veiledning — ikke som
-            erstatning for en profesjonell faglig vurdering. Nøyaktigheten varierer
-            med romsakkustikk, mikrofonkvalitet og spilleteknikk.
-        </p>
-        <button id="modal-bekreft-knapp"
-                aria-label="Jeg forstår — lukk og start skanning">
-            Jeg forstår — start skanning
-        </button>
-    </div>
-</dialog>
+<!-- Modal fjernet — ansvarsfraskrivelse vises som fotnote i rapporten -->
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
      iOS INSTALLASJONSBANNER
