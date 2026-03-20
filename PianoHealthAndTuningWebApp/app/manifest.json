@@ -1,0 +1,65 @@
+{
+  "name": "PianoHelse",
+  "short_name": "PianoHelse",
+  "description": "Sjekk pianoets helse og book en stemmer",
+  "start_url": "/app/",
+  "scope": "/app/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#1B2B4B",
+  "background_color": "#0A0F1A",
+  "lang": "nb",
+  "dir": "ltr",
+  "categories": ["music", "utilities"],
+  "icons": [
+    {
+      "src": "/app/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/app/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/app/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/app/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/app/screenshots/skann.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Skannevisning — mål alle taster"
+    },
+    {
+      "src": "/app/screenshots/resultater.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Helseresultat og stemningskurve"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Start ny analyse",
+      "short_name": "Analyser",
+      "description": "Start en ny piano-helseanalyse",
+      "url": "/app/#/skann",
+      "icons": [{ "src": "/app/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "related_applications": [],
+  "prefer_related_applications": false
+}

@@ -1,0 +1,1525 @@
+<!DOCTYPE html>
+<html lang="nb" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#1B2B4B">
+    <meta name="description" content="PianoHelse stemmer-portal — administrer oppdrag og profil.">
+    <title>PianoHelse — Stemmer-portal</title>
+
+    <!-- Google Fonts (samme som pianoeier-appen) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700&family=JetBrains+Mono:wght@400;500&display=swap">
+
+    <!-- Delt stilark fra pianoeier-appen -->
+    <link rel="stylesheet" href="./style.css">
+
+    <style>
+        /* ── Skjerm-routing (identisk med pianoeier-appen) ── */
+        .skjerm { display: flex; flex-direction: column; min-height: 100dvh; }
+        .skjul  { display: none !important; }
+
+        /* ── Generelt layout ── */
+        .side-innhold {
+            flex: 1;
+            padding: var(--space-lg);
+            max-width: 480px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        /* ── Felles topplinje ── */
+        .topplinje {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: var(--space-md) var(--space-lg);
+            background: var(--overflate-primer);
+            border-bottom: 1px solid var(--kant);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .topplinje-tittel {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: var(--tekst-primer);
+        }
+        .tilbake-knapp {
+            background: none;
+            border: none;
+            color: var(--primary);
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            padding: var(--space-sm);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* ── Knapper ── */
+        .knapp-primer {
+            display: block;
+            width: 100%;
+            background: var(--primary);
+            color: var(--primary-text);
+            border: none;
+            border-radius: var(--radius-lg);
+            padding: var(--space-md) var(--space-lg);
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            min-height: 48px;
+            text-align: center;
+            transition: background var(--tid-rask), transform var(--tid-rask);
+        }
+        .knapp-primer:hover  { background: var(--primary-light); }
+        .knapp-primer:active { transform: scale(0.98); }
+
+        .knapp-sekunder {
+            display: block;
+            width: 100%;
+            background: transparent;
+            color: var(--primary);
+            border: 1.5px solid var(--primary);
+            border-radius: var(--radius-lg);
+            padding: calc(var(--space-md) - 1.5px) var(--space-lg);
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            min-height: 48px;
+            text-align: center;
+            transition: background var(--tid-rask);
+        }
+        .knapp-sekunder:hover { background: var(--primary-pale); }
+
+        .knapp-fare {
+            display: block;
+            width: 100%;
+            background: transparent;
+            color: var(--fare);
+            border: 1.5px solid var(--fare);
+            border-radius: var(--radius-lg);
+            padding: calc(var(--space-md) - 1.5px) var(--space-lg);
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            min-height: 48px;
+            text-align: center;
+            transition: background var(--tid-rask);
+        }
+        .knapp-fare:hover { background: var(--fare-lys); }
+
+        /* ── Skjema-elementer ── */
+        .skjema-gruppe { margin-bottom: var(--space-lg); }
+        .skjema-etikett {
+            display: block;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--tekst-tersiaer);
+            margin-bottom: var(--space-sm);
+        }
+        .tekst-input, .passord-input, .textarea-input {
+            width: 100%;
+            background: var(--overflate-primer);
+            border: 1px solid var(--kant);
+            border-radius: var(--radius-md);
+            padding: var(--space-md);
+            font-size: 1rem;
+            color: var(--tekst-primer);
+            min-height: 48px;
+            font-family: var(--font-ui);
+        }
+        .textarea-input {
+            min-height: 100px;
+            resize: vertical;
+        }
+        .tekst-input:focus, .passord-input:focus, .textarea-input:focus {
+            outline: none;
+            border-color: var(--primary-light);
+            box-shadow: 0 0 0 3px rgba(45, 74, 122, 0.15);
+        }
+
+        /* ── Innlogging ── */
+        #skjerm-login {
+            background: var(--primary);
+            color: var(--primary-text);
+            align-items: center;
+            justify-content: center;
+        }
+        .login-logo {
+            text-align: center;
+            margin-bottom: var(--space-xl);
+        }
+        .login-logo-tittel {
+            font-family: var(--font-display);
+            font-size: 2rem;
+            color: var(--accent-dark);
+            margin-top: var(--space-md);
+        }
+        .login-undertittel {
+            font-size: 0.9rem;
+            color: rgba(245,240,232,0.7);
+            margin-top: var(--space-xs);
+        }
+        .login-kort {
+            background: var(--overflate-primer);
+            border-radius: var(--radius-xl);
+            padding: var(--space-xl) var(--space-lg);
+            box-shadow: var(--skygge-4);
+            width: 100%;
+            max-width: 420px;
+        }
+        .login-skille {
+            display: flex;
+            align-items: center;
+            gap: var(--space-md);
+            margin: var(--space-lg) 0;
+            color: var(--tekst-tersiaer);
+            font-size: 0.85rem;
+        }
+        .login-skille::before,
+        .login-skille::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--kant);
+        }
+        .google-knapp {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--space-md);
+            width: 100%;
+            background: var(--overflate-primer);
+            border: 1.5px solid var(--kant);
+            border-radius: var(--radius-lg);
+            padding: var(--space-md) var(--space-lg);
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            min-height: 48px;
+            color: var(--tekst-primer);
+            transition: background var(--tid-rask);
+        }
+        .google-knapp:hover { background: var(--graa-100); }
+        .google-ikon {
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+        }
+        .login-lenke-rad {
+            text-align: center;
+            margin-top: var(--space-md);
+            font-size: 0.875rem;
+            color: var(--tekst-tersiaer);
+        }
+        .login-lenke-rad a, .login-lenke-rad button {
+            color: var(--primary);
+            font-weight: 600;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: inherit;
+            text-decoration: underline;
+            padding: 0;
+        }
+
+        /* ── Bunn-navigasjon (dashboard, oppdrag, profil) ── */
+        .bunn-nav {
+            position: sticky;
+            bottom: 0;
+            background: var(--overflate-primer);
+            border-top: 1px solid var(--kant);
+            display: flex;
+            padding-bottom: env(safe-area-inset-bottom);
+            z-index: 10;
+        }
+        .bunn-nav-knapp {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 3px;
+            padding: var(--space-sm) var(--space-xs);
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--tekst-tersiaer);
+            font-size: 0.7rem;
+            font-weight: 500;
+            transition: color var(--tid-rask);
+            min-height: 56px;
+        }
+        .bunn-nav-knapp.aktiv { color: var(--primary); }
+        .bunn-nav-knapp .nav-ikon { font-size: 1.35rem; line-height: 1; }
+
+        /* ── Dashboard ── */
+        .dashboard-hode {
+            background: var(--primary);
+            color: var(--primary-text);
+            padding: var(--space-xl) var(--space-lg) var(--space-lg);
+        }
+        .dashboard-hode-rad {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: var(--space-sm);
+        }
+        .dashboard-hilsen {
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+        .dashboard-dato {
+            font-size: 0.85rem;
+            color: rgba(245,240,232,0.7);
+        }
+        .avatar {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: var(--accent-dark);
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1rem;
+            flex-shrink: 0;
+        }
+        .dashboard-statistikk {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: var(--space-sm);
+            margin-top: var(--space-lg);
+        }
+        .stat-celle {
+            background: rgba(255,255,255,0.12);
+            border-radius: var(--radius-md);
+            padding: var(--space-sm);
+            text-align: center;
+        }
+        .stat-verdi {
+            display: block;
+            font-size: 1.25rem;
+            font-weight: 700;
+            font-family: var(--font-mono);
+            color: var(--accent-dark);
+        }
+        .stat-etikett {
+            font-size: 0.68rem;
+            color: rgba(245,240,232,0.7);
+            display: block;
+            margin-top: 2px;
+        }
+
+        /* ── Oppdrag-feed ── */
+        .seksjon-overskrift {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            color: var(--tekst-tersiaer);
+            margin-bottom: var(--space-md);
+            padding-top: var(--space-lg);
+        }
+        .oppdrag-feed {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-md);
+        }
+        .oppdrag-kort {
+            background: var(--overflate-primer);
+            border: 1px solid var(--kant);
+            border-radius: var(--radius-lg);
+            padding: var(--space-lg);
+            box-shadow: var(--skygge-1);
+            cursor: pointer;
+            transition: box-shadow var(--tid-rask), transform var(--tid-rask);
+        }
+        .oppdrag-kort:hover {
+            box-shadow: var(--skygge-2);
+            transform: translateY(-1px);
+        }
+        .oppdrag-hode-rad {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: var(--space-sm);
+            margin-bottom: var(--space-sm);
+        }
+        .oppdrag-piano-type {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--tekst-primer);
+        }
+        .oppdrag-merke {
+            font-size: 0.85rem;
+            color: var(--tekst-tersiaer);
+            margin-top: 2px;
+        }
+
+        /* ── Helse-badge ── */
+        .helse-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: var(--radius-full);
+            font-size: 0.8rem;
+            font-weight: 700;
+            font-family: var(--font-mono);
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .badge-utmerket { background: #E6F5EE; color: #1A7A4A; }
+        .badge-god      { background: #D4EDDA; color: #2DA870; }
+        .badge-middels  { background: var(--advarsel-lys); color: var(--advarsel); }
+        .badge-lav      { background: #FFE8D6; color: #E07020; }
+        .badge-kritisk  { background: var(--fare-lys); color: var(--fare); }
+
+        .oppdrag-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-sm) var(--space-lg);
+            margin: var(--space-sm) 0 var(--space-md);
+            font-size: 0.85rem;
+            color: var(--tekst-sekundaer);
+        }
+        .oppdrag-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .oppdrag-meta-ikon { font-size: 0.95rem; }
+
+        /* Status-chip */
+        .status-chip {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: var(--radius-full);
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .status-ny        { background: var(--info-lys);     color: var(--info); }
+        .status-akseptert { background: var(--advarsel-lys); color: var(--advarsel); }
+        .status-fullfort  { background: var(--suksess-lys);  color: var(--suksess); }
+
+        .oppdrag-knapper {
+            display: flex;
+            gap: var(--space-sm);
+            margin-top: var(--space-md);
+        }
+        .oppdrag-knapper .knapp-primer,
+        .oppdrag-knapper .knapp-fare {
+            flex: 1;
+            padding: var(--space-sm) var(--space-md);
+            font-size: 0.9rem;
+            min-height: 40px;
+        }
+
+        /* ── Oppdrag-detalj ── */
+        .detalj-seksjon {
+            background: var(--overflate-primer);
+            border-radius: var(--radius-lg);
+            padding: var(--space-lg);
+            margin-bottom: var(--space-md);
+            box-shadow: var(--skygge-1);
+        }
+        .detalj-seksjon h3 {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--tekst-tersiaer);
+            margin-bottom: var(--space-md);
+        }
+        .detalj-rad {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--space-xs) 0;
+            border-bottom: 1px solid var(--graa-100);
+        }
+        .detalj-rad:last-child { border-bottom: none; }
+        .detalj-rad-etikett {
+            font-size: 0.875rem;
+            color: var(--tekst-tersiaer);
+        }
+        .detalj-rad-verdi {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--tekst-primer);
+            text-align: right;
+        }
+
+        /* Per-oktav mini-tabell i detalj */
+        .mini-tabell {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.82rem;
+        }
+        .mini-tabell th {
+            text-align: left;
+            padding: 4px var(--space-sm);
+            color: var(--tekst-tersiaer);
+            font-weight: 600;
+            border-bottom: 1px solid var(--kant);
+        }
+        .mini-tabell td {
+            padding: 5px var(--space-sm);
+            border-bottom: 1px solid var(--graa-100);
+            color: var(--tekst-primer);
+        }
+        .mini-tabell tr:last-child td { border-bottom: none; }
+        .mini-tabell .td-god     { color: var(--suksess);  font-weight: 700; }
+        .mini-tabell .td-advarsel { color: var(--advarsel); font-weight: 700; }
+        .mini-tabell .td-kritisk { color: var(--fare);     font-weight: 700; }
+
+        .maps-lenke {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--primary);
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-decoration: underline;
+        }
+        .maps-lenke:hover { color: var(--primary-light); }
+
+        .detalj-helse-rad {
+            display: flex;
+            align-items: center;
+            gap: var(--space-md);
+            padding: var(--space-md) 0;
+        }
+        .detalj-helse-score {
+            font-size: 2rem;
+            font-weight: 700;
+            font-family: var(--font-mono);
+        }
+        .detalj-helse-tekst { flex: 1; }
+        .detalj-helse-tekst p {
+            font-size: 0.85rem;
+            color: var(--tekst-tersiaer);
+            margin-top: 2px;
+        }
+
+        .detalj-knapper {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-sm);
+            padding: var(--space-lg);
+        }
+
+        /* ── Profil ── */
+        .profil-hode {
+            background: var(--primary);
+            padding: var(--space-xl) var(--space-lg) var(--space-lg);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: var(--space-md);
+            color: var(--primary-text);
+        }
+        .profil-avatar-stor {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: var(--accent-dark);
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 2rem;
+            border: 3px solid rgba(255,255,255,0.3);
+        }
+        .profil-navn-stor {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+        .profil-by-tekst {
+            font-size: 0.9rem;
+            color: rgba(245,240,232,0.75);
+        }
+        .profil-seksjon {
+            background: var(--overflate-primer);
+            border-radius: var(--radius-lg);
+            padding: var(--space-lg);
+            margin-bottom: var(--space-md);
+            box-shadow: var(--skygge-1);
+        }
+        .profil-seksjon-tittel {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--tekst-tersiaer);
+            margin-bottom: var(--space-md);
+        }
+        .toggle-rad {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: var(--space-sm) 0;
+        }
+        .toggle-etikett {
+            font-size: 0.95rem;
+            color: var(--tekst-primer);
+            font-weight: 500;
+        }
+        .toggle-forklaring {
+            font-size: 0.8rem;
+            color: var(--tekst-tersiaer);
+            margin-top: 2px;
+        }
+        /* Nativ checkbox som toggle */
+        .toggle-switch {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 44px;
+            height: 26px;
+            border-radius: 13px;
+            background: var(--graa-300);
+            cursor: pointer;
+            position: relative;
+            flex-shrink: 0;
+            transition: background var(--tid-rask);
+        }
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: white;
+            top: 3px;
+            left: 3px;
+            transition: transform var(--tid-rask);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+        .toggle-switch:checked {
+            background: var(--primary);
+        }
+        .toggle-switch:checked::after {
+            transform: translateX(18px);
+        }
+
+        .spesialtiet-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--space-sm);
+        }
+        .spesialtiet-valg {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            padding: var(--space-sm) var(--space-md);
+            border: 1.5px solid var(--kant);
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            font-size: 0.875rem;
+            color: var(--tekst-sekundaer);
+            transition: border-color var(--tid-rask), background var(--tid-rask);
+            min-height: 44px;
+        }
+        .spesialtiet-valg input[type=checkbox] {
+            accent-color: var(--primary);
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+        }
+        .spesialtiet-valg:has(input:checked) {
+            border-color: var(--primary);
+            background: var(--primary-pale);
+            color: var(--primary);
+            font-weight: 500;
+        }
+
+        /* Pris-slider */
+        .pris-slider-wrapper {
+            padding: var(--space-sm) 0;
+        }
+        .pris-verdi-visning {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: var(--space-sm);
+        }
+        .pris-verdi {
+            font-size: 1rem;
+            font-weight: 700;
+            font-family: var(--font-mono);
+            color: var(--primary);
+        }
+        .pris-range {
+            font-size: 0.8rem;
+            color: var(--tekst-tersiaer);
+        }
+        input[type=range].pris-slider {
+            width: 100%;
+            accent-color: var(--primary);
+            height: 6px;
+        }
+
+        /* ── Tilgjengelighetshjelp ── */
+        .sr-only {
+            position: absolute;
+            width: 1px; height: 1px;
+            padding: 0; margin: -1px;
+            overflow: hidden;
+            clip: rect(0,0,0,0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        /* ── Varsel (toast) ── */
+        #portal-toast {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            background: var(--graa-800);
+            color: white;
+            padding: var(--space-sm) var(--space-lg);
+            border-radius: var(--radius-full);
+            font-size: 0.875rem;
+            font-weight: 500;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s, transform 0.2s;
+            white-space: nowrap;
+            z-index: 200;
+            box-shadow: var(--skygge-3);
+        }
+        #portal-toast.synlig {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* ── Tom tilstand ── */
+        .tom-tilstand {
+            text-align: center;
+            padding: var(--space-2xl) var(--space-lg);
+            color: var(--tekst-tersiaer);
+        }
+        .tom-tilstand-ikon { font-size: 3rem; margin-bottom: var(--space-md); }
+    </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SKJERM 1: INNLOGGING
+══════════════════════════════════════════════════════════════════════════════ -->
+<section id="skjerm-login" class="skjerm" aria-label="Stemmer-innlogging">
+    <div class="side-innhold" style="display:flex;flex-direction:column;justify-content:center;padding-top:var(--space-3xl)">
+        <div class="login-logo">
+            <!-- Piano-ikon (inline SVG) -->
+            <svg width="64" height="64" viewBox="0 0 192 192" fill="none"
+                 xmlns="http://www.w3.org/2000/svg"
+                 role="img" aria-label="PianoHelse logo">
+                <rect width="192" height="192" rx="32" fill="#1B2B4B"/>
+                <rect x="16" y="58" width="160" height="100" rx="8" fill="rgba(245,240,232,0.10)"/>
+                <rect x="16" y="58" width="160" height="22" rx="6" fill="rgba(245,240,232,0.20)"/>
+                <rect x="20"  y="80" width="20" height="68" rx="4" fill="#F5F0E8"/>
+                <rect x="42"  y="80" width="20" height="68" rx="4" fill="#F5F0E8"/>
+                <rect x="64"  y="80" width="20" height="68" rx="4" fill="#F5F0E8"/>
+                <rect x="86"  y="80" width="20" height="68" rx="4" fill="#F5F0E8"/>
+                <rect x="108" y="80" width="20" height="68" rx="4" fill="#F5F0E8"/>
+                <rect x="130" y="80" width="20" height="68" rx="4" fill="#F5F0E8"/>
+                <rect x="152" y="80" width="20" height="68" rx="4" fill="#F5F0E8"/>
+                <rect x="35"  y="80" width="13" height="42" rx="3" fill="#1A1A2A"/>
+                <rect x="57"  y="80" width="13" height="42" rx="3" fill="#1A1A2A"/>
+                <rect x="101" y="80" width="13" height="42" rx="3" fill="#1A1A2A"/>
+                <rect x="123" y="80" width="13" height="42" rx="3" fill="#1A1A2A"/>
+                <rect x="145" y="80" width="13" height="42" rx="3" fill="#1A1A2A"/>
+                <circle cx="96" cy="32" r="10" fill="#C9A84C"/>
+                <line x1="106" y1="32" x2="106" y2="12" stroke="#C9A84C" stroke-width="3" stroke-linecap="round"/>
+                <line x1="106" y1="12" x2="126" y2="18" stroke="#C9A84C" stroke-width="3" stroke-linecap="round"/>
+            </svg>
+            <p class="login-logo-tittel">PianoHelse</p>
+            <p class="login-undertittel">Stemmer-portal</p>
+        </div>
+
+        <div class="login-kort">
+            <h1 style="font-size:1.25rem;margin-bottom:var(--space-lg)">Logg inn</h1>
+
+            <div class="skjema-gruppe">
+                <label class="skjema-etikett" for="login-epost">E-postadresse</label>
+                <input type="email" id="login-epost" class="tekst-input"
+                       placeholder="din@epost.no"
+                       autocomplete="email"
+                       aria-label="E-postadresse"
+                       required>
+            </div>
+
+            <div class="skjema-gruppe" style="margin-bottom:var(--space-md)">
+                <label class="skjema-etikett" for="login-passord">Passord</label>
+                <input type="password" id="login-passord" class="passord-input tekst-input"
+                       placeholder="••••••••"
+                       autocomplete="current-password"
+                       aria-label="Passord"
+                       required>
+            </div>
+
+            <button id="login-knapp" class="knapp-primer"
+                    aria-label="Logg inn med e-post og passord">
+                Logg inn
+            </button>
+
+            <div class="login-skille" aria-hidden="true">eller</div>
+
+            <button class="google-knapp"
+                    aria-label="Logg inn med Google-konto"
+                    onclick="portalToast('Google-innlogging er ikke tilgjengelig i demo')">
+                <svg class="google-ikon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+                Logg inn med Google
+            </button>
+
+            <p class="login-lenke-rad" style="margin-top:var(--space-lg)">
+                Ikke registrert?
+                <button onclick="portalToast('Registrering åpner snart')"
+                        aria-label="Registrer ny stemmer-konto">
+                    Opprett konto
+                </button>
+            </p>
+            <p class="login-lenke-rad" style="margin-top:var(--space-sm)">
+                <button onclick="portalToast('Passordreset er ikke tilgjengelig i demo')"
+                        aria-label="Glemt passord — nullstill">
+                    Glemt passord?
+                </button>
+            </p>
+        </div>
+    </div>
+</section>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SKJERM 2: DASHBOARD
+══════════════════════════════════════════════════════════════════════════════ -->
+<section id="skjerm-dashboard" class="skjerm skjul" aria-label="Stemmer-dashboard">
+
+    <!-- Dashboard-hode -->
+    <div class="dashboard-hode">
+        <div class="dashboard-hode-rad">
+            <div>
+                <p class="dashboard-hilsen" id="dashboard-hilsen">God morgen, Erik</p>
+                <p class="dashboard-dato" id="dashboard-dato"></p>
+            </div>
+            <button class="avatar" id="dashboard-avatar-knapp"
+                    aria-label="Gå til profil"
+                    onclick="portalNavigate('profil')">
+                EH
+            </button>
+        </div>
+        <div class="dashboard-statistikk" role="list" aria-label="Månedlig statistikk">
+            <div class="stat-celle" role="listitem">
+                <span class="stat-verdi">7</span>
+                <span class="stat-etikett">Oppdrag denne mnd.</span>
+            </div>
+            <div class="stat-celle" role="listitem">
+                <span class="stat-verdi">11 200</span>
+                <span class="stat-etikett">Inntekt (kr) denne mnd.</span>
+            </div>
+            <div class="stat-celle" role="listitem">
+                <span class="stat-verdi">4.9</span>
+                <span class="stat-etikett">Gj.sn. vurdering</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Oppdrag-feed -->
+    <div class="side-innhold" style="padding-top:0">
+        <p class="seksjon-overskrift">Innkommende oppdrag</p>
+        <div class="oppdrag-feed" id="oppdrag-feed" aria-label="Liste over innkommende oppdrag">
+            <!-- Fylles dynamisk -->
+        </div>
+    </div>
+
+    <!-- Bunn-navigasjon -->
+    <nav class="bunn-nav" aria-label="Portalnavigasjon">
+        <button class="bunn-nav-knapp aktiv"
+                aria-label="Dashboard" aria-current="page"
+                onclick="portalNavigate('dashboard')">
+            <span class="nav-ikon" aria-hidden="true">🏠</span>
+            <span>Hjem</span>
+        </button>
+        <button class="bunn-nav-knapp"
+                aria-label="Mine oppdrag"
+                onclick="portalNavigate('dashboard')">
+            <span class="nav-ikon" aria-hidden="true">📋</span>
+            <span>Oppdrag</span>
+        </button>
+        <button class="bunn-nav-knapp"
+                aria-label="Min profil"
+                onclick="portalNavigate('profil')">
+            <span class="nav-ikon" aria-hidden="true">👤</span>
+            <span>Profil</span>
+        </button>
+    </nav>
+</section>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SKJERM 3: OPPDRAG-DETALJ
+══════════════════════════════════════════════════════════════════════════════ -->
+<section id="skjerm-oppdrag-detalj" class="skjerm skjul" aria-label="Oppdragsdetaljer">
+    <div class="topplinje">
+        <button class="tilbake-knapp"
+                aria-label="Tilbake til dashboard"
+                onclick="portalNavigate('dashboard')">
+            ← Tilbake
+        </button>
+        <span class="topplinje-tittel">Oppdragsdetaljer</span>
+        <span style="width:80px"></span>
+    </div>
+
+    <div style="flex:1;overflow-y:auto;background:var(--overflate-sekundaer)">
+        <div style="max-width:480px;margin:0 auto;padding:var(--space-lg)">
+
+            <!-- Piano-info -->
+            <div class="detalj-seksjon">
+                <h3>Piano</h3>
+                <div id="detalj-piano-info">
+                    <!-- Fylles dynamisk -->
+                </div>
+            </div>
+
+            <!-- Helsediagnose -->
+            <div class="detalj-seksjon">
+                <h3>Diagnosedata fra PianoHelse</h3>
+                <div id="detalj-helse-info">
+                    <!-- Fylles dynamisk -->
+                </div>
+            </div>
+
+            <!-- Per-oktav-tabell -->
+            <div class="detalj-seksjon">
+                <h3>Avvik per register</h3>
+                <div style="overflow-x:auto">
+                    <table class="mini-tabell" id="detalj-oktav-tabell"
+                           aria-label="Avvik per register i cent">
+                        <thead>
+                            <tr>
+                                <th>Register</th>
+                                <th>Toner</th>
+                                <th>Snitt</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="detalj-oktav-kropp">
+                            <!-- Fylles dynamisk -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Adresse og tid -->
+            <div class="detalj-seksjon">
+                <h3>Lokasjon og tidspunkt</h3>
+                <div id="detalj-logistikk">
+                    <!-- Fylles dynamisk -->
+                </div>
+            </div>
+
+        </div><!-- /.inner -->
+    </div><!-- /.scroll -->
+
+    <!-- Handlingsknapper -->
+    <div class="detalj-knapper">
+        <button id="detalj-aksepter-knapp" class="knapp-primer"
+                aria-label="Aksepter dette oppdraget">
+            Aksepter oppdrag
+        </button>
+        <button id="detalj-avvis-knapp" class="knapp-fare"
+                aria-label="Avvis dette oppdraget">
+            Avvis
+        </button>
+    </div>
+</section>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SKJERM 4: PROFIL
+══════════════════════════════════════════════════════════════════════════════ -->
+<section id="skjerm-profil" class="skjerm skjul" aria-label="Min stemmer-profil">
+
+    <!-- Profil-hode -->
+    <div class="profil-hode">
+        <div class="profil-avatar-stor" aria-hidden="true">EH</div>
+        <p class="profil-navn-stor" id="profil-navn-tekst">Erik Haugen</p>
+        <p class="profil-by-tekst" id="profil-by-tekst">Oslo</p>
+    </div>
+
+    <div style="flex:1;overflow-y:auto;background:var(--overflate-sekundaer)">
+        <div style="max-width:480px;margin:0 auto;padding:var(--space-lg)">
+
+            <!-- Grunninfo -->
+            <div class="profil-seksjon">
+                <p class="profil-seksjon-tittel">Grunnleggende informasjon</p>
+
+                <div class="skjema-gruppe">
+                    <label class="skjema-etikett" for="profil-navn">Fullt navn</label>
+                    <input type="text" id="profil-navn" class="tekst-input"
+                           value="Erik Haugen"
+                           autocomplete="name"
+                           aria-label="Fullt navn">
+                </div>
+
+                <div class="skjema-gruppe">
+                    <label class="skjema-etikett" for="profil-epost">E-post</label>
+                    <input type="email" id="profil-epost" class="tekst-input"
+                           value="erik.haugen@stemmer.no"
+                           autocomplete="email"
+                           aria-label="E-postadresse">
+                </div>
+
+                <div class="skjema-gruppe">
+                    <label class="skjema-etikett" for="profil-by">By / område</label>
+                    <input type="text" id="profil-by" class="tekst-input"
+                           value="Oslo"
+                           aria-label="By eller område">
+                </div>
+            </div>
+
+            <!-- NPTF-sertifisering -->
+            <div class="profil-seksjon">
+                <p class="profil-seksjon-tittel">Sertifisering</p>
+                <div class="toggle-rad">
+                    <div>
+                        <p class="toggle-etikett">NPTF-sertifisert</p>
+                        <p class="toggle-forklaring">Norsk Piano- og Tangentinstrumentforening</p>
+                    </div>
+                    <input type="checkbox"
+                           id="nptf-toggle"
+                           class="toggle-switch"
+                           checked
+                           aria-label="NPTF-sertifisert pianostemmer"
+                           role="switch">
+                </div>
+            </div>
+
+            <!-- Spesialiteter -->
+            <div class="profil-seksjon">
+                <p class="profil-seksjon-tittel">Spesialiteter</p>
+                <div class="spesialtiet-grid" role="group" aria-label="Velg spesialiteter">
+                    <label class="spesialtiet-valg">
+                        <input type="checkbox" id="spesialtiet-konsertfly" checked
+                               aria-label="Spesialtiet: Konsertfly">
+                        <span>Konsertfly</span>
+                    </label>
+                    <label class="spesialtiet-valg">
+                        <input type="checkbox" id="spesialtiet-antikk"
+                               aria-label="Spesialtiet: Antikke pianoer">
+                        <span>Antikke pianoer</span>
+                    </label>
+                    <label class="spesialtiet-valg">
+                        <input type="checkbox" id="spesialtiet-regulering" checked
+                               aria-label="Spesialtiet: Regulering">
+                        <span>Regulering</span>
+                    </label>
+                    <label class="spesialtiet-valg">
+                        <input type="checkbox" id="spesialtiet-intonasjon"
+                               aria-label="Spesialtiet: Intonasjon">
+                        <span>Intonasjon</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Dekningsarea -->
+            <div class="profil-seksjon">
+                <p class="profil-seksjon-tittel">Geografisk dekningsarea</p>
+                <div class="skjema-gruppe" style="margin-bottom:0">
+                    <label class="skjema-etikett" for="profil-postnummer">
+                        Postnumre / byer (kommaseparert)
+                    </label>
+                    <input type="text" id="profil-postnummer" class="tekst-input"
+                           value="0001-0999, Bærum, Asker, Lillestrøm"
+                           aria-label="Dekningsarea — postnumre eller byer kommaseparert">
+                </div>
+            </div>
+
+            <!-- Timepris -->
+            <div class="profil-seksjon">
+                <p class="profil-seksjon-tittel">Timepris</p>
+                <div class="pris-slider-wrapper">
+                    <div class="pris-verdi-visning">
+                        <span class="pris-verdi" id="pris-visning">1 600 kr/t</span>
+                        <span class="pris-range">1 200 – 3 000 kr/t</span>
+                    </div>
+                    <input type="range"
+                           id="pris-slider"
+                           class="pris-slider"
+                           min="1200" max="3000" step="50"
+                           value="1600"
+                           aria-label="Timepris i kroner"
+                           aria-valuemin="1200"
+                           aria-valuemax="3000"
+                           aria-valuenow="1600">
+                </div>
+            </div>
+
+            <!-- Biografi -->
+            <div class="profil-seksjon">
+                <p class="profil-seksjon-tittel">Kort biografi</p>
+                <div class="skjema-gruppe" style="margin-bottom:0">
+                    <label class="skjema-etikett" for="profil-bio">Om deg (maks 300 tegn)</label>
+                    <textarea id="profil-bio"
+                              class="textarea-input"
+                              maxlength="300"
+                              aria-label="Kort biografi om deg som stemmer"
+                              placeholder="Fortell kundene om din erfaring og tilnærming…">Erfaren pianostemmer med 14 års praksis fra Oslo og omegn. Spesialisert på konsertfly og regulering. Sertifisert av NPTF. Tilbyr fleksible tider inkl. kvelder og helger.</textarea>
+                </div>
+            </div>
+
+            <!-- Lagre-knapp -->
+            <button id="profil-lagre-knapp" class="knapp-primer"
+                    aria-label="Lagre profilinformasjon">
+                Lagre profil
+            </button>
+
+        </div>
+    </div>
+
+    <!-- Bunn-navigasjon -->
+    <nav class="bunn-nav" aria-label="Portalnavigasjon">
+        <button class="bunn-nav-knapp"
+                aria-label="Dashboard"
+                onclick="portalNavigate('dashboard')">
+            <span class="nav-ikon" aria-hidden="true">🏠</span>
+            <span>Hjem</span>
+        </button>
+        <button class="bunn-nav-knapp"
+                aria-label="Mine oppdrag"
+                onclick="portalNavigate('dashboard')">
+            <span class="nav-ikon" aria-hidden="true">📋</span>
+            <span>Oppdrag</span>
+        </button>
+        <button class="bunn-nav-knapp aktiv"
+                aria-label="Min profil" aria-current="page"
+                onclick="portalNavigate('profil')">
+            <span class="nav-ikon" aria-hidden="true">👤</span>
+            <span>Profil</span>
+        </button>
+    </nav>
+</section>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     TOAST-VARSEL
+══════════════════════════════════════════════════════════════════════════════ -->
+<div id="portal-toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SKRIPT
+══════════════════════════════════════════════════════════════════════════════ -->
+<!-- Gjenbruker router.js fra pianoeier-appen -->
+<script src="./router.js"></script>
+
+<script>
+'use strict';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Mock-data
+// ─────────────────────────────────────────────────────────────────────────────
+
+const MOCK_STEMMER = {
+    navn:  'Erik Haugen',
+    by:    'Oslo',
+    nptf:  true,
+    initialer: 'EH'
+};
+
+const MOCK_OPPDRAG = [
+    {
+        id: 1,
+        pianoType:    'Stuepiano',
+        merke:        'Yamaha U1',
+        alder:        '25 år',
+        sistStemt:    '2–5 år siden',
+        score:        38,
+        gjSnittCents: 16.4,
+        antallKritiske: 9,
+        adresse:      'Vogts gate 14, 0477 Oslo',
+        lat: 59.9336, lng: 10.7572,
+        tidForslag:   'Lørdag 29. mars, kl. 10–12',
+        status:       'ny',
+        perOktav: [
+            { register: 'A0–B1', toner: 4,  snitt: '+22.1', status: 'kritisk' },
+            { register: 'C2–B2', toner: 8,  snitt: '+17.3', status: 'kritisk' },
+            { register: 'C3–B3', toner: 10, snitt: '+14.2', status: 'advarsel' },
+            { register: 'C4–B4', toner: 11, snitt: '+11.8', status: 'advarsel' },
+            { register: 'C5–B5', toner: 9,  snitt: '+8.9',  status: 'advarsel' },
+            { register: 'C6–C8', toner: 5,  snitt: '+5.1',  status: 'god' }
+        ]
+    },
+    {
+        id: 2,
+        pianoType:    'Flygelformet piano',
+        merke:        'Steinway Model B',
+        alder:        '40 år',
+        sistStemt:    '6–12 måneder siden',
+        score:        71,
+        gjSnittCents: 4.8,
+        antallKritiske: 0,
+        adresse:      'Drammensveien 52, 0271 Oslo',
+        lat: 59.9208, lng: 10.7161,
+        tidForslag:   'Tirsdag 1. april, kl. 14–16',
+        status:       'akseptert',
+        perOktav: [
+            { register: 'A0–B1', toner: 5,  snitt: '+7.2',  status: 'advarsel' },
+            { register: 'C2–B2', toner: 9,  snitt: '+5.1',  status: 'god' },
+            { register: 'C3–B3', toner: 11, snitt: '+3.8',  status: 'god' },
+            { register: 'C4–B4', toner: 12, snitt: '+2.9',  status: 'god' },
+            { register: 'C5–B5', toner: 10, snitt: '+4.3',  status: 'god' },
+            { register: 'C6–C8', toner: 7,  snitt: '+6.8',  status: 'advarsel' }
+        ]
+    },
+    {
+        id: 3,
+        pianoType:    'Stuepiano',
+        merke:        'Kawai K-200',
+        alder:        '8 år',
+        sistStemt:    'Mer enn 5 år siden',
+        score:        22,
+        gjSnittCents: 27.1,
+        antallKritiske: 19,
+        adresse:      'Lørenveien 8, 0585 Oslo',
+        lat: 59.9256, lng: 10.8001,
+        tidForslag:   'Fredag 4. april, kl. 09–11',
+        status:       'ny',
+        perOktav: [
+            { register: 'A0–B1', toner: 3,  snitt: '+38.4', status: 'kritisk' },
+            { register: 'C2–B2', toner: 7,  snitt: '+29.7', status: 'kritisk' },
+            { register: 'C3–B3', toner: 10, snitt: '+26.2', status: 'kritisk' },
+            { register: 'C4–B4', toner: 12, snitt: '+22.5', status: 'kritisk' },
+            { register: 'C5–B5', toner: 9,  snitt: '+18.1', status: 'kritisk' },
+            { register: 'C6–C8', toner: 6,  snitt: '+11.4', status: 'advarsel' }
+        ]
+    }
+];
+
+// Nåværende valgt oppdrag for detalj-visning
+let _valgtOppdragId = null;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Router
+// ─────────────────────────────────────────────────────────────────────────────
+
+const portalRouter = new Router();
+
+portalRouter
+    .registrer('login',           _visLogin)
+    .registrer('dashboard',       _visDashboard)
+    .registrer('oppdrag-detalj',  _visOppdragDetalj)
+    .registrer('profil',          _visProfil);
+
+function portalNavigate(skjermId, params) {
+    portalRouter.navigate(skjermId, params);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hjelp: helse-badge
+// ─────────────────────────────────────────────────────────────────────────────
+
+function _helseBadgeHtml(score) {
+    let css, etikett;
+    if      (score >= 85) { css = 'badge-utmerket'; etikett = 'Utmerket'; }
+    else if (score >= 70) { css = 'badge-god';      etikett = 'God';      }
+    else if (score >= 50) { css = 'badge-middels';  etikett = 'Middels';  }
+    else if (score >= 30) { css = 'badge-lav';      etikett = 'Lav';      }
+    else                  { css = 'badge-kritisk';  etikett = 'Kritisk';  }
+    return `<span class="helse-badge ${css}" aria-label="Helsescore ${score} av 100, ${etikett}">
+                ${score}/100 ${etikett}
+            </span>`;
+}
+
+function _statusChipHtml(status) {
+    const kart = {
+        ny:        { css: 'status-ny',        tekst: 'Ny'        },
+        akseptert: { css: 'status-akseptert', tekst: 'Akseptert' },
+        fullfort:  { css: 'status-fullfort',  tekst: 'Fullført'  }
+    };
+    const k = kart[status] ?? kart.ny;
+    return `<span class="status-chip ${k.css}">${k.tekst}</span>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Skjerm-handlere
+// ─────────────────────────────────────────────────────────────────────────────
+
+function _visLogin() {
+    // Ingen initialisering nødvendig
+}
+
+function _visDashboard() {
+    // Sett dato
+    const datoEl = document.getElementById('dashboard-dato');
+    if (datoEl) {
+        datoEl.textContent = new Date().toLocaleDateString('nb-NO', {
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+        });
+    }
+
+    // Tilpass hilsen etter tid på dagen
+    const hilsenEl = document.getElementById('dashboard-hilsen');
+    if (hilsenEl) {
+        const time = new Date().getHours();
+        const hilsen = time < 12 ? 'God morgen' : time < 18 ? 'God ettermiddag' : 'God kveld';
+        hilsenEl.textContent = `${hilsen}, ${MOCK_STEMMER.navn.split(' ')[0]}`;
+    }
+
+    // Gjengi oppdrag-feed
+    const feedEl = document.getElementById('oppdrag-feed');
+    if (!feedEl) return;
+
+    feedEl.innerHTML = MOCK_OPPDRAG.map(o => `
+        <article class="oppdrag-kort"
+                 role="article"
+                 aria-label="Oppdrag: ${o.pianoType} ${o.merke} — helsescore ${o.score}"
+                 onclick="visOppdragDetalj(${o.id})">
+            <div class="oppdrag-hode-rad">
+                <div>
+                    <p class="oppdrag-piano-type">${o.pianoType}</p>
+                    <p class="oppdrag-merke">${o.merke}</p>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+                    ${_helseBadgeHtml(o.score)}
+                    ${_statusChipHtml(o.status)}
+                </div>
+            </div>
+            <div class="oppdrag-meta">
+                <span class="oppdrag-meta-item">
+                    <span class="oppdrag-meta-ikon" aria-hidden="true">📍</span>
+                    ${o.adresse.split(',')[0]}
+                </span>
+                <span class="oppdrag-meta-item">
+                    <span class="oppdrag-meta-ikon" aria-hidden="true">📅</span>
+                    ${o.tidForslag}
+                </span>
+                <span class="oppdrag-meta-item">
+                    <span class="oppdrag-meta-ikon" aria-hidden="true">⚠️</span>
+                    ${o.antallKritiske} kritiske toner
+                </span>
+            </div>
+            ${o.status === 'ny' ? `
+            <div class="oppdrag-knapper">
+                <button class="knapp-primer"
+                        aria-label="Aksepter oppdraget — ${o.pianoType} ${o.merke}"
+                        onclick="event.stopPropagation(); aksepterOppdrag(${o.id})">
+                    Aksepter
+                </button>
+                <button class="knapp-fare"
+                        aria-label="Avvis oppdraget — ${o.pianoType} ${o.merke}"
+                        onclick="event.stopPropagation(); avvisOppdrag(${o.id})">
+                    Avvis
+                </button>
+            </div>` : ''}
+        </article>
+    `).join('');
+}
+
+function _visOppdragDetalj() {
+    const o = MOCK_OPPDRAG.find(x => x.id === _valgtOppdragId);
+    if (!o) {
+        portalNavigate('dashboard');
+        return;
+    }
+
+    // Piano-info
+    const pianoEl = document.getElementById('detalj-piano-info');
+    if (pianoEl) {
+        pianoEl.innerHTML = [
+            ['Type',         o.pianoType],
+            ['Merke',        o.merke],
+            ['Alder',        o.alder],
+            ['Sist stemt',   o.sistStemt]
+        ].map(([e, v]) => `
+            <div class="detalj-rad">
+                <span class="detalj-rad-etikett">${e}</span>
+                <span class="detalj-rad-verdi">${v}</span>
+            </div>`).join('');
+    }
+
+    // Helse-info
+    const helseEl = document.getElementById('detalj-helse-info');
+    if (helseEl) {
+        helseEl.innerHTML = `
+            <div class="detalj-helse-rad">
+                <div class="detalj-helse-score" style="color:${_scoreHexFarge(o.score)}">
+                    ${o.score}/100
+                </div>
+                <div class="detalj-helse-tekst">
+                    ${_helseBadgeHtml(o.score)}
+                    <p>Gj.snitt avvik: ${o.gjSnittCents} cent &nbsp;|&nbsp; Kritiske toner: ${o.antallKritiske}</p>
+                </div>
+            </div>`;
+    }
+
+    // Per-oktav
+    const oktavEl = document.getElementById('detalj-oktav-kropp');
+    if (oktavEl) {
+        oktavEl.innerHTML = o.perOktav.map(r => {
+            const tdClass = r.status === 'god' ? 'td-god'
+                          : r.status === 'advarsel' ? 'td-advarsel'
+                          : 'td-kritisk';
+            const statusIkon = r.status === 'god' ? '✓' : r.status === 'advarsel' ? '!' : '!!';
+            return `<tr>
+                <td>${r.register}</td>
+                <td>${r.toner}</td>
+                <td class="${tdClass}">${r.snitt} ¢</td>
+                <td class="${tdClass}">${statusIkon}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    // Logistikk
+    const logiEl = document.getElementById('detalj-logistikk');
+    if (logiEl) {
+        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.adresse)}`;
+        logiEl.innerHTML = `
+            <div class="detalj-rad">
+                <span class="detalj-rad-etikett">Adresse</span>
+                <a href="${mapsUrl}" target="_blank" rel="noopener noreferrer"
+                   class="maps-lenke"
+                   aria-label="Åpne ${o.adresse} i Google Maps">
+                    ${o.adresse} ↗
+                </a>
+            </div>
+            <div class="detalj-rad">
+                <span class="detalj-rad-etikett">Foreslått tidspunkt</span>
+                <span class="detalj-rad-verdi">${o.tidForslag}</span>
+            </div>`;
+    }
+
+    // Aksepter/Avvis-knapper
+    const aksepterKnapp = document.getElementById('detalj-aksepter-knapp');
+    const avvisKnapp    = document.getElementById('detalj-avvis-knapp');
+    if (aksepterKnapp) aksepterKnapp.onclick = () => aksepterOppdrag(o.id);
+    if (avvisKnapp)    avvisKnapp.onclick    = () => avvisOppdrag(o.id);
+
+    // Skjul knapper dersom ikke ny
+    if (aksepterKnapp) aksepterKnapp.style.display = o.status === 'ny' ? '' : 'none';
+    if (avvisKnapp)    avvisKnapp.style.display    = o.status === 'ny' ? '' : 'none';
+}
+
+function _visProfiil() { /* alias, se under */ }
+
+function _visProfil() {
+    // Pris-slider
+    const slider   = document.getElementById('pris-slider');
+    const visning  = document.getElementById('pris-visning');
+    if (slider && visning) {
+        slider.addEventListener('input', () => {
+            visning.textContent = Number(slider.value).toLocaleString('nb-NO') + ' kr/t';
+        });
+    }
+
+    // Lagre-knapp
+    const lagreKnapp = document.getElementById('profil-lagre-knapp');
+    if (lagreKnapp) {
+        lagreKnapp.addEventListener('click', () => {
+            portalToast('Profil lagret!');
+        });
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Oppdrag-handlinger
+// ─────────────────────────────────────────────────────────────────────────────
+
+function visOppdragDetalj(id) {
+    _valgtOppdragId = id;
+    portalNavigate('oppdrag-detalj');
+}
+
+function aksepterOppdrag(id) {
+    const o = MOCK_OPPDRAG.find(x => x.id === id);
+    if (o) o.status = 'akseptert';
+    portalToast('Oppdrag akseptert!');
+    portalNavigate('dashboard');
+}
+
+function avvisOppdrag(id) {
+    const idx = MOCK_OPPDRAG.findIndex(x => x.id === id);
+    if (idx !== -1) MOCK_OPPDRAG.splice(idx, 1);
+    portalToast('Oppdrag avvist.');
+    portalNavigate('dashboard');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Toast-varsel
+// ─────────────────────────────────────────────────────────────────────────────
+
+let _toastTimer = null;
+
+function portalToast(melding) {
+    const el = document.getElementById('portal-toast');
+    if (!el) return;
+    el.textContent = melding;
+    el.classList.add('synlig');
+    if (_toastTimer) clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(() => el.classList.remove('synlig'), 2600);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hjelp: score-farge (hex)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function _scoreHexFarge(score) {
+    if (score >= 85) return '#1A7A4A';
+    if (score >= 70) return '#2DA870';
+    if (score >= 50) return '#C47B00';
+    if (score >= 30) return '#E07020';
+    return '#B91C1C';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Innlogging (mock)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function _bindInnlogging() {
+    const knapp = document.getElementById('login-knapp');
+    if (!knapp) return;
+    knapp.addEventListener('click', () => {
+        const epost   = document.getElementById('login-epost')?.value.trim();
+        const passord = document.getElementById('login-passord')?.value;
+        if (!epost || !passord) {
+            portalToast('Fyll inn e-post og passord.');
+            return;
+        }
+        // Mock: all innlogging godkjennes
+        portalNavigate('dashboard');
+    });
+
+    // Enter-tast i passordfelt
+    const passordFelt = document.getElementById('login-passord');
+    if (passordFelt) {
+        passordFelt.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') knapp.click();
+        });
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Initialisering
+// ─────────────────────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', () => {
+    _bindInnlogging();
+    portalRouter.init();
+});
+</script>
+
+</body>
+</html>

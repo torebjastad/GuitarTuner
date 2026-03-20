@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192" role="img" aria-label="PianoHelse ikon">
+  <!-- Bakgrunn -->
+  <rect width="192" height="192" rx="32" fill="#1B2B4B"/>
+
+  <!-- Piano-kropp -->
+  <rect x="16" y="58" width="160" height="100" rx="8" fill="rgba(245,240,232,0.10)"/>
+  <!-- Toppliste -->
+  <rect x="16" y="58" width="160" height="22" rx="6" fill="rgba(245,240,232,0.20)"/>
+
+  <!-- Hvite taster (7 stk) -->
+  <rect x="20"  y="80" width="20" height="68" rx="4" fill="#F5F0E8"/>
+  <rect x="42"  y="80" width="20" height="68" rx="4" fill="#F5F0E8"/>
+  <rect x="64"  y="80" width="20" height="68" rx="4" fill="#F5F0E8"/>
+  <rect x="86"  y="80" width="20" height="68" rx="4" fill="#F5F0E8"/>
+  <rect x="108" y="80" width="20" height="68" rx="4" fill="#F5F0E8"/>
+  <rect x="130" y="80" width="20" height="68" rx="4" fill="#F5F0E8"/>
+  <rect x="152" y="80" width="20" height="68" rx="4" fill="#F5F0E8"/>
+
+  <!-- Svarte taster (5 stk) -->
+  <rect x="35"  y="80" width="13" height="42" rx="3" fill="#1A1A2A"/>
+  <rect x="57"  y="80" width="13" height="42" rx="3" fill="#1A1A2A"/>
+  <rect x="101" y="80" width="13" height="42" rx="3" fill="#1A1A2A"/>
+  <rect x="123" y="80" width="13" height="42" rx="3" fill="#1A1A2A"/>
+  <rect x="145" y="80" width="13" height="42" rx="3" fill="#1A1A2A"/>
+
+  <!-- Musikknote øverst -->
+  <circle cx="96" cy="32" r="10" fill="#C9A84C"/>
+  <line x1="106" y1="32" x2="106" y2="12" stroke="#C9A84C" stroke-width="3" stroke-linecap="round"/>
+  <line x1="106" y1="12" x2="126" y2="18" stroke="#C9A84C" stroke-width="3" stroke-linecap="round"/>
+</svg>

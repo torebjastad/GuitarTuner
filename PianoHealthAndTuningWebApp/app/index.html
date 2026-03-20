@@ -1,0 +1,1338 @@
+<!DOCTYPE html>
+<html lang="nb" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#1B2B4B">
+    <meta name="description" content="Sjekk pianoets helse og book en profesjonell stemmer nær deg.">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="PianoHelse">
+
+    <title>PianoHelse — Helsesjekk for piano</title>
+
+    <link rel="manifest" href="./manifest.json">
+    <link rel="apple-touch-icon" href="./icons/icon-192.png">
+    <link rel="icon" type="image/svg+xml" href="./icons/icon.svg">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700&family=JetBrains+Mono:wght@400;500&display=swap">
+
+    <!-- PianoHelse-stiler -->
+    <link rel="stylesheet" href="./style.css">
+
+    <!-- Inline kritiske app-shell-stiler (skjerm-synlighet) -->
+    <style>
+        /* ── Skjerm-routing ── */
+        .skjerm { display: flex; flex-direction: column; min-height: 100dvh; }
+        .skjul  { display: none !important; }
+
+        /* ── Generelt layout ── */
+        .side-innhold {
+            flex: 1;
+            padding: var(--space-lg);
+            max-width: 480px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        /* ── Velkomst ── */
+        #skjerm-velkomst {
+            background: var(--primary);
+            color: var(--primary-text);
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: var(--space-2xl) var(--space-lg);
+        }
+        .velkomst-logo-wrapper {
+            margin-bottom: var(--space-xl);
+        }
+        .velkomst-logo {
+            width: 100px;
+            height: 100px;
+            margin: 0 auto;
+        }
+        .velkomst-tittel {
+            font-family: var(--font-display);
+            font-size: 2.5rem;
+            color: var(--accent);
+            margin-bottom: var(--space-sm);
+        }
+        .velkomst-undertekst {
+            font-size: 1rem;
+            color: rgba(245, 240, 232, 0.75);
+            margin-bottom: var(--space-3xl);
+        }
+        #start-diagnose-knapp {
+            background: var(--accent-dark);
+            color: var(--primary);
+            border: none;
+            border-radius: var(--radius-lg);
+            padding: var(--space-md) var(--space-2xl);
+            font-size: 1.125rem;
+            font-weight: 700;
+            cursor: pointer;
+            width: 100%;
+            max-width: 320px;
+            min-height: 52px;
+            transition: transform var(--tid-rask), opacity var(--tid-rask);
+        }
+        #start-diagnose-knapp:active { transform: scale(0.97); opacity: 0.9; }
+
+        .velkomst-lastebaar {
+            margin-top: var(--space-2xl);
+            width: 200px;
+            height: 3px;
+            background: rgba(255,255,255,0.15);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .velkomst-lastebaar-fylt {
+            height: 100%;
+            width: 0;
+            background: var(--accent-dark);
+            border-radius: 2px;
+            animation: laste-baar 2.5s ease-in-out forwards;
+        }
+        @keyframes laste-baar {
+            0%   { width: 0; }
+            80%  { width: 90%; }
+            100% { width: 100%; }
+        }
+
+        /* ── Felles topplinje ── */
+        .topplinje {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: var(--space-md) var(--space-lg);
+            background: var(--overflate-primer);
+            border-bottom: 1px solid var(--kant);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .topplinje-tittel {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: var(--tekst-primer);
+        }
+        .tilbake-knapp, .avbryt-knapp {
+            background: none;
+            border: none;
+            color: var(--primary);
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            padding: var(--space-sm);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* ── Knapper (felles) ── */
+        .knapp-primer {
+            display: block;
+            width: 100%;
+            background: var(--primary);
+            color: var(--primary-text);
+            border: none;
+            border-radius: var(--radius-lg);
+            padding: var(--space-md) var(--space-lg);
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            min-height: 48px;
+            text-align: center;
+            text-decoration: none;
+            transition: background var(--tid-rask), transform var(--tid-rask);
+        }
+        .knapp-primer:hover  { background: var(--primary-light); text-decoration: none; }
+        .knapp-primer:active { transform: scale(0.98); }
+
+        .knapp-sekunder {
+            display: block;
+            width: 100%;
+            background: transparent;
+            color: var(--primary);
+            border: 1.5px solid var(--primary);
+            border-radius: var(--radius-lg);
+            padding: calc(var(--space-md) - 1.5px) var(--space-lg);
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            min-height: 48px;
+            text-align: center;
+            transition: background var(--tid-rask);
+        }
+        .knapp-sekunder:hover { background: var(--primary-pale); }
+
+        .knapp-tekst-lenke {
+            background: none;
+            border: none;
+            color: var(--primary);
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            text-decoration: underline;
+            padding: var(--space-sm);
+        }
+
+        /* ── Piano-info ── */
+        .skjema-gruppe {
+            margin-bottom: var(--space-lg);
+        }
+        .skjema-etikett {
+            display: block;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--tekst-tersiaer);
+            margin-bottom: var(--space-sm);
+        }
+        .radio-gruppe {
+            background: var(--overflate-primer);
+            border: 1px solid var(--kant);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+        }
+        .radio-valg {
+            display: flex;
+            align-items: center;
+            padding: var(--space-md);
+            gap: var(--space-md);
+            border-bottom: 1px solid var(--kant);
+            cursor: pointer;
+        }
+        .radio-valg:last-child { border-bottom: none; }
+        .radio-valg input[type=radio] { accent-color: var(--primary); width: 18px; height: 18px; }
+        .radio-valg span { font-size: 0.95rem; color: var(--tekst-primer); }
+
+        .tekst-input, .select-input {
+            width: 100%;
+            background: var(--overflate-primer);
+            border: 1px solid var(--kant);
+            border-radius: var(--radius-md);
+            padding: var(--space-md);
+            font-size: 1rem;
+            color: var(--tekst-primer);
+            min-height: 48px;
+            font-family: var(--font-ui);
+        }
+        .tekst-input:focus, .select-input:focus {
+            outline: none;
+            border-color: var(--primary-light);
+            box-shadow: 0 0 0 3px rgba(45, 74, 122, 0.15);
+        }
+
+        /* ── Forberedelse ── */
+        .forberedelse-sjekkliste {
+            list-style: none;
+            margin: var(--space-lg) 0;
+        }
+        .forberedelse-sjekkliste li {
+            display: flex;
+            align-items: flex-start;
+            gap: var(--space-md);
+            padding: var(--space-sm) 0;
+            font-size: 0.95rem;
+            color: var(--tekst-sekundaer);
+        }
+        .sjekk-ikon {
+            color: var(--suksess);
+            font-size: 1.1rem;
+            line-height: 1.5;
+            flex-shrink: 0;
+        }
+
+        /* ── Skanning ── */
+        #skjerm-skanning .side-innhold { padding-top: var(--space-md); }
+
+        .skanning-puls-wrapper {
+            display: flex;
+            justify-content: center;
+            margin: var(--space-xl) 0 var(--space-md);
+        }
+        .mikrofon-puls {
+            position: relative;
+            width: 80px;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .puls-ring {
+            position: absolute;
+            border-radius: 50%;
+            border: 2px solid var(--primary-pale);
+            animation: puls-ring 2s ease-out infinite;
+            opacity: 0;
+        }
+        .puls-ring:nth-child(1) { width: 80px;  height: 80px;  animation-delay: 0s; }
+        .puls-ring:nth-child(2) { width: 60px;  height: 60px;  animation-delay: 0.5s; }
+        .puls-ikon {
+            width: 48px;
+            height: 48px;
+            background: var(--primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: white;
+            position: relative;
+            z-index: 1;
+        }
+        @keyframes puls-ring {
+            0%   { transform: scale(0.8); opacity: 0.6; }
+            100% { transform: scale(1.8); opacity: 0; }
+        }
+        .puls-aktiv .puls-ring {
+            border-color: var(--primary);
+        }
+        .puls-bekreftet .puls-ikon {
+            background: var(--suksess);
+        }
+
+        .spill-tast-visning {
+            text-align: center;
+            margin-bottom: var(--space-md);
+        }
+        #spill-tast-label {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--tekst-primer);
+        }
+        .spill-tast-hint {
+            font-size: 0.875rem;
+            color: var(--tekst-tersiaer);
+            margin-top: 4px;
+        }
+
+        .skanning-status {
+            text-align: center;
+            font-size: 0.95rem;
+            color: var(--tekst-tersiaer);
+            min-height: 1.5em;
+            margin-bottom: var(--space-md);
+        }
+        .status-bekreftet { color: var(--suksess); font-weight: 600; }
+        .status-advarsel  { color: var(--advarsel); }
+        .status-feil      { color: var(--fare); }
+
+        .skanning-frekvens-info {
+            display: flex;
+            justify-content: center;
+            gap: var(--space-lg);
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            margin-bottom: var(--space-md);
+        }
+        .skanning-cents {
+            font-weight: 600;
+        }
+        .cents-ok       { color: var(--suksess); }
+        .cents-advarsel { color: var(--advarsel); }
+        .cents-kritisk  { color: var(--fare); }
+        #skanning-hz    { color: var(--tekst-tersiaer); }
+
+        /* Piano-tastatur container */
+        .tastatur-container {
+            overflow-x: auto;
+            margin: 0 calc(-1 * var(--space-lg));
+            padding: var(--space-sm) 0;
+            background: var(--graa-800);
+            border-radius: var(--radius-md);
+            -webkit-overflow-scrolling: touch;
+        }
+        #tastatur-canvas {
+            display: block;
+            width: 100%;
+            min-width: 320px;
+        }
+
+        /* Fremdrift */
+        .fremdrift-wrapper {
+            margin: var(--space-md) 0;
+        }
+        .fremdrift-tekst-rad {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            color: var(--tekst-tersiaer);
+            margin-bottom: var(--space-xs);
+        }
+        .fremdrift-bar {
+            height: 8px;
+            background: var(--graa-200);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        #fremdrift-bar-fylt {
+            height: 100%;
+            width: 0;
+            background: linear-gradient(90deg, var(--primary), var(--suksess));
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+
+        .skanning-knapper {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-sm);
+            margin-top: var(--space-md);
+        }
+
+        .skanning-feil {
+            background: var(--fare-lys);
+            border: 1px solid var(--fare);
+            border-radius: var(--radius-md);
+            color: var(--fare);
+            padding: var(--space-md);
+            font-size: 0.875rem;
+            margin-top: var(--space-md);
+        }
+
+        /* ── Analyse ── */
+        #skjerm-analyse {
+            background: var(--overflate-primer);
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+        .analyse-spinner {
+            width: 56px;
+            height: 56px;
+            border: 4px solid var(--graa-200);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spinner 0.9s linear infinite;
+            margin: 0 auto var(--space-xl);
+        }
+        @keyframes spinner {
+            to { transform: rotate(360deg); }
+        }
+        .analyse-fremdrift {
+            width: 80%;
+            max-width: 300px;
+            height: 6px;
+            background: var(--graa-200);
+            border-radius: 3px;
+            overflow: hidden;
+            margin: var(--space-lg) auto 0;
+        }
+        .analyse-fremdrift-fylt {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--suksess));
+            border-radius: 3px;
+            animation: analyse-fyll 2.5s ease-in-out forwards;
+        }
+        @keyframes analyse-fyll {
+            0%   { width: 5%; }
+            70%  { width: 85%; }
+            100% { width: 98%; }
+        }
+        .analyse-hjelpetekst {
+            font-size: 0.875rem;
+            color: var(--tekst-tersiaer);
+            margin-top: var(--space-sm);
+        }
+
+        /* ── Rapport ── */
+        .rapport-hode {
+            background: var(--primary);
+            color: var(--primary-text);
+            padding: var(--space-xl) var(--space-lg);
+            text-align: center;
+        }
+        .score-sirkel-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: var(--space-lg);
+        }
+        .score-sirkel {
+            position: relative;
+            width: 140px;
+            height: 140px;
+        }
+        .score-sirkel svg {
+            width: 140px;
+            height: 140px;
+            transform: rotate(-90deg);
+        }
+        .score-ring-bakgrunn {
+            fill: none;
+            stroke: rgba(255,255,255,0.2);
+            stroke-width: 8;
+        }
+        #score-ring-bue {
+            fill: none;
+            stroke: var(--accent-dark);
+            stroke-width: 8;
+            stroke-linecap: round;
+            stroke-dasharray: 0 339.3;
+            transition: stroke-dasharray 1s ease-out;
+        }
+        .score-sirkel-tekst {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+        #score-tall {
+            display: block;
+            font-size: 2.25rem;
+            font-weight: 700;
+            font-family: var(--font-mono);
+            color: var(--accent);
+            line-height: 1;
+        }
+        .score-av-100 {
+            font-size: 0.75rem;
+            color: rgba(245,240,232,0.7);
+        }
+        #score-ikon {
+            font-size: 1.5rem;
+            margin-bottom: 4px;
+            color: var(--accent);
+        }
+        #score-status-tekst {
+            font-size: 1rem;
+            font-weight: 600;
+            color: rgba(245,240,232,0.9);
+        }
+        .score-god     { --ring-farge: var(--suksess-mork); }
+        .score-tilsyn  { --ring-farge: var(--advarsel-mork); }
+        .score-kritisk { --ring-farge: var(--fare-mork); }
+        .score-god    #score-ring-bue { stroke: #2DA870; }
+        .score-tilsyn #score-ring-bue { stroke: #E09020; }
+        .score-kritisk #score-ring-bue{ stroke: #EF4444; }
+
+        /* Helse-badge */
+        .helse-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-sm);
+            padding: 6px 14px;
+            border-radius: var(--radius-full);
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-top: var(--space-sm);
+        }
+        .badge-god     { background: var(--suksess-lys);  color: var(--suksess); }
+        .badge-tilsyn  { background: var(--advarsel-lys); color: var(--advarsel); }
+        .badge-kritisk { background: var(--fare-lys);     color: var(--fare); }
+
+        /* Rapport-seksjon */
+        .rapport-seksjon {
+            background: var(--overflate-primer);
+            border-radius: var(--radius-lg);
+            padding: var(--space-lg);
+            margin-bottom: var(--space-md);
+            box-shadow: var(--skygge-1);
+        }
+        .rapport-seksjon h3 {
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--tekst-tersiaer);
+            margin-bottom: var(--space-md);
+        }
+
+        /* Detaljer-grid */
+        .detaljer-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--space-md);
+        }
+        .detalj-celle {
+            text-align: center;
+        }
+        .detalj-verdi-stor {
+            display: block;
+            font-size: 1.5rem;
+            font-weight: 700;
+            font-family: var(--font-mono);
+            color: var(--tekst-primer);
+        }
+        .detalj-etikett-stor {
+            font-size: 0.75rem;
+            color: var(--tekst-tersiaer);
+            display: block;
+            margin-top: 2px;
+        }
+
+        /* Beskrivelsestekst */
+        #rapport-beskrivelse {
+            font-size: 0.9rem;
+            color: var(--tekst-sekundaer);
+            line-height: 1.6;
+        }
+
+        /* Stemningskurve */
+        .kurve-container {
+            position: relative;
+            height: 200px;
+        }
+
+        /* Oktav-tabell */
+        .oktav-tabell {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+        .oktav-tabell th {
+            text-align: left;
+            padding: var(--space-sm);
+            color: var(--tekst-tersiaer);
+            font-weight: 600;
+            border-bottom: 1px solid var(--kant);
+        }
+        .oktav-tabell td {
+            padding: var(--space-sm);
+            border-bottom: 1px solid var(--graa-100);
+            color: var(--tekst-primer);
+        }
+        .rad-god     td:nth-child(3) { color: var(--suksess);  font-weight: 600; }
+        .rad-advarsel td:nth-child(3) { color: var(--advarsel); font-weight: 600; }
+        .rad-kritisk td:nth-child(3) { color: var(--fare);     font-weight: 600; }
+
+        /* Rapport-knapper */
+        .rapport-knapper {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-sm);
+            padding: var(--space-lg);
+        }
+
+        /* ── Finn stemmer ── */
+        .stemmer-liste {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-md);
+        }
+        .stemmer-kort {
+            background: var(--overflate-primer);
+            border: 1px solid var(--kant);
+            border-radius: var(--radius-lg);
+            padding: var(--space-lg);
+            box-shadow: var(--skygge-1);
+        }
+        .stemmer-hode {
+            display: flex;
+            gap: var(--space-md);
+            margin-bottom: var(--space-md);
+        }
+        .stemmer-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: var(--primary);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1rem;
+            flex-shrink: 0;
+        }
+        .stemmer-info { flex: 1; }
+        .stemmer-navn {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--tekst-primer);
+            margin-bottom: 2px;
+        }
+        .stemmer-by {
+            font-size: 0.8rem;
+            color: var(--tekst-tersiaer);
+            margin-bottom: 4px;
+        }
+        .stemmer-stjerner {
+            font-size: 0.9rem;
+            color: var(--accent-dark);
+        }
+        .stemmer-antall { color: var(--tekst-tersiaer); font-size: 0.8rem; }
+        .stemmer-detaljer {
+            display: flex;
+            gap: var(--space-lg);
+            margin-bottom: var(--space-md);
+            padding: var(--space-sm) 0;
+            border-top: 1px solid var(--kant);
+        }
+        .stemmer-detalj { display: flex; flex-direction: column; gap: 2px; }
+        .detalj-etikett {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            color: var(--tekst-tersiaer);
+            font-weight: 600;
+        }
+        .detalj-verdi {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--tekst-primer);
+        }
+        .stemmer-ring-knapp {
+            background: var(--suksess);
+            color: white;
+            border-radius: var(--radius-md);
+            padding: var(--space-md);
+            text-align: center;
+            font-weight: 600;
+            text-decoration: none;
+            display: block;
+        }
+        .stemmer-ring-knapp:hover { background: var(--suksess-mork); text-decoration: none; }
+
+        /* ── iOS installasjonsbanner ── */
+        #ios-installer-banner {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--overflate-hevet);
+            border-top: 1px solid var(--kant);
+            padding: var(--space-md) var(--space-lg);
+            box-shadow: var(--skygge-3);
+            z-index: 100;
+            align-items: center;
+            gap: var(--space-md);
+        }
+        #ios-installer-banner p { font-size: 0.875rem; color: var(--tekst-sekundaer); flex: 1; }
+        #ios-installer-lukk {
+            background: none;
+            border: none;
+            font-size: 1.25rem;
+            cursor: pointer;
+            color: var(--tekst-tersiaer);
+        }
+
+        /* ── Tilgjengelighetshjelp ── */
+        .sr-only {
+            position: absolute;
+            width: 1px; height: 1px;
+            padding: 0; margin: -1px;
+            overflow: hidden;
+            clip: rect(0,0,0,0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        /* ── Bass-mikrofon-advarsel ── */
+        .bass-advarsel-boks {
+            background: var(--advarsel-lys);
+            border: 1px solid var(--advarsel);
+            border-left: 4px solid var(--advarsel);
+            border-radius: var(--radius-md);
+            padding: var(--space-md);
+            margin-bottom: var(--space-md);
+            font-size: 0.875rem;
+            color: var(--advarsel);
+            line-height: 1.5;
+        }
+        .bass-advarsel-boks strong {
+            display: block;
+            margin-bottom: 4px;
+        }
+        #bass-mikrofon-advarsel { display: none; }
+
+        /* ── Ansvarsfraskrivelse-modal ── */
+        #ansvarsfraskrivelse-modal {
+            border: none;
+            border-radius: var(--radius-xl);
+            padding: 0;
+            max-width: 440px;
+            width: calc(100% - var(--space-2xl));
+            box-shadow: var(--skygge-4);
+            background: var(--overflate-primer);
+        }
+        #ansvarsfraskrivelse-modal::backdrop {
+            background: rgba(10, 15, 26, 0.72);
+            backdrop-filter: blur(2px);
+        }
+        .modal-innhold {
+            padding: var(--space-xl) var(--space-lg);
+        }
+        .modal-ikon {
+            font-size: 2.5rem;
+            text-align: center;
+            margin-bottom: var(--space-md);
+        }
+        .modal-tittel {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--tekst-primer);
+            text-align: center;
+            margin-bottom: var(--space-md);
+        }
+        .modal-tekst {
+            font-size: 0.9rem;
+            color: var(--tekst-sekundaer);
+            line-height: 1.65;
+            margin-bottom: var(--space-xl);
+            text-align: center;
+        }
+        #modal-bekreft-knapp {
+            width: 100%;
+            background: var(--primary);
+            color: var(--primary-text);
+            border: none;
+            border-radius: var(--radius-lg);
+            padding: var(--space-md) var(--space-lg);
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            min-height: 48px;
+            transition: background var(--tid-rask);
+        }
+        #modal-bekreft-knapp:hover  { background: var(--primary-light); }
+        #modal-bekreft-knapp:active { transform: scale(0.98); }
+    </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SKJERM 1: VELKOMST / SPLASH
+══════════════════════════════════════════════════════════════════════════════ -->
+<section id="skjerm-velkomst" class="skjerm" aria-label="Velkomst">
+    <!-- Piano-logo SVG -->
+    <div class="velkomst-logo-wrapper">
+        <svg class="velkomst-logo" viewBox="0 0 100 100" fill="none"
+             xmlns="http://www.w3.org/2000/svg"
+             role="img" aria-label="PianoHelse piano-logo">
+            <!-- Piano-kropp -->
+            <rect x="8" y="30" width="84" height="50" rx="5" fill="rgba(245,240,232,0.15)"/>
+            <rect x="8" y="30" width="84" height="12" rx="3" fill="rgba(245,240,232,0.25)"/>
+            <!-- Hvite taster -->
+            <rect x="12" y="42" width="9"  height="32" rx="2" fill="#F5F0E8" opacity="0.9"/>
+            <rect x="23" y="42" width="9"  height="32" rx="2" fill="#F5F0E8" opacity="0.9"/>
+            <rect x="34" y="42" width="9"  height="32" rx="2" fill="#F5F0E8" opacity="0.9"/>
+            <rect x="45" y="42" width="9"  height="32" rx="2" fill="#F5F0E8" opacity="0.9"/>
+            <rect x="56" y="42" width="9"  height="32" rx="2" fill="#F5F0E8" opacity="0.9"/>
+            <rect x="67" y="42" width="9"  height="32" rx="2" fill="#F5F0E8" opacity="0.9"/>
+            <rect x="78" y="42" width="9"  height="32" rx="2" fill="#F5F0E8" opacity="0.9"/>
+            <!-- Svarte taster -->
+            <rect x="18" y="42" width="6" height="20" rx="2" fill="#1A1A2A"/>
+            <rect x="29" y="42" width="6" height="20" rx="2" fill="#1A1A2A"/>
+            <rect x="50" y="42" width="6" height="20" rx="2" fill="#1A1A2A"/>
+            <rect x="61" y="42" width="6" height="20" rx="2" fill="#1A1A2A"/>
+            <rect x="72" y="42" width="6" height="20" rx="2" fill="#1A1A2A"/>
+            <!-- Musikknote -->
+            <circle cx="50" cy="18" r="6" fill="#C9A84C"/>
+            <line x1="56" y1="18" x2="56" y2="6" stroke="#C9A84C" stroke-width="2"/>
+            <line x1="56" y1="6"  x2="66" y2="10" stroke="#C9A84C" stroke-width="2"/>
+        </svg>
+    </div>
+
+    <h1 class="velkomst-tittel">PianoHelse</h1>
+    <p class="velkomst-undertekst">Helsesjekken for pianoet ditt</p>
+
+    <button id="start-diagnose-knapp"
+            aria-label="Start diagnose av pianoet ditt">
+        Start diagnose
+    </button>
+
+    <div class="velkomst-lastebaar" aria-hidden="true">
+        <div class="velkomst-lastebaar-fylt"></div>
+    </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SKJERM 2: PIANO-INFO
+══════════════════════════════════════════════════════════════════════════════ -->
+<section id="skjerm-piano-info" class="skjerm skjul" aria-label="Piano-informasjon">
+    <div class="topplinje">
+        <button class="tilbake-knapp" id="piano-info-hopp-knapp"
+                aria-label="Hopp over og gå videre">
+            Hopp over
+        </button>
+        <span class="topplinje-tittel">Om pianoet ditt</span>
+        <span style="width:80px"></span><!-- Balanse -->
+    </div>
+
+    <div class="side-innhold">
+        <h1 style="margin-bottom:var(--space-sm)">Fortell oss om pianoet ditt</h1>
+        <p style="color:var(--tekst-tersiaer);margin-bottom:var(--space-xl)">
+            Hjelper oss å gi deg en bedre diagnose
+        </p>
+
+        <div class="skjema-gruppe">
+            <label class="skjema-etikett">Piano-type</label>
+            <div class="radio-gruppe" role="radiogroup" aria-label="Velg piano-type">
+                <label class="radio-valg">
+                    <input type="radio" name="piano-type" id="piano-type" value="flygelformet">
+                    <span>Flygelformet piano</span>
+                </label>
+                <label class="radio-valg">
+                    <input type="radio" name="piano-type" value="stuepiano" checked>
+                    <span>Stuepiano (oppreist)</span>
+                </label>
+                <label class="radio-valg">
+                    <input type="radio" name="piano-type" value="digitalt">
+                    <span>Digitalt piano</span>
+                </label>
+                <label class="radio-valg">
+                    <input type="radio" name="piano-type" value="ukjent">
+                    <span>Vet ikke</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="skjema-gruppe">
+            <label class="skjema-etikett" for="piano-merke">Merke (valgfritt)</label>
+            <input type="text" id="piano-merke" class="tekst-input"
+                   placeholder="F.eks. Steinway, Yamaha, Kawai"
+                   autocomplete="off">
+        </div>
+
+        <div class="skjema-gruppe">
+            <label class="skjema-etikett" for="piano-alder">Alder på pianoet (valgfritt)</label>
+            <select id="piano-alder" class="select-input">
+                <option value="">Velg alder…</option>
+                <option value="0-5">0–5 år (nytt)</option>
+                <option value="5-15">5–15 år</option>
+                <option value="15-30">15–30 år</option>
+                <option value="30-50">30–50 år</option>
+                <option value="50+">Over 50 år (antikk)</option>
+                <option value="ukjent">Vet ikke</option>
+            </select>
+        </div>
+
+        <div class="skjema-gruppe">
+            <label class="skjema-etikett" for="piano-sist-stemt">Sist stemt (valgfritt)</label>
+            <select id="piano-sist-stemt" class="select-input">
+                <option value="">Velg tidspunkt…</option>
+                <option value="3mnd">Siste 3 måneder</option>
+                <option value="6mnd">3–6 måneder siden</option>
+                <option value="1ar">6–12 måneder siden</option>
+                <option value="2ar">1–2 år siden</option>
+                <option value="5ar">2–5 år siden</option>
+                <option value="lenge">Mer enn 5 år siden</option>
+                <option value="aldri">Aldri stemt (så vidt jeg vet)</option>
+            </select>
+        </div>
+
+        <p style="font-size:0.75rem;color:var(--tekst-tersiaer);margin-bottom:var(--space-lg)">
+            🔒 Vi bruker kun denne informasjonen for å forbedre analysen din.
+        </p>
+
+        <button id="piano-info-neste-knapp" class="knapp-primer"
+                aria-label="Lagre og gå videre til forberedelse">
+            Lagre og fortsett
+        </button>
+    </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SKJERM 3: FORBEREDELSE
+══════════════════════════════════════════════════════════════════════════════ -->
+<section id="skjerm-forberedelse" class="skjerm skjul" aria-label="Forberedelse til analyse">
+    <div class="topplinje">
+        <button class="avbryt-knapp" id="forberedelse-avbryt-knapp"
+                aria-label="Avbryt og gå tilbake til start">
+            ✕ Avbryt
+        </button>
+        <span class="topplinje-tittel">Gjør deg klar</span>
+        <span style="width:80px"></span>
+    </div>
+
+    <div class="side-innhold">
+        <h1 style="margin-bottom:var(--space-sm)">Klar for analyse?</h1>
+        <p style="color:var(--tekst-tersiaer);margin-bottom:var(--space-lg)">
+            Ca. 5–8 minutter · Spill tastene én for én
+        </p>
+
+        <!-- Illustrasjon -->
+        <div style="text-align:center;margin:var(--space-xl) 0;font-size:4rem" aria-hidden="true">
+            🎹
+        </div>
+
+        <h2 style="font-size:1.1rem;margin-bottom:var(--space-md)">Før du starter:</h2>
+        <ul class="forberedelse-sjekkliste" aria-label="Sjekkliste før skanning">
+            <li>
+                <span class="sjekk-ikon" aria-hidden="true">✓</span>
+                <span>Pianoet er tilgjengelig og lokket er åpent</span>
+            </li>
+            <li>
+                <span class="sjekk-ikon" aria-hidden="true">✓</span>
+                <span>Du er i et noenlunde stille rom</span>
+            </li>
+            <li>
+                <span class="sjekk-ikon" aria-hidden="true">✓</span>
+                <span>Telefonen er 20–50 cm fra pianoet</span>
+            </li>
+            <li>
+                <span class="sjekk-ikon" aria-hidden="true">✓</span>
+                <span>Bluetooth-headset er koblet fra</span>
+            </li>
+            <li>
+                <span class="sjekk-ikon" aria-hidden="true">✓</span>
+                <span>Pedalen er ikke trykket ned</span>
+            </li>
+            <li>
+                <span class="sjekk-ikon" aria-hidden="true">✓</span>
+                <span>Hold tangenten nede i minst 2 sekunder</span>
+            </li>
+        </ul>
+
+        <div style="background:var(--info-lys);border:1px solid var(--info);border-radius:var(--radius-md);padding:var(--space-md);margin-bottom:var(--space-xl)">
+            <p style="font-size:0.875rem;color:var(--info)">
+                Appen vil be om mikrofontilgang når du trykker Start.
+                Lydanalysen skjer lokalt på telefonen din — ingenting sendes til nett.
+            </p>
+        </div>
+
+        <button id="forberedelse-start-knapp" class="knapp-primer"
+                style="background:var(--suksess)"
+                aria-label="Jeg er klar, start skanning">
+            Jeg er klar — start!
+        </button>
+    </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SKJERM 4: SKANNING
+══════════════════════════════════════════════════════════════════════════════ -->
+<section id="skjerm-skanning" class="skjerm skjul" aria-label="Aktiv skanning">
+    <div class="topplinje">
+        <button class="avbryt-knapp" id="stopp-skanning-knapp"
+                style="display:none;color:var(--fare)"
+                aria-label="Avbryt pågående skanning">
+            Stopp
+        </button>
+        <span class="topplinje-tittel">Skanning</span>
+        <span style="width:80px"></span>
+    </div>
+
+    <!-- Fremdrift øverst -->
+    <div style="padding:var(--space-sm) var(--space-lg) 0">
+        <div class="fremdrift-wrapper">
+            <div class="fremdrift-tekst-rad">
+                <span id="fremdrift-tekst">0 av 52 taster</span>
+                <span id="fremdrift-pst">0%</span>
+            </div>
+            <div class="fremdrift-bar" role="progressbar" aria-valuemin="0"
+                 aria-valuemax="52" aria-valuenow="0" aria-label="Skanningsfremdrift">
+                <div id="fremdrift-bar-fylt"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="side-innhold">
+        <!-- Mikrofon-puls-animasjon -->
+        <div class="skanning-puls-wrapper">
+            <div class="mikrofon-puls" id="mikrofon-puls" aria-hidden="true">
+                <div class="puls-ring"></div>
+                <div class="puls-ring"></div>
+                <div class="puls-ikon">🎤</div>
+            </div>
+        </div>
+
+        <!-- Neste tast -->
+        <div class="spill-tast-visning">
+            <div id="spill-tast-label" aria-live="polite">Klar til skanning</div>
+            <p class="spill-tast-hint">Hold tangenten nede i minst 2 sekunder</p>
+        </div>
+
+        <!-- Bass-mikrofon-advarsel (vises dynamisk for noteIndex < 10) -->
+        <div id="bass-mikrofon-advarsel" class="bass-advarsel-boks"
+             role="note" aria-live="polite">
+            <strong>Merk: Dype basstoner og mobilmikrofon</strong>
+            De dypeste basstonene kan være vanskelige å fange med mobilmikrofon.
+            Spill tonen tydelig (forte) og hold den i 2–3 sekunder.
+        </div>
+
+        <!-- Status -->
+        <div id="skanning-status" class="skanning-status"
+             aria-live="polite" aria-atomic="true">
+            Trykk "Start skanning" for å begynne
+        </div>
+
+        <!-- Sanntids-frekvensinfo -->
+        <div class="skanning-frekvens-info" aria-live="polite">
+            <span id="skanning-hz" aria-label="Detektert frekvens">— Hz</span>
+            <span id="skanning-cents" class="skanning-cents"
+                  aria-label="Cents-avvik">— ¢</span>
+        </div>
+
+        <!-- Tastatur-visualisering -->
+        <div class="tastatur-container" role="presentation">
+            <canvas id="tastatur-canvas" height="88"
+                    aria-label="Visuell piano-tastatur med fremgang per tast">
+            </canvas>
+        </div>
+
+        <!-- Feilmelding (skjult som standard) -->
+        <div id="skanning-feil" class="skanning-feil" style="display:none"
+             role="alert" aria-live="assertive">
+        </div>
+
+        <!-- Knapper -->
+        <div class="skanning-knapper">
+            <button id="start-skanning-knapp" class="knapp-primer"
+                    aria-label="Start skanning av piano">
+                Start skanning
+            </button>
+        </div>
+    </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SKJERM 5: ANALYSE
+══════════════════════════════════════════════════════════════════════════════ -->
+<section id="skjerm-analyse" class="skjerm skjul" aria-label="Analysebehandling pågår">
+    <div style="text-align:center;padding:var(--space-2xl) var(--space-lg)">
+        <div class="analyse-spinner" role="status" aria-label="Laster inn"></div>
+
+        <h2 style="margin-bottom:var(--space-sm)">Analyserer pianoet ditt…</h2>
+        <p style="color:var(--tekst-tersiaer);margin-bottom:var(--space-xl)">
+            Sammenligner med referansestandard og Railsback-kurven
+        </p>
+
+        <div class="analyse-fremdrift" aria-hidden="true">
+            <div class="analyse-fremdrift-fylt"></div>
+        </div>
+
+        <p class="analyse-hjelpetekst">
+            Analysen skjer lokalt på din enhet — ingen data lastes opp
+        </p>
+    </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SKJERM 6: RAPPORT
+══════════════════════════════════════════════════════════════════════════════ -->
+<section id="skjerm-rapport" class="skjerm skjul" aria-label="Helsesammendrags-rapport">
+
+    <!-- Rapport-hode med score -->
+    <div class="rapport-hode">
+        <div class="score-sirkel-wrapper">
+            <div class="score-sirkel" id="score-sirkel" role="img"
+                 aria-label="Helsescore">
+                <svg viewBox="0 0 120 120">
+                    <circle class="score-ring-bakgrunn" cx="60" cy="60" r="54"/>
+                    <circle id="score-ring-bue" cx="60" cy="60" r="54"/>
+                </svg>
+                <div class="score-sirkel-tekst">
+                    <span id="score-ikon" aria-hidden="true">?</span>
+                    <span id="score-tall">—</span>
+                    <span class="score-av-100">/100</span>
+                </div>
+            </div>
+
+            <div id="helse-badge" class="helse-badge badge-tilsyn" aria-live="polite">
+                <span class="badge-tekst">Laster…</span>
+                <span class="badge-score"></span>
+            </div>
+
+            <p id="score-status-tekst" style="margin-top:var(--space-sm)">—</p>
+        </div>
+    </div>
+
+    <!-- Rapport-innhold -->
+    <div style="background:var(--overflate-sekundaer);flex:1">
+        <div class="side-innhold">
+
+            <!-- Beskrivelse -->
+            <div class="rapport-seksjon">
+                <h3>Vurdering</h3>
+                <p id="rapport-beskrivelse">Beregner…</p>
+            </div>
+
+            <!-- Nøkkeltall -->
+            <div class="rapport-seksjon">
+                <h3>Nøkkeltall</h3>
+                <div class="detaljer-grid">
+                    <div class="detalj-celle">
+                        <span class="detalj-verdi-stor" id="detalj-gjennomsnitt">—</span>
+                        <span class="detalj-etikett-stor">Gjennomsnitt avvik</span>
+                    </div>
+                    <div class="detalj-celle">
+                        <span class="detalj-verdi-stor" id="detalj-maks">—</span>
+                        <span class="detalj-etikett-stor">Maks avvik</span>
+                    </div>
+                    <div class="detalj-celle">
+                        <span class="detalj-verdi-stor" id="detalj-kritiske"
+                              style="color:var(--fare)">—</span>
+                        <span class="detalj-etikett-stor">Kritiske toner (&gt;20¢)</span>
+                    </div>
+                    <div class="detalj-celle">
+                        <span class="detalj-verdi-stor" id="detalj-advarsler"
+                              style="color:var(--advarsel)">—</span>
+                        <span class="detalj-etikett-stor">Advarsler (10–20¢)</span>
+                    </div>
+                </div>
+                <p style="font-size:0.8rem;color:var(--tekst-tersiaer);margin-top:var(--space-md);text-align:center">
+                    <span id="detalj-bekreftede">—</span> bekreftet
+                </p>
+            </div>
+
+            <!-- Stemningskurve (Chart.js) -->
+            <div class="rapport-seksjon">
+                <h3>Stemningskurve</h3>
+                <div class="kurve-container">
+                    <canvas id="stemningskurve-canvas"
+                            aria-label="Stemningskurve — cents-avvik per tone"></canvas>
+                </div>
+                <p style="font-size:0.75rem;color:var(--tekst-tersiaer);margin-top:var(--space-sm)">
+                    Stiplet linje = Railsback-referanse (ideell strekningsstemming)
+                </p>
+            </div>
+
+            <!-- Per-oktav-tabell -->
+            <div class="rapport-seksjon">
+                <h3>Per oktav</h3>
+                <div style="overflow-x:auto">
+                    <table class="oktav-tabell" aria-label="Avvik per oktav">
+                        <thead>
+                            <tr>
+                                <th>Område</th>
+                                <th>Toner</th>
+                                <th>Snitt</th>
+                                <th>Maks</th>
+                            </tr>
+                        </thead>
+                        <tbody id="oktav-tabell-kropp">
+                            <tr><td colspan="4" style="color:var(--tekst-tersiaer);text-align:center">
+                                Ingen data
+                            </td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div><!-- /.side-innhold -->
+    </div><!-- /.rapport-innhold -->
+
+    <!-- Handlingsknapper -->
+    <div class="rapport-knapper">
+        <button id="book-stemmer-knapp" class="knapp-primer"
+                aria-label="Finn og book en pianostemmer nær deg">
+            Finn stemmer nær deg
+        </button>
+        <button id="del-rapport-knapp" class="knapp-sekunder"
+                aria-label="Del rapport">
+            Del rapport
+        </button>
+        <button id="ny-analyse-knapp" class="knapp-tekst-lenke"
+                aria-label="Start en ny analyse">
+            Ny analyse
+        </button>
+    </div>
+
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SKJERM 7: FINN STEMMER
+══════════════════════════════════════════════════════════════════════════════ -->
+<section id="skjerm-finn-stemmer" class="skjerm skjul" aria-label="Finn pianostemmer">
+    <div class="topplinje">
+        <button class="tilbake-knapp" id="finn-stemmer-tilbake-knapp"
+                aria-label="Tilbake til rapport">
+            ← Tilbake
+        </button>
+        <span class="topplinje-tittel">Stemmere nær deg</span>
+        <span style="width:80px"></span>
+    </div>
+
+    <div class="side-innhold">
+        <h1 style="margin-bottom:var(--space-sm)">Finn en stemmer</h1>
+        <p style="color:var(--tekst-tersiaer);margin-bottom:var(--space-xl)">
+            Profesjonelle pianostemmere i ditt område
+        </p>
+
+        <div id="stemmer-liste" class="stemmer-liste" aria-label="Liste over tilgjengelige stemmere">
+            <!-- Fylles dynamisk av app.js -->
+            <p style="color:var(--tekst-tersiaer);text-align:center">Laster stemmere…</p>
+        </div>
+
+        <div style="background:var(--advarsel-lys);border:1px solid var(--advarsel);
+                    border-radius:var(--radius-md);padding:var(--space-md);margin-top:var(--space-xl)">
+            <p style="font-size:0.8rem;color:var(--advarsel)">
+                Booking-funksjonalitet med kalender og betaling er under utvikling.
+                Ring stemmer direkte for å avtale time.
+            </p>
+        </div>
+    </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     ANSVARSFRASKRIVELSE-MODAL
+══════════════════════════════════════════════════════════════════════════════ -->
+<dialog id="ansvarsfraskrivelse-modal"
+        aria-labelledby="modal-tittel-id"
+        aria-describedby="modal-tekst-id">
+    <div class="modal-innhold">
+        <div class="modal-ikon" aria-hidden="true">🎹</div>
+        <h2 class="modal-tittel" id="modal-tittel-id">Om diagnoseresultatet</h2>
+        <p class="modal-tekst" id="modal-tekst-id">
+            PianoHelse gir en indikasjon på pianoets stemmetilstand basert på
+            mobilmikrofonmålinger. Resultatet er ment som veiledning — ikke som
+            erstatning for en profesjonell faglig vurdering. Nøyaktigheten varierer
+            med romsakkustikk, mikrofonkvalitet og spilleteknikk.
+        </p>
+        <button id="modal-bekreft-knapp"
+                aria-label="Jeg forstår — lukk og start skanning">
+            Jeg forstår — start skanning
+        </button>
+    </div>
+</dialog>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     iOS INSTALLASJONSBANNER
+══════════════════════════════════════════════════════════════════════════════ -->
+<div id="ios-installer-banner" role="banner" aria-label="Installer PianoHelse som app">
+    <p>
+        Installer PianoHelse på hjemskjermen:
+        trykk <strong>Del</strong> → <strong>Legg til på hjemskjermen</strong>
+    </p>
+    <button id="ios-installer-lukk" aria-label="Lukk installasjonsbanner"
+            onclick="document.getElementById('ios-installer-banner').style.display='none'">
+        ✕
+    </button>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SKRIPT — lastingsrekkefølge
+══════════════════════════════════════════════════════════════════════════════ -->
+
+<!-- Avregistrer gammel, ødelagt Service Worker ved første lasting -->
+<script>
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(regs => {
+        regs.forEach(r => {
+            r.unregister().then(() => console.log('[PianoHelse] Gammel SW avregistrert:', r.scope));
+        });
+    });
+}
+</script>
+
+<!-- Chart.js fra CDN (nødvendig for stemningskurven) -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+
+<!-- Pitch-detection — fra overordnet GuitarTuner-mappe -->
+<script src="../../pitch-common.js"></script>
+<script src="../../ultimate-detector.js"></script>
+
+<!-- PianoHelse-moduler -->
+<script src="./piano-scanner.js"></script>
+<script src="./health-scorer.js"></script>
+<script src="./tuning-curve.js"></script>
+
+<!-- UI-komponenter -->
+<script src="./router.js"></script>
+<script src="./piano-keyboard.js"></script>
+
+<!-- Hoved-app (inngangspunkt) -->
+<script src="./app.js"></script>
+
+</body>
+</html>
