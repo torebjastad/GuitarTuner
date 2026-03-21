@@ -554,104 +554,137 @@ function _tegnStemningskurve() {
         AppTilstand.stemningskurve = null;
     }
 
-    // Gjør canvas bred nok til å vise alle toner uten komprimering
+    // Bred nok til å vise alle toner uten komprimering
     const antallPunkter = AppTilstand.kurveData.chartConfig.data.labels.length;
-    const bredde = Math.max(900, antallPunkter * 18);
+    const bredde = Math.max(900, antallPunkter * 20);
     canvas.style.width  = bredde + 'px';
-    canvas.style.height = '380px';
+    canvas.style.height = '420px';
     canvas.width  = bredde * 2;  // Retina
-    canvas.height = 760;
+    canvas.height = 840;
 
+    const config = AppTilstand.kurveData.chartConfig;
     const morkModus = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const config    = morkModus
-        ? TuningCurve.morkModusConfig(AppTilstand.kurveData.chartConfig)
-        : AppTilstand.kurveData.chartConfig;
+    if (morkModus) TuningCurve.morkModusConfig(config);
 
     config.options.responsive = false;
     config.options.maintainAspectRatio = false;
 
-    // Klikk-handler: trykk på datapunkt for å måle tonen på nytt
-    config.options.onClick = (evt, elements) => {
-        if (!elements || elements.length === 0) return;
-        const el = elements[0];
-        if (el.datasetIndex !== 0) return; // Bare hovedkurven
-        const idx = el.index;
+    // ── Interaktiv klikk-handler (Chart.js v4) ──
+    // Bruker getElementsAtEventForMode etter chart-opprettelse
+    const chart = new Chart(canvas, config);
+    AppTilstand.stemningskurve = chart;
+
+    // Klikk-handler via canvas-event (mer pålitelig enn config.options.onClick)
+    canvas.onclick = (evt) => {
+        const points = chart.getElementsAtEventForMode(
+            evt, 'nearest', { intersect: false, axis: 'x' }, false
+        );
+        if (!points || points.length === 0) return;
+
+        // Finn nærmeste punkt fra dataset 0 (målt kurve, ikke Railsback)
+        const punkt = points.find(p => p.datasetIndex === 0);
+        if (!punkt) return;
+
+        const chartIndex  = punkt.index;
         const noteIndices = AppTilstand.kurveData.noteIndices;
-        if (!noteIndices || idx >= noteIndices.length) return;
-        const noteIndex = noteIndices[idx];
+        if (!noteIndices || chartIndex >= noteIndices.length) return;
+
+        const noteIndex = noteIndices[chartIndex];
         _startEnkeltNoteMåling(noteIndex);
     };
 
-    AppTilstand.stemningskurve = new Chart(canvas, config);
+    // Peker-cursor på hover over datapunkter
+    canvas.onmousemove = (evt) => {
+        const points = chart.getElementsAtEventForMode(
+            evt, 'nearest', { intersect: false, axis: 'x' }, false
+        );
+        canvas.style.cursor = (points && points.length > 0 && points.some(p => p.datasetIndex === 0))
+            ? 'pointer' : 'default';
+    };
 }
 
 /**
  * Re-skanner en enkelt tone fra Railsback-kurven.
- * Viser tastatur med markert tast, lytter, oppdaterer og tegner kurven på nytt.
+ * Oppretter alltid en ny scanner med fersk mikrofontilgang.
  */
 async function _startEnkeltNoteMåling(noteIndex) {
     const info = PianoScanner.frekvensInfo(PianoScanner.idealHz(noteIndex));
     if (!info) return;
     const noteNavn = info.noteNavn + info.oktav;
 
-    // Vis overlay
-    const overlay = document.getElementById('reskan-overlay');
-    if (!overlay) return;
-
+    const overlay       = document.getElementById('reskan-overlay');
     const overlayNavn   = document.getElementById('reskan-note-navn');
     const overlayStatus = document.getElementById('reskan-status');
     const overlayAvbryt = document.getElementById('reskan-avbryt');
+    if (!overlay) return;
 
     if (overlayNavn)   overlayNavn.textContent = noteNavn;
-    if (overlayStatus) overlayStatus.textContent = 'Spill tasten nå…';
+    if (overlayStatus) overlayStatus.textContent = 'Starter mikrofon…';
     overlay.style.display = 'flex';
 
-    // Vis tasten på tastaturet
-    if (AppTilstand.tastatur) {
-        AppTilstand.tastatur.settAktiv(noteIndex);
-    }
+    // Alltid opprett ny scanner med fersk mikrofontilgang
+    const scanner = new PianoScanner();
+    let avbrutt = false;
 
-    // Opprett ny scanner for enkeltmåling (gjenbruker mikrofon hvis mulig)
-    let scanner = AppTilstand.scanner;
-    if (!scanner) {
-        scanner = new PianoScanner();
-        try { await scanner.startMikrofon(); } catch { overlay.style.display = 'none'; return; }
-    }
+    const _lukk = () => {
+        overlay.style.display = 'none';
+        scanner.avslutt();
+    };
 
     // Avbryt-knapp
-    let avbrutt = false;
-    const _avbryt = () => { avbrutt = true; scanner.isScanning = false; overlay.style.display = 'none'; };
+    const _avbryt = () => {
+        avbrutt = true;
+        scanner.isScanning = false;
+        _lukk();
+    };
     if (overlayAvbryt) overlayAvbryt.addEventListener('click', _avbryt, { once: true });
 
-    scanner.isScanning = true;
+    // Start mikrofon
+    try {
+        await scanner.startMikrofon();
+    } catch (err) {
+        if (overlayStatus) overlayStatus.textContent = 'Kunne ikke starte mikrofon: ' + err.message;
+        setTimeout(_lukk, 2000);
+        return;
+    }
+
+    if (overlayStatus) overlayStatus.textContent = 'Spill tasten nå…';
+
+    // Live-oppdatering under måling
     scanner.onNoteMalt = (ni, hz) => {
         if (overlayStatus) {
             const cents = 1200 * Math.log2(hz / PianoScanner.idealHz(ni));
-            overlayStatus.textContent = `Lytter… ${hz.toFixed(1)} Hz (${cents > 0 ? '+' : ''}${cents.toFixed(1)}¢)`;
+            const tegn = cents > 0 ? '+' : '';
+            overlayStatus.textContent = `Lytter… ${hz.toFixed(1)} Hz (${tegn}${cents.toFixed(1)}¢)`;
         }
     };
 
+    scanner.isScanning = true;
     const resultat = await scanner.skannNote(noteIndex, true);
+    scanner.avslutt();
 
     if (avbrutt) return;
     overlay.style.display = 'none';
 
     if (resultat.status === 'bekreftet') {
-        // Oppdater resultatet og tegn kurven på nytt
+        // Oppdater resultatet
         AppTilstand.skanneResultater[noteIndex] = resultat;
-        const kurveData = TuningCurve.generer(AppTilstand.skanneResultater);
-        AppTilstand.kurveData = kurveData;
 
-        // Recalculate score
-        const scoreResultat = HealthScorer.score(AppTilstand.skanneResultater);
-        AppTilstand.scoreResultat = scoreResultat;
+        // Regenerer kurve og score
+        AppTilstand.kurveData     = TuningCurve.generer(AppTilstand.skanneResultater);
+        AppTilstand.scoreResultat = HealthScorer.score(AppTilstand.skanneResultater);
 
+        // Tegn alt på nytt
         _tegnStemningskurve();
-        _oppdaterScoreSirkel(scoreResultat.score, scoreResultat.status);
-        _oppdaterDetaljerPanel(scoreResultat.detaljer);
-        _oppdaterOktavTabell(scoreResultat.detaljer.perOktav);
+        _oppdaterScoreSirkel(AppTilstand.scoreResultat.score, AppTilstand.scoreResultat.status);
+        _oppdaterDetaljerPanel(AppTilstand.scoreResultat.detaljer);
+        _oppdaterOktavTabell(AppTilstand.scoreResultat.detaljer.perOktav);
 
         _spillBekreftelseslyd();
+    } else {
+        if (overlayStatus) overlayStatus.textContent = 'Tonen ble ikke detektert. Prøv igjen.';
+        overlay.style.display = 'flex';
+        setTimeout(() => { overlay.style.display = 'none'; }, 2000);
     }
 }
 

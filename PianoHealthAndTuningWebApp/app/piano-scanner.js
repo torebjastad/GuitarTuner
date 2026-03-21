@@ -35,13 +35,13 @@ class PianoScanner {
         this.SAMLETID_MS       = 1000;   // Samletid for medianen (1 sekund)
         this.MAKS_VENTETID_MS  = 10000;  // Timeout per tast (ms)
         this.GODKJENT_AVSTAND  = 0.45;   // Halvtoner — innenfor dette = riktig tast
-        this.MIN_RMS           = 0.0002; // Minimum RMS — filtrerer digitalt stillhet
+        this.MIN_RMS           = 0.0001; // Minimum RMS — filtrerer digitalt stillhet
         this.MAKS_REL_STD      = 0.005;  // Maks relativ standardavvik for stabilitet (0.5%)
         this.RMS_FALLOFF       = 0.15;   // Stopp tidlig hvis RMS faller under 15% av toppverdi
 
         // Onset detection — forhindrer at etterklang fra forrige tone fanges opp
-        this.ONSET_STILLE_RMS  = 0.005;  // RMS må falle under dette før vi lytter etter ny tone
-        this.ONSET_ANSLAG_RMS  = 0.008;  // RMS må stige over dette for å registrere et nytt anslag
+        this.ONSET_STILLE_RMS  = 0.002;  // RMS må falle under dette før vi lytter etter ny tone
+        this.ONSET_ANSLAG_RMS  = 0.003;  // RMS må stige over dette for å registrere et nytt anslag
 
         // Skanneomfang: C1 (noteIndex 3) til A7 (noteIndex 84)
         // Hopper over A0–B0 (for bass for mobil-mikrofon) og A#7–C8 (for lyse/vanskelige)

@@ -2,7 +2,7 @@
 // Inkluderer Railsback-referanselinje og per-oktav-avviksanalyse.
 //
 // Avhenger av: piano-scanner.js (PianoScanner.idealHz)
-// Eksternt: Chart.js (brukes av StemningskurveKomponent i komponenter)
+// Eksternt: Chart.js v4 (brukes av StemningskurveKomponent i komponenter)
 
 'use strict';
 
@@ -26,7 +26,7 @@ class TuningCurve {
      * Genererer stemningskurvedata og Chart.js-konfigurasjon.
      *
      * @param {Array} noteResultater - Array[88] med NoteResultat fra PianoScanner
-     * @returns {{ kurve: object, chartConfig: object }}
+     * @returns {{ kurve: object, chartConfig: object, noteIndices: number[] }}
      */
     static generer(noteResultater) {
         const kurve        = {};
@@ -40,7 +40,7 @@ class TuningCurve {
             if (!r || r.status !== 'bekreftet') continue;
 
             const midi     = i + 21;
-            const noteNavn = r.noteNavn + r.oktav;   // F.eks. "A4", "C3", "C#5"
+            const noteNavn = r.noteNavn + r.oktav;
 
             kurve[noteNavn] = {
                 noteIndex: i,
@@ -55,49 +55,46 @@ class TuningCurve {
             chartData.push(Math.round(r.cents * 10) / 10);
             noteIndices.push(i);
 
-            // Fargekoding etter absolutt avvik fra temperert stemming:
-            // Grønn ≤ 5 cent, Amber 5–15 cent, Rød > 15 cent
+            // Fargekoding: Grønn ≤ 5¢, Amber 5–15¢, Rød > 15¢
             const abs = Math.abs(r.cents);
             chartKolorer.push(
-                abs <= 5  ? 'rgba(26, 122, 74, 0.85)'  :   // Suksess-grønn
-                abs <= 15 ? 'rgba(196, 123, 0, 0.85)'  :   // Advarsel-amber
-                            'rgba(185, 28, 28, 0.85)'       // Fare-rød
+                abs <= 5  ? 'rgba(22, 163, 74, 0.9)'   :  // Grønn
+                abs <= 15 ? 'rgba(234, 179, 8, 0.9)'   :  // Amber
+                            'rgba(220, 38, 38, 0.9)'       // Rød
             );
         }
 
-        // Generer Railsback-referanselinje for samme note-posisjoner
+        // Railsback-referanselinje
         const railsbackData = noteIndices.map(i => TuningCurve._railsbackRef(i));
 
-        // Dynamisk y-akse: minst ±30 cent, utvid hvis data krever det
+        // Dynamisk y-akse: minst ±30 cent, utvid om nødvendig
         const maksCent = chartData.length > 0
             ? Math.max(30, Math.ceil(Math.max(...chartData.map(Math.abs)) / 10) * 10 + 5)
             : 30;
 
-        // Chart.js dataset-konfigurasjon
         const chartConfig = {
             type: 'line',
             data: {
                 labels: chartLabels,
                 datasets: [
                     {
-                        // Faktisk stemningskurve
                         label:                'Målt avvik (cent)',
                         data:                 chartData,
                         borderColor:          'rgba(59, 130, 246, 0.95)',
                         backgroundColor:      'rgba(59, 130, 246, 0.08)',
                         pointBackgroundColor: chartKolorer,
                         pointBorderColor:     chartKolorer,
-                        pointRadius:          5,
-                        pointHoverRadius:     7,
+                        pointRadius:          6,
+                        pointHoverRadius:     9,
+                        pointBorderWidth:     2,
                         borderWidth:          2.5,
                         tension:              0.2,
-                        fill:                 { target: { value: 0 }, above: 'rgba(59, 130, 246, 0.10)', below: 'rgba(59, 130, 246, 0.10)' }
+                        fill:                 { target: { value: 0 }, above: 'rgba(59, 130, 246, 0.08)', below: 'rgba(59, 130, 246, 0.08)' }
                     },
                     {
-                        // Railsback-referanselinje (ideell strekningskurve)
                         label:           'Railsback-referanse (ideell stretch)',
                         data:            railsbackData,
-                        borderColor:     'rgba(255, 200, 60, 0.7)',
+                        borderColor:     'rgba(255, 200, 60, 0.75)',
                         borderDash:      [8, 4],
                         borderWidth:     2.5,
                         pointRadius:     0,
@@ -109,16 +106,13 @@ class TuningCurve {
             options: {
                 responsive:          true,
                 maintainAspectRatio: false,
-                onHover: (evt, elements) => {
-                    const target = evt.native?.target;
-                    if (target) {
-                        target.style.cursor = (elements.length > 0 && elements[0].datasetIndex === 0)
-                            ? 'pointer' : 'default';
-                    }
+                // Interaksjon: nødvendig for at onClick og onHover skal finne datapunkter
+                interaction: {
+                    mode:      'nearest',
+                    axis:      'x',
+                    intersect: false
                 },
                 animation: {
-                    // Stemningskurven animerer inn punkt for punkt (500ms total)
-                    // for å gi en følelse av at analysen "avslører" resultatet
                     duration: 500,
                     easing:   'easeOutQuart'
                 },
@@ -127,22 +121,24 @@ class TuningCurve {
                         display: true,
                         labels: {
                             color:    '#374151',
-                            font:     { family: 'Inter', size: 14 },
-                            padding:  16,
+                            font:     { family: 'Inter, sans-serif', size: 15, weight: '500' },
+                            padding:  20,
                             usePointStyle: true
                         }
                     },
                     tooltip: {
-                        backgroundColor: 'rgba(10, 15, 26, 0.92)',
+                        backgroundColor: 'rgba(10, 15, 26, 0.95)',
                         titleColor:      '#F9FAFB',
-                        titleFont:       { family: 'Inter', size: 15, weight: '600' },
-                        bodyColor:       '#D1D5DB',
-                        bodyFont:        { family: 'Inter', size: 13 },
-                        footerColor:     '#9CA3AF',
-                        footerFont:      { family: 'Inter', size: 11 },
-                        borderColor:     '#374151',
+                        titleFont:       { family: 'Inter, sans-serif', size: 16, weight: '700' },
+                        bodyColor:       '#E5E7EB',
+                        bodyFont:        { family: 'Inter, sans-serif', size: 14 },
+                        footerColor:     '#93C5FD',
+                        footerFont:      { family: 'Inter, sans-serif', size: 12, weight: '600' },
+                        borderColor:     '#4B5563',
                         borderWidth:     1,
-                        padding:         12,
+                        padding:         14,
+                        cornerRadius:    8,
+                        displayColors:   false,
                         callbacks: {
                             title: (ctx) => ctx[0].label,
                             label: (ctx) => {
@@ -151,10 +147,11 @@ class TuningCurve {
                                 }
                                 const v = ctx.parsed.y;
                                 const tegn = v > 0 ? '+' : '';
-                                return `Avvik: ${tegn}${v} cent`;
+                                const status = Math.abs(v) <= 5 ? '✓ Stemt' : Math.abs(v) <= 15 ? '⚠ Litt ustemt' : '✗ Ustemt';
+                                return [`Avvik: ${tegn}${v} cent`, status];
                             },
                             footer: (ctx) => {
-                                if (ctx[0]?.datasetIndex === 0) return 'Trykk for å måle på nytt';
+                                if (ctx[0]?.datasetIndex === 0) return '👆 Trykk for å måle på nytt';
                                 return '';
                             }
                         }
@@ -165,64 +162,70 @@ class TuningCurve {
                         title: {
                             display: true,
                             text:    'Avvik fra temperert stemming (cent)',
-                            color:   '#6B7280',
-                            font:    { family: 'Inter', size: 14, weight: '500' }
+                            color:   '#4B5563',
+                            font:    { family: 'Inter, sans-serif', size: 15, weight: '600' }
                         },
                         min:  -maksCent,
                         max:   maksCent,
                         ticks: {
                             stepSize:  10,
-                            color:    '#4B5563',
-                            font:     { family: 'JetBrains Mono', size: 13 },
+                            color:    '#374151',
+                            font:     { family: 'JetBrains Mono, monospace', size: 14, weight: '500' },
                             callback: (v) => `${v > 0 ? '+' : ''}${v}¢`,
                             includeBounds: true
                         },
                         grid: {
                             color: (ctx) => {
                                 const v = ctx.tick.value;
-                                if (v === 0)                    return 'rgba(220, 38, 38, 0.8)';   // Nullinje — sterk rød
-                                if (v === 10 || v === -10)      return 'rgba(22, 163, 74, 0.35)';  // ±10¢ — grønn sone
-                                if (v === 20 || v === -20)      return 'rgba(234, 179, 8, 0.5)';   // ±20¢ — amber advarsel
-                                return 'rgba(209, 213, 219, 0.2)';
+                                // Nullinje: sterk rød — tydeligste referansepunktet
+                                if (v === 0)                    return 'rgba(220, 38, 38, 0.85)';
+                                // ±5¢: grønn sone (i stemt)
+                                if (Math.abs(v) === 10)         return 'rgba(22, 163, 74, 0.45)';
+                                // ±20¢: amber advarsel (merkbart ustemt)
+                                if (Math.abs(v) === 20)         return 'rgba(234, 179, 8, 0.6)';
+                                // ±30¢: rød grense (alvorlig ustemt)
+                                if (Math.abs(v) === 30)         return 'rgba(220, 38, 38, 0.35)';
+                                return 'rgba(156, 163, 175, 0.3)';
                             },
                             lineWidth: (ctx) => {
                                 const v = ctx.tick.value;
-                                if (v === 0)                    return 2.5;
-                                if (Math.abs(v) === 10)         return 1.5;
-                                if (Math.abs(v) === 20)         return 2;
-                                return 0.8;
+                                if (v === 0)                    return 3;
+                                if (Math.abs(v) === 10)         return 2;
+                                if (Math.abs(v) === 20)         return 2.5;
+                                if (Math.abs(v) === 30)         return 2;
+                                return 1;
                             }
                         },
-                        border: { color: 'rgba(107, 114, 128, 0.3)' }
+                        border: { color: 'rgba(107, 114, 128, 0.4)' }
                     },
                     x: {
                         title: {
                             display: true,
                             text:    'Tone',
-                            color:   '#6B7280',
-                            font:    { family: 'Inter', size: 13 }
+                            color:   '#4B5563',
+                            font:    { family: 'Inter, sans-serif', size: 14, weight: '500' }
                         },
                         ticks: {
-                            color:         '#4B5563',
-                            font:          { family: 'Inter', size: 12, weight: (ctx) => {
-                                // Fett for C-noter (oktavgrenser)
-                                const label = ctx.tick?.label || '';
-                                return label.startsWith('C') && !label.startsWith('C#') ? '700' : '400';
-                            }},
-                            maxRotation:   45,
-                            callback: function(value, index) {
-                                const label = this.getLabelForValue(value);
-                                return label;
-                            }
+                            color: (ctx) => {
+                                const label = chartLabels[ctx.index] || '';
+                                // C-noter i fet, mørk farge for oktavgrense-tydelighet
+                                if (label.startsWith('C') && !label.startsWith('C#')) return '#111827';
+                                return '#6B7280';
+                            },
+                            font: {
+                                family: 'Inter, sans-serif',
+                                size:   13,
+                                weight: '400'
+                            },
+                            maxRotation: 45
                         },
                         grid: {
                             color: (ctx) => {
-                                // Markere oktavgrenser (C-noter) med tydeligere linje
                                 const label = chartLabels[ctx.index] || '';
                                 if (label.startsWith('C') && !label.startsWith('C#')) {
-                                    return 'rgba(107, 114, 128, 0.4)';
+                                    return 'rgba(107, 114, 128, 0.5)';
                                 }
-                                return 'rgba(209, 213, 219, 0.1)';
+                                return 'rgba(209, 213, 219, 0.12)';
                             },
                             lineWidth: (ctx) => {
                                 const label = chartLabels[ctx.index] || '';
@@ -240,31 +243,15 @@ class TuningCurve {
 
     /**
      * Forenklet Railsback-referanselinje for noteIndex 0–87.
-     *
-     * Basert på empirisk Railsback-kurvedata:
-     * - A0 (noteIndex 0):  ca. −30 cent under 12-TET
-     * - A4 (noteIndex 57): ca. 0 (referansepunkt)
-     * - C8 (noteIndex 87): ca. +30 cent over 12-TET
-     *
-     * Modellert som en normalisert kubisk kurve: 30 × t³
-     * der t ∈ [−1, +1] fra noteIndex 0 til 87.
-     *
-     * @param {number} noteIndex - 0-basert tastindeks
-     * @returns {number} Forventet cent-avvik per Railsback-kurven
+     * Kubisk modell: 30 × t³, t ∈ [−1, +1]
      */
     static _railsbackRef(noteIndex) {
-        const t = (noteIndex / 87) * 2 - 1;  // Normaliser til [−1, +1]
+        const t = (noteIndex / 87) * 2 - 1;
         return Math.round(30 * Math.pow(t, 3) * 10) / 10;
     }
 
     /**
      * Analyse av avvik fra Railsback-kurven per oktav.
-     *
-     * En piano stemt etter Railsback-profilen vil vise minimalt avvik fra referansen.
-     * Et piano som er stemt flatt i diskanten eller skarpt i bassen vil avvike tydelig.
-     *
-     * @param {object} kurve - Kurve-objektet fra TuningCurve.generer()
-     * @returns {object} Per-oktav analyse: { 'A0–B1': { gjennomsnittCents, railsbackRef, avvikFraRailsback, antallToner }, … }
      */
     static railsbackAnalyse(kurve) {
         const OKTAVER = [
@@ -286,12 +273,9 @@ class TuningCurve {
             if (toner.length < 2) continue;
 
             const gjSnitt = toner.reduce((s, t) => s + t.cents, 0) / toner.length;
-
-            // Bruker midterste noteIndex i oktaven for Railsback-referansen
             const midtMidi     = (okt.midiMin + okt.midiMaks) / 2;
             const midtNoteIdx  = midtMidi - 21;
             const railsRef     = TuningCurve._railsbackRef(midtNoteIdx);
-
             const avvikFraRailsback = gjSnitt - railsRef;
 
             resultat[okt.navn] = {
@@ -306,43 +290,33 @@ class TuningCurve {
     }
 
     /**
-     * Lager en mørk-modus versjon av Chart.js-konfigurasjonen.
-     * Muterer originalen direkte (unngår JSON.stringify som dreper callbacks).
-     *
-     * @param {object} chartConfig - Basis-config fra TuningCurve.generer()
-     * @returns {object} Samme config, tilpasset mørk modus
+     * Tilpasser Chart.js-konfigurasjonen for mørk modus.
+     * Muterer originalen (unngår JSON.stringify som dreper callbacks).
      */
     static morkModusConfig(chartConfig) {
-        // Hovedlinje: lysere blå for mørk bakgrunn
         if (chartConfig.data?.datasets?.[0]) {
             chartConfig.data.datasets[0].borderColor = 'rgba(96, 165, 250, 0.9)';
         }
-        // Railsback-referanse: varmere gul for mørk bakgrunn
         if (chartConfig.data?.datasets?.[1]) {
-            chartConfig.data.datasets[1].borderColor = 'rgba(255, 210, 80, 0.75)';
+            chartConfig.data.datasets[1].borderColor = 'rgba(255, 210, 80, 0.8)';
         }
 
         const opts = chartConfig.options;
         if (!opts) return chartConfig;
 
-        // Legend
         if (opts.plugins?.legend?.labels) {
             opts.plugins.legend.labels.color = '#D1D5DB';
         }
 
-        // Aksetitler og ticks (farger oppdateres, callbacks beholdes)
         const yAxis = opts.scales?.y;
         const xAxis = opts.scales?.x;
 
         if (yAxis) {
             if (yAxis.title) yAxis.title.color = '#9CA3AF';
-            if (yAxis.ticks) yAxis.ticks.color = '#9CA3AF';
-            // VIKTIG: Ikke overskriv grid.color — det er en callback-funksjon
+            if (yAxis.ticks) yAxis.ticks.color = '#D1D5DB';
         }
         if (xAxis) {
             if (xAxis.title) xAxis.title.color = '#9CA3AF';
-            if (xAxis.ticks) xAxis.ticks.color = '#9CA3AF';
-            if (xAxis.grid)  xAxis.grid.color  = 'rgba(255,255,255,0.06)';
         }
 
         return chartConfig;
