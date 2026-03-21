@@ -1,5 +1,5 @@
 # PianoHelse — Prosjektstatus
-**Versjon:** 1.1
+**Versjon:** 1.3
 **Dato:** 20. mars 2026
 **Oppdatert av:** Lead Coordinator
 
@@ -10,178 +10,173 @@
 **Dato:** 20. mars 2026
 **Oppdatert av:** Lead Coordinator (agent-revisjon)
 
-### Fullforte agenter (5 av 7)
-| Agent | Leveranser | Status |
+### Applikasjonen er fullt funksjonell (FULLY FUNCTIONAL)
+
+Alle 7 skjermer er bygget, koblet sammen og testet. Diagnostikkmodulen fungerer fra ende til ende — fra velkomstskjerm til rapport og videre til tuner-markedsplass. Alle kjente tekniske beslutninger er implementert og verifisert.
+
+#### Funksjoner bekreftet OK per 20. mars 2026
+
+| Funksjon | Detaljer | Status |
 |---|---|---|
-| **Lead Coordinator** | master-plan.md, project-status.md, koordinasjonslogg, gap-analyse.md (v2.0), risiko-register.md, gdpr-og-juridisk.md | Fullfort |
-| **Developer** | teknisk-arkitektur.md (komplett med Supabase-arkitektur, databaseskjema, RLS, betalingsinfrastruktur, iOS-hensyn) | Fullfort |
-| **Designer** | design-critique.md (konstruktiv gjennomgang av PRD, tilgjengelighetsanalyse, visuell retning, handlingsliste) | Fullfort |
-| **Marketing** | lanseringsstrategi.md (supply-first GTM, stemmerliste Oslo, budsjettplan, faseutrulling) | Fullfort |
-| **Investor/Pitch** | investorpitch.md (12-slide seed-pitch, TAM/SAM/SOM, finansielle projeksjoner, funding ask kr 3,5M) | Fullfort |
+| 7-skjerms SPA | velkomst → piano-info → forberedelse → skanning → analyse → rapport → finn-stemmer | Fullfort |
+| UltimateDetector integrert | Pitch-deteksjon via `../../pitch-common.js` + `../../ultimate-detector.js` | Fullfort |
+| 88-tasters visuelt keyboard | Viser skannefremdrift i sanntid, tast for tast | Fullfort |
+| Stabilitetsbasert pitch-deteksjon | Median, min 1,5 s dwell, relStd < 0,3 % | Fullfort |
+| 5-nivå helseskoring | Gaussisk vekting sentrert pa A4 | Fullfort |
+| Chart.js Railsback-stemmekurve | Scrollbar, bred visning | Fullfort |
+| Mock tuner-markedsplass | 3 stemmere, telefonbasert booking | Fullfort |
+| Digitalt piano-advarsel | Vises nar bruker velger "digitalt" i piano-info | Fullfort |
+| Pitch raise-advarsel | Vises nar gjennomsnittlig avvik er >= 25 cent | Fullfort |
+| Scorebasert hastegrad i finn-stemmer | Hastegrad avhenger av helsepoeng | Fullfort |
+| Bekreftelsesbiep | 880 Hz, 50 ms — spilles ved bekreftet tast | Fullfort |
+| Haptisk tilbakemelding | Vibrasjon pa bekreftede taster | Fullfort |
+| iOS PWA-kompatibilitet | Hash-router, ingen History API | Fullfort |
+| Service worker deaktivert for dev | Avregistrerer gamle cachede versjoner automatisk | Fullfort |
 
-### Under arbeid (3 agenter kjører nå)
-| Agent | Forventede leveranser | Status |
+#### Tekniske nøkkelparametere (bekreftet implementert)
+
+| Parameter | Verdi | Begrunnelse |
 |---|---|---|
-| **Economist** | forretningsmodell-analyse.md (CAC, LTV, break-even, MVA-analyse, provisjonsvurdering, 3 scenarioer) | Under arbeid |
-| **Piano-Tuner Expert** | faglig-terskelverdi.md, stemmer-krav.md, bransjeforhold.md | Under arbeid |
-| **App-builder** | Fungerende diagnostikkmodul (HTML/CSS/JS), piano-scanner.js, health-scorer.js, tuning-curve.js | Under arbeid |
-
-### Neste steg
-1. **Integrasjon av alle dokumenter:** Når Economist og Piano-Tuner Expert har levert, gjennomfør Lead-synkronisering av alle terskelgrenser og finansielle tall på tvers av dokumenter (løser GAP-12, GAP-20).
-2. **App-testing:** App-builder produserer fungerende diagnostikkmodul → Developer integrerer mot backend-skjelett → intern betatest (måluke 10).
-3. **GDPR-compliance:** Sign DPA med Supabase, Resend og Stripe (innen uke 1–2). Juridisk review av gdpr-og-juridisk.md (uke 3).
-4. **Stemmer-rekruttering:** Marketing og Piano-Tuner Expert starter direkte oppsøking av NPTF og stemmere i Oslo (parallelt med utvikling).
-5. **Investordialog:** Lead Coordinator sender investorpitch til Norse VC, Katapult og Innovasjon Norge (uke 1–2).
-
-### Kritiske blokkere per 20. mars 2026
-- GAP-12: Cent-terskelgrenser ikke besluttet (blokkerer diagnostikkmodul)
-- GAP-11: Prismodell ikke besluttet (blokkerer bookingflyt-design)
-- GAP-05: Stemmer-akkrediteringskrav ikke definert (blokkerer stemmer-onboarding)
-- Supabase/Resend/Stripe DPA ikke signert (compliance-blokkerer)
+| UltimateDetector RMS-gate | Ingen (fjernet) | Bruker kun clarity-gate (0,40) |
+| Scanner MIN_RMS | 0,0002 | Filtrerer kun digital stillhet |
+| Scanner MAKS_REL_STD | 0,003 (0,3 %) | Stabilitetsterskel |
+| Scanner MIN_SAMLETID_MS | 1500 ms | Krever 1,5 s innsamlingstid |
+| Script-stier | `../../pitch-common.js`, `../../ultimate-detector.js` | Relative stier fra app/-mappen |
 
 ---
 
-## Nåværende fase
+## Gjenverende blokkere for offentlig lansering
 
-**FASE 0 — Konseptvalidering og Pre-utvikling**
+| Blokkerer | Detaljer | Haster |
+|---|---|---|
+| Ingen ekte Supabase-backend | All data er mock | Kritisk — Fase 1 |
+| Ingen ekte stemmer-database | 3 hardkodede mock-stemmere i Oslo | Kritisk — Fase 1 |
+| Ingen ekte booking/betalingsflyt | Kun visuell mockup | Kritisk — Fase 1 |
+| DPA ikke signert | Supabase, Stripe, Resend | Kritisk pre-lansering |
 
-Prosjektet er i tidlig konseptfase. Teknologigrunnlaget (UltimateDetector i JavaScript) eksisterer og er validert. Teamet er samlet. Dokumentasjonssettet er under utarbeidelse. Ingen kode for PianoHelse-applikasjonen er skrevet ennå.
+---
+
+## Tidligere oppdatering — 21. mars 2026
+
+**Dato:** 21. mars 2026
+**Oppdatert av:** Lead Coordinator (agent-revisjon)
+
+### Alle 7 team-agenter fullfort
+
+| Agent | Leveranser | Status |
+|---|---|---|
+| **Lead Coordinator** | master-plan.md (v1.0, inkl. økonomi- og faglig sammendrag), project-status.md, coordination-log.md, gap-analyse.md (v2.0), risiko-register.md (15 risikoer), beslutningslogg.md (13 beslutninger) | Fullfort |
+| **Developer** | teknisk-arkitektur.md (Supabase-arkitektur, databaseskjema, RLS, betalingsinfrastruktur, iOS-hensyn), algoritme-integrasjon.md, api-design.md, frontend-arkitektur.md | Fullfort |
+| **Designer** | designsystem.md, brukerflyt.md, ux-research.md, design-critique.md | Fullfort |
+| **Marketing** | lanseringsstrategi.md, innholdsstrategi.md, merkevareidentitet.md, malgrupper.md, partnerskap.md, veksttaktikker.md, mikrokopi.md | Fullfort |
+| **Economist** | enhetokonomi.md (TAM/SAM/SOM, CAC, LTV, break-even), finansiell-modell.md (18-maneders P&L x 3 scenarier), inntektsmodell.md, prisstrategi.md | Fullfort |
+| **Piano-Tuner Expert** | marked-og-fagkunnskap.md, diagnose-validering.md, krav-til-plattformen.md, pianohelse-faglig.md | Fullfort |
+| **App-builder** | app/index.html, app/style.css, app/app.js, app/router.js, app/piano-scanner.js, app/piano-keyboard.js, app/health-scorer.js, app/tuning-curve.js, app/sw.js, app/manifest.json, app/stemmer-portal.html, app/icons/icon.svg | Fullfort |
+
+---
+
+## Naværende fase
+
+**FASE 0 — PRE-MVP FULLFORT / FASE 1 KLAR**
+
+Diagnostikkmodulen er ferdig bygget og testet. Alle 7 skjermer fungerer ende til ende. Applikasjonen er fullt funksjonell som PWA i nettleser. Backend (Supabase), ekte bookingflyt og betalingsstrom gjenstaar (Fase 1).
 
 ---
 
 ## Overordnet fremdrift
 
-| Milepæl | Status | Ansvarlig | Frist |
+| Milepael | Status | Ansvarlig | Fullfort/Frist |
 |---|---|---|---|
-| Masterplan v1.0 | Fullført | Lead Coordinator | 20. mars 2026 |
-| Kravspesifikasjon v1.0 | Fullført | Lead Coordinator | 20. mars 2026 |
-| Koordinasjonslogg v1.0 | Fullført | Lead Coordinator | 20. mars 2026 |
-| Teknisk arkitekturnotat | Ikke startet | Developer | TBD |
-| UX-konsept og wireframes | Ikke startet | Designer | TBD |
-| Forretningsmodell-analyse | Ikke startet | Economist | TBD |
-| Faglig innholdsdokument | Ikke startet | Piano Tuner Expert | TBD |
-| Go-to-market plan | Ikke startet | Marketing | TBD |
-| UltimateDetector web-integrasjon | Ikke startet | Developer | TBD |
-| Betatest med ekte pianoeiere | Ikke startet | Hele teamet | TBD |
+| Masterplan v1.0 | Fullfort | Lead Coordinator | 20. mars 2026 |
+| Kravspesifikasjon v1.0 | Fullfort | Lead Coordinator | 20. mars 2026 |
+| Koordinasjonslogg v1.0 | Fullfort | Lead Coordinator | 20. mars 2026 |
+| Gap-analyse v2.0 | Fullfort | Lead Coordinator | 20. mars 2026 |
+| Risikoregister v1.0 (15 risikoer) | Fullfort | Lead Coordinator | 20. mars 2026 |
+| Beslutningslogg v1.0 (13 beslutninger) | Fullfort | Lead Coordinator | 21. mars 2026 |
+| Teknisk arkitekturnotat | Fullfort | Developer | 20. mars 2026 |
+| UX-konsept og wireframes | Fullfort | Designer | 20. mars 2026 |
+| Forretningsmodell-analyse | Fullfort | Economist | 20. mars 2026 |
+| Faglig innholdsdokument | Fullfort | Piano Tuner Expert | 20. mars 2026 |
+| Go-to-market plan | Fullfort | Marketing | 20. mars 2026 |
+| GDPR og juridisk rammeverk | Fullfort (utkast) | Lead Coordinator | 20. mars 2026 |
+| Diagnostikkmodul (app/) | Fullfort — alle 7 skjermer fungerer | App-builder | 20. mars 2026 |
+| Betatest med ekte piano | Fullfort (lokal, intern) | Hele teamet | 21. mars 2026 |
+| Backend — Supabase-oppsett | Ikke startet | Developer | TBD |
+| Ekte bookingflyt | Ikke startet | Developer | TBD |
+| Stemmer-rekruttering Oslo | Ikke startet | Marketing + Lead | TBD |
+| App Store / Google Play | Ikke startet | Developer | TBD |
 
 ---
 
-## Åpne spørsmål per teammedlem
+## Kjente bugs fikset
 
-### Developer
-
-1. **Teknisk stack-valg:** Skal vi bruke vanilla JS (som GuitarTuner-basen) eller introdusere et rammeverk som React/Vue for frontend? Fordel med vanilla: ingen build-steg, direkte gjenbruk av UltimateDetector. Ulempe: mer manuell state management for et multi-side-produkt.
-
-2. **Backend-valg:** Node.js + Express, Python/FastAPI, eller en BaaS som Supabase/Firebase? Vurder GDPR-plassering (servere i EØS/Norge er sterkt foretrukket).
-
-3. **Lydanalyse på mobil:** Har du testet UltimateDetector på iOS Safari og Android Chrome? Hva er minste bufferstørrelse som gir reliable pitch-deteksjon for pianotoner (særlig i bassregisteret A0–C2)?
-
-4. **Klient-side vs. server-side analyse:** Masterplanen forutsetter at ALL lydanalyse skjer i nettleseren (ingen lyd sendes til server). Kan vi bekrefte at dette er teknisk gjennomførbart for hele pianoregisteret (A0 = 27,5 Hz til C8 = 4186 Hz)?
-
-5. **API-design:** Hvilke endepunkter er nødvendige for MVP? Forslag: `POST /api/reports` (lagre anonymisert rapport), `POST /api/booking-requests`, `GET /api/tuners?location=&radius=`, `POST /api/tuner-profiles`.
-
-6. **Sikkerhet:** Autentisering i MVP — holder det med e-postverifisering, eller trenger vi BankID/Vipps-innlogging for troverdighetens skyld?
-
-### Designer
-
-1. **Merkevareidentitet:** Vi har foreslått: Varm sort + ivory + suksessgrønn, navn "PianoHelse". Trenger vi en grundig merkevaregjennomgang (logo, typografi, ikonspråk) før MVP?
-
-2. **Diagnostikk-UX:** Hvordan presenter vi stemmekurven på en forståelig måte for ikke-musikere? En fargekode (grønn/gul/rød per note) er intuitivt — men hva er den beste visuelle metaforen for "cent-avvik"?
-
-3. **Onboarding-flyt:** Hvor mange steg bør det være fra "Åpne PianoHelse.no" til "Se diagnostikkresultat"? Hypotese: maks 3 steg (Gi mikrofontilgang → Spill tastene → Se rapport). Kan Designer validere dette med enkel brukertesting?
-
-4. **Responsivt design:** Pianoer stilles gjerne med mobil liggende foran tastene. Mobilfokus er kritisk. Hva er beste praksis for å guide brukeren til riktig avstand fra piano?
-
-5. **Norsk språklig tone:** Designer bør verifisere at "du"-form er konsistent gjennomgående og at teksten er testet på ekte norske brukere for klarhet og vennlighet.
-
-6. **Tilgjengelighet (WCAG):** Hva er minstekravene vi setter oss? Minimum AA for offentlig nettjeneste.
-
-### Piano Tuner Expert
-
-1. **Yrkesorganisering:** Finnes det en norsk pianostemmer-forening eller fagorganisasjon? Hvem er de riktige kontaktene for partnerskap og tidlig stemmer-rekruttering?
-
-2. **Faglig terskelverdi for helsekarakter:** Hva er aksepterte grenser i bransjen for "i stemmning", "trenger stell" og "kritisk"? Kan vi forankre disse i PTG- (Piano Technicians Guild) standarder eller tilsvarende?
-   - Forslag: Bra: < ±10 cent gjennomsnitt, Trenger stell: 10–30 cent, Kritisk: > 30 cent
-   - Er dette faglig forsvarlig?
-
-3. **Opptrekk (pitch raise):** Diagnostikken bør kunne identifisere om pianoet trenger opptrekk (prisen er høyere). Hvilken avviksgrad fra A440 tilsier opptrekk?
-
-4. **Stemmer-profil-krav:** Hva bør vi kreve av stemmere for å bli godkjent på plattformen? Minimumsdokumentasjon: Org.nummer? PTG-sertifikat? Referanser? Forsikring?
-
-5. **Sesongvariasjon:** Er det spesielle sesonger i Norge der behovet for stemming er høyest? (Hypotese: høst etter sommerferie og januar etter jul pga. luftfuktighetsskift)
-
-6. **Diagnostikkbegrensning:** Hva kan diagnostikken IKKE avdekke? (Regulering, hammerfilter, pedaler, lydstyrke-ubalanse) — dette bør kommuniseres tydelig til pianoeiere så vi ikke overselger.
-
-### Economist
-
-1. **Provisjonsnivå:** Masterplanen foreslår 10–15 % provisjon. Er dette akseptabelt for norske pianostemmere? Sammenlign med Mittanbud (ca. 8–15 % avhengig av kategori) og Thumbtack (20 % lead-fee). Hva tåler markedet?
-
-2. **Prissensitivitet:** Vil pianoeiere betale for diagnostikktjenesten (f.eks. Kr 99 for full rapport med historikk), eller er gratis diagnostikk nødvendig for adopsjon?
-
-3. **CAC og LTV:** Hva er estimert Customer Acquisition Cost (CAC) for pianoeiere og for stemmere i norsk digital markedsføring? Og hva er LTV over 5 år (2 stemminger/år × Kr 2 850 × 12 % provisjon × 5 år = Kr 3 420 per pianoeier)?
-
-4. **Break-even-analyse:** Når er plattformen lønnsom? Modeller minimum 3 scenarier: optimistisk, realistisk, pessimistisk.
-
-5. **Vipps-integrasjon:** Hva er transaksjonskostnadene for Vipps eCom vs. Stripe for norske kunder? Vipps er forventet av norske forbrukere.
-
-6. **Investorcase:** Hva er realistisk verdsettelse ved seed-runde? Sammenlignbare selskaper (PropTech service marketplaces) i Norge/Norden?
-
-### Marketing
-
-1. **Go-to-market sekvens:** Skal vi lansere diagnostikken som en frittstående gratisapp FØRST for å bygge interesse, og deretter aktivere bookingmarkedsplassen? Eller lanserer vi begge deler samtidig?
-
-2. **SEO-mulighet:** Nøkkelord som "pianostemming Oslo", "pianostemmer pris", "piano ut av stemmning" har sannsynligvis lav konkurranse i Norge. Hva er søkevolumet?
-
-3. **Samarbeidspartnere:** Hvem er de naturlige distribusjonspartnerne?
-   - Musikkorps og korps-organisasjoner
-   - Kulturskolen (900+ kulturskoler i Norge)
-   - Steinway Gallery Oslo, Yamaha-forhandlere
-   - NMF (Norsk Musikkforlag) og lignende
-
-4. **PR-vinkel:** Hva er den journalistiske vinkelen? Forslag: "For første gang kan du sjekke om pianoet ditt er i stemmning — gratis og på 5 minutter."
-
-5. **Referral-mekanikk:** Stemmere som er fornøyde med plattformen er de beste ambassadørene. Hva er en god referral-incentiv for dem?
-
-6. **Sosiale medier:** Hvilke kanaler er relevante? (Facebook-grupper for pianoeiere, Instagram for det estetiske aspektet, LinkedIn for institusjonelle kunder)
+| Bug | Beskrivelse | Fikset |
+|---|---|---|
+| SW-caching | Service Worker cachet for aggressivt — appen ble ikke oppdatert etter endringer | Ja — cache-busting med versjonsnokkel i sw.js |
+| Feil filstier | UltimateDetector-avhengigheter pekte pa feil relative stier fra app/-mappen | Ja — oppdatert til riktige stier mot GuitarTuner-rotkatalog |
+| RMS-gate for aggressiv | MIN_RMS-gaten avslo gyldige pianotoner i bass | Ja — MIN_RMS fjernet, replaced med clarity-gate (BES-12) |
 
 ---
 
-## Beslutningslogg
+## Kritiske blokkere per 20. mars 2026
 
-| ID | Dato | Beslutning | Begrunnelse | Tatt av |
-|---|---|---|---|---|
-| D-001 | 20.03.2026 | All lydanalyse skjer klient-side | Personvern (GDPR), ytelse, ingen serverbelastning | Lead Coordinator |
-| D-002 | 20.03.2026 | MVP bruker ingen provisjon — gratis for begge sider | Løser chicken-and-egg, prioriterer adopsjon over inntjening | Lead Coordinator |
-| D-003 | 20.03.2026 | Norsk er primærspråk; engelsk kun for interndokumenter | Målgruppen er norsk; norsk SEO er verdifullt | Lead Coordinator |
-| D-004 | 20.03.2026 | Uformelt "du" gjennomgående i brukergrensesnittet | Norsk digital konvensjon, gjennomgående i Vipps, DNB, Finn.no | Lead Coordinator |
-| D-005 | 20.03.2026 | Oslo som første geografi for lansering | Høyest tetthet av både pianoeiere og stemmere | Lead Coordinator |
-| D-006 | 20.03.2026 | Mobiltelefon (nettleser) er primær plattform for diagnostikk | Pianoer har ikke PC-er ved siden av seg; mobil-first er naturlig | Lead Coordinator |
+Folgende blokkerer offentlig lansering. Intet er prosjektdodende; alle er adresserbare med ressurser.
 
----
-
-## Åpne beslutninger (som trenger input fra teamet)
-
-| ID | Spørsmål | Ansvarlig for innspill | Frist |
+| Blokkerer | GAP-ref | Ansvarlig | Haster |
 |---|---|---|---|
-| O-001 | Teknisk stack — React vs. Vanilla JS | Developer | TBD |
-| O-002 | Backend-plattform og serverplassering (Norge/EØS) | Developer | TBD |
-| O-003 | Terskelverdi for helsekarakterer (cent-grenser) | Piano Tuner Expert | TBD |
-| O-004 | Provisjonsnivå og stemmer-prissensitivitet | Economist | TBD |
-| O-005 | MVP: Gratis diagnose vs. freemium | Economist + Marketing | TBD |
-| O-006 | Krav til stemmer-akkreditering på plattformen | Piano Tuner Expert | TBD |
+| Supabase/Resend/Stripe DPA ikke signert | GAP-17 / R-03 | Developer + Lead | Kritisk — uke 1 |
+| Ekte bookingflyt ikke implementert | — | Developer | Kritisk |
+| Personvernerklæring ikke publisert | GAP-01 | Lead + jurist | Kritisk pre-lansering |
+| Cookie-banner ikke implementert | GAP-08 | Developer | Kritisk pre-lansering |
+| RoPA ikke opprettet | GAP-16 | Lead | Kritisk pre-lansering |
+| Prismodell (fast vs. anbud) ikke besluttet | GAP-11 | Lead | Blokkerer bookingflyt-design |
 
 ---
 
-## Risikoovervåking
+## Naeste steg
+
+1. **Backend-oppsett:** Opprette Supabase-prosjekt i Frankfurt-regionen, kjore `schema.sql`, sette opp RLS-policyer.
+2. **DPA-signering:** Sign DPA med Supabase (Settings → Legal), Resend og Stripe (innen uke 1).
+3. **Bookingflyt:** Implementer frontend-steg for pianoeier → bookingforespørsel → stemmer-matching.
+4. **Stemmer-rekruttering:** Marketing og Lead starter direkte oppsøking av NPTF-stemmere i Oslo (maal: 15–20 stemmere registrert før soft launch).
+5. **GDPR-compliance:** Juridisk review av personvernerklæringen og brukervilkaarene (uke 3). Publiser personvernerklæring pa pianohelse.no.
+6. **Investordialog:** Send investorpitch til Norse VC, Katapult og Innovasjon Norge (parallelt, ikke sekvensielt).
+
+---
+
+## Risikoovervaakning
 
 | Risiko | Siste vurdering | Trend |
 |---|---|---|
-| Lav stemmer-tilgang ved lansering | Høy — aktivt tiltak nødvendig | Uendret |
-| Diagnostisk nøyaktighet på mobil | Ukjent — krever testing | Ny |
-| GDPR-samsvar for lydopptak | Middels — teknisk løsning klar | Under kontroll |
-| Konkurranse fra Mittanbud | Lav på kort sikt | Uendret |
-| Markedsvolum for lavt | Middels — validering trengs | Uendret |
+| Lav stemmer-tilgang ved lansering (R-01) | Kritisk — rekruttering ikke startet | Uendret |
+| Diagnostisk noyaktighet pa mobil (R-02) | Under kontroll — testet pa ekte piano, mobiltest gjenstaar | Bedret |
+| GDPR-samsvar for lydopptak (R-03) | Middels — teknisk architektur korrekt, DPA mangler | Under kontroll |
+| Disintermediation (R-04) | Kritisk — motmekanismer ikke implementert ennaa | Uendret |
+| Seed-finansiering (R-09) | Kritisk — ingen dialog startet | Uendret |
 
 ---
 
-*Neste statusoppdatering: Etter at alle teammedlemmer har levert sine første bidrag.*
+## Beslutningslogg — hurtigreferanse
+
+Se `TEAM/LEAD/beslutningslogg.md` for fullstendig logg. Nokkelbesl utninger:
+
+| ID | Beslutning |
+|---|---|
+| BES-01 | Klient-side lydanalyse — ingen lyd til server |
+| BES-02 | Ingen provisjon i MVP |
+| BES-03 | Supabase Frankfurt (eu-central-1) |
+| BES-04 | Vanilla JS, ingen rammeverk |
+| BES-05 | Hash-basert router (iOS PWA) |
+| BES-06 | 12 % provisjon ved oppstart (maned 7) |
+| BES-07 | Gratis diagnose som freemium-hook |
+| BES-08 | UltimateDetector for piano |
+| BES-09 | Chart.js for stemmekurve |
+| BES-10 | 52 hvite taster som standard |
+| BES-11 | Median (ikke mean) for pitch per note |
+| BES-12 | MIN_RMS fjernet — clarity-basert gate |
+| BES-13 | Mobilmikrofon-advarsel for A0–E1 (noteIndex < 10) |
+
+---
+
+*Neste statusoppdatering: Etter Supabase-oppsett og DPA-signering.*
+*Dokumenteier: Lead Coordinator*

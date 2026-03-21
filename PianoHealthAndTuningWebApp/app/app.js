@@ -68,12 +68,25 @@ function _visPianoInfo() {
     if (AppTilstand.pianoInfo) {
         const merkeEl = document.getElementById('piano-merke');
         if (merkeEl && AppTilstand.pianoInfo.merke) merkeEl.value = AppTilstand.pianoInfo.merke;
+
+        // Gjenopprett radio-valg
+        if (AppTilstand.pianoInfo.type) {
+            const radio = document.querySelector(`input[name="piano-type"][value="${AppTilstand.pianoInfo.type}"]`);
+            if (radio) radio.checked = true;
+        }
     }
 }
 
 function _visForberedelse() {
     // Oppdater tidsestimat og tast-info basert på valg
     _oppdaterForberedelseTekst();
+
+    // Vis advarsel hvis bruker har oppgitt digitalt piano
+    const digitalAdvarselEl = document.getElementById('digitalt-piano-advarsel');
+    if (digitalAdvarselEl) {
+        const erDigitalt = AppTilstand.pianoInfo?.type === 'digitalt';
+        digitalAdvarselEl.style.display = erDigitalt ? '' : 'none';
+    }
 }
 
 function _visSkanning() {
@@ -143,18 +156,23 @@ function _visRapport() {
         beskrivelseEl.textContent = HealthScorer.lagBeskrivelse(AppTilstand.scoreResultat);
     }
 
-    // Badge
+    // Badge — bruker 5-nivå systemet
     const badgeEl = document.getElementById('helse-badge');
     if (badgeEl) {
-        const konfig = {
-            god:               { tekst: 'God form',       css: 'badge-god' },
-            trenger_tilsyn:    { tekst: 'Trenger tilsyn', css: 'badge-tilsyn' },
-            kritisk:           { tekst: 'Kritisk',        css: 'badge-kritisk' },
-            utilstrekkelig_data: { tekst: 'Mangler data', css: 'badge-tilsyn' }
-        };
-        const k = konfig[status] ?? konfig.kritisk;
-        badgeEl.className = 'helse-badge ' + k.css;
-        badgeEl.querySelector('.badge-tekst').textContent = k.tekst;
+        let badgeTekst, badgeCss;
+        if (status === 'utilstrekkelig_data' || score === null) {
+            badgeTekst = 'Mangler data';
+            badgeCss   = 'badge-tilsyn';
+        } else {
+            const nivaa = HealthScorer.scoreNivaa(score);
+            badgeTekst = nivaa.tittel;
+            badgeCss   = nivaa.nivaa <= 1 ? 'badge-god'
+                       : nivaa.nivaa <= 2 ? 'badge-god'
+                       : nivaa.nivaa <= 3 ? 'badge-tilsyn'
+                       :                    'badge-kritisk';
+        }
+        badgeEl.className = 'helse-badge ' + badgeCss;
+        badgeEl.querySelector('.badge-tekst').textContent = badgeTekst;
         badgeEl.querySelector('.badge-score').textContent =
             score !== null ? Math.round(score) + '/100' : '—/100';
     }
@@ -162,12 +180,28 @@ function _visRapport() {
     _oppdaterDetaljerPanel(detaljer);
     _tegnStemningskurve();
     _oppdaterOktavTabell(detaljer.perOktav);
+
+    // Vis opptrekk-advarsel hvis gjennomsnittlig avvik overstiger 25 cent
+    const opptrekkEl = document.getElementById('opptrekk-advarsel');
+    if (opptrekkEl) {
+        opptrekkEl.style.display =
+            (detaljer.gjennomsnittAvvik >= 25) ? '' : 'none';
+    }
 }
 
 function _visFinnStemmer() {
     const listEl = document.getElementById('stemmer-liste');
     if (!listEl) return;
-    listEl.innerHTML = MOCK_STEMMERE.map(s => `
+
+    // Bygg score-kontekst-melding
+    const score = AppTilstand.scoreResultat?.score ?? null;
+    const hasterTekst = score !== null && score < 50
+        ? '<div style="background:var(--fare-lys);border:1px solid var(--fare);border-radius:var(--radius-md);padding:var(--space-md);margin-bottom:var(--space-md)">' +
+          '<p style="font-size:0.875rem;color:var(--fare);font-weight:600">Anbefalt: Book snarest</p>' +
+          `<p style="font-size:0.875rem;color:var(--fare)">Pianoets helsescore er ${Math.round(score)}/100. Vi anbefaler at du booker en stemmer så snart som mulig.</p></div>`
+        : '';
+
+    listEl.innerHTML = hasterTekst + MOCK_STEMMERE.map(s => `
         <div class="stemmer-kort">
             <div class="stemmer-hode">
                 <div class="stemmer-avatar" aria-hidden="true">
@@ -207,7 +241,7 @@ function _visFinnStemmer() {
 function _oppdaterForberedelseTekst() {
     const erAlle = AppTilstand.skanneValg === 'alle';
     const antall = erAlle ? 88 : 52;
-    const minutter = Math.ceil(antall * 2 / 60);  // ca 2 sek per tast
+    const minutter = Math.ceil(antall * 1.5 / 60);  // ca 1-2 sek per tast
     const tidsEl = document.getElementById('forberedelse-tidsestimat');
     if (tidsEl) {
         tidsEl.textContent = `Ca. ${minutter} minutter · ${antall} taster · Hold hver tast i ~2 sekunder`;
@@ -269,8 +303,8 @@ function _bekreftTast(noteIndex, resultat) {
 }
 
 /**
- * Spiller en kort, diskret bekreftelsestone (~50ms, 880 Hz).
- * Lavt volum så den ikke forstyrrer pianolyttingen.
+ * Spiller en tydelig bekreftelsestone — to-tone "ding-ding" (~150ms).
+ * Høyt nok til å være tydelig, kort nok til å ikke forstyrre.
  */
 function _spillBekreftelseslyd() {
     try {
@@ -278,22 +312,32 @@ function _spillBekreftelseslyd() {
             AppTilstand.beepCtx = new (window.AudioContext || window.webkitAudioContext)();
         }
         const ctx = AppTilstand.beepCtx;
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-
-        osc.type = 'sine';
-        osc.frequency.value = 880;  // A5 — tydelig uten å forstyrre pianotoner
-        gain.gain.value = 0.06;     // Lavt volum
-
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-
+        if (ctx.state === 'suspended') ctx.resume();
         const nå = ctx.currentTime;
-        gain.gain.setValueAtTime(0.06, nå);
-        gain.gain.exponentialRampToValueAtTime(0.001, nå + 0.05);
 
-        osc.start(nå);
-        osc.stop(nå + 0.06);
+        // Tone 1: 1200 Hz (høy, tydelig)
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.type = 'sine';
+        osc1.frequency.value = 1200;
+        osc1.connect(gain1);
+        gain1.connect(ctx.destination);
+        gain1.gain.setValueAtTime(0.25, nå);
+        gain1.gain.exponentialRampToValueAtTime(0.001, nå + 0.08);
+        osc1.start(nå);
+        osc1.stop(nå + 0.09);
+
+        // Tone 2: 1600 Hz (en kvart over, gir "ding-ding" effekt)
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.value = 1600;
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        gain2.gain.setValueAtTime(0.20, nå + 0.06);
+        gain2.gain.exponentialRampToValueAtTime(0.001, nå + 0.15);
+        osc2.start(nå + 0.06);
+        osc2.stop(nå + 0.16);
     } catch {
         // Ignorer — lyd er valgfritt
     }
@@ -320,7 +364,10 @@ function _oppdaterFremdrift(indeks, totalt) {
     if (barEl)      barEl.style.width = pst + '%';
     if (tekstEl)    tekstEl.textContent = `${indeks} av ${totalt} taster`;
     if (pstEl)      pstEl.textContent = pst + '%';
-    if (barWrapper) barWrapper.setAttribute('aria-valuenow', indeks);
+    if (barWrapper) {
+        barWrapper.setAttribute('aria-valuenow', indeks);
+        barWrapper.setAttribute('aria-valuemax', totalt);
+    }
 }
 
 function _oppdaterNesteTastLabel(indeks, totalt) {
@@ -336,8 +383,22 @@ function _oppdaterNesteTastLabel(indeks, totalt) {
     if (!info) return;
 
     const label = info.noteNavn + info.oktav;
+
+    // Gjeldende tast
     const spillEl = document.getElementById('spill-tast-label');
-    if (spillEl) spillEl.textContent = `Spill: ${label}`;
+    if (spillEl) spillEl.textContent = label;
+
+    // Neste tast
+    const nesteEl = document.getElementById('neste-tast-label');
+    if (nesteEl) {
+        const nesteNoteIndex = sekvens[indeks + 1];
+        if (nesteNoteIndex !== undefined) {
+            const nesteInfo = PianoScanner.frekvensInfo(PianoScanner.idealHz(nesteNoteIndex));
+            nesteEl.textContent = nesteInfo ? nesteInfo.noteNavn + nesteInfo.oktav : '—';
+        } else {
+            nesteEl.textContent = '—';
+        }
+    }
 
     if (AppTilstand.tastatur) {
         AppTilstand.tastatur.settAktiv(noteIndex);
@@ -358,6 +419,8 @@ function _settSkanneStatus(status) {
         case 'lytter':
             pulsEl.classList.add('puls-aktiv');
             pulsEl.classList.remove('puls-bekreftet');
+            statusEl.textContent = 'Lytter — spill neste tast';
+            statusEl.className   = 'skanning-status status-lytter';
             break;
         case 'bekreftet':
             pulsEl.classList.remove('puls-aktiv');
@@ -415,32 +478,30 @@ function _oppdaterScoreSirkel(score, status) {
     const scoreEl  = document.getElementById('score-tall');
     const statusEl = document.getElementById('score-status-tekst');
     const ikonEl   = document.getElementById('score-ikon');
+    const chipEl   = document.getElementById('neste-stemming-chip');
     if (!sirkelEl) return;
 
-    sirkelEl.classList.remove('score-god', 'score-tilsyn', 'score-kritisk', 'score-mangler');
+    sirkelEl.classList.remove(
+        'score-nivaa-1', 'score-nivaa-2', 'score-nivaa-3',
+        'score-nivaa-4', 'score-nivaa-5', 'score-mangler'
+    );
     const scoreRund = score !== null ? Math.round(score) : null;
     if (scoreEl) scoreEl.textContent = scoreRund !== null ? scoreRund : '—';
 
-    switch (status) {
-        case 'god':
-            sirkelEl.classList.add('score-god');
-            if (statusEl) statusEl.textContent = 'God form';
-            if (ikonEl)   ikonEl.textContent   = '✓';
-            break;
-        case 'trenger_tilsyn':
-            sirkelEl.classList.add('score-tilsyn');
-            if (statusEl) statusEl.textContent = 'Trenger tilsyn';
-            if (ikonEl)   ikonEl.textContent   = '!';
-            break;
-        case 'kritisk':
-            sirkelEl.classList.add('score-kritisk');
-            if (statusEl) statusEl.textContent = 'Kritisk tilstand';
-            if (ikonEl)   ikonEl.textContent   = '!';
-            break;
-        default:
-            sirkelEl.classList.add('score-mangler');
-            if (statusEl) statusEl.textContent = 'Mangler data';
-            if (ikonEl)   ikonEl.textContent   = '?';
+    if (score === null || status === 'utilstrekkelig_data') {
+        sirkelEl.classList.add('score-mangler');
+        if (statusEl) statusEl.textContent = 'Mangler data';
+        if (ikonEl)   ikonEl.textContent   = '?';
+        if (chipEl)   chipEl.style.display = 'none';
+    } else {
+        const nivaa = HealthScorer.scoreNivaa(score);
+        sirkelEl.classList.add(`score-nivaa-${nivaa.nivaa}`);
+        if (ikonEl) ikonEl.textContent = nivaa.nivaa <= 2 ? '✓' : '!';
+        if (statusEl) statusEl.textContent = nivaa.tittel;
+        if (chipEl) {
+            chipEl.querySelector('strong').textContent = nivaa.handling;
+            chipEl.style.display = '';
+        }
     }
 
     const svgRing = document.getElementById('score-ring-bue');
@@ -533,7 +594,7 @@ function _bindAlleKnapper() {
     // Piano-info → forberedelse
     _bind('piano-info-neste-knapp', () => {
         AppTilstand.pianoInfo = {
-            type:      _verdi('piano-type'),
+            type:      _verdiRadio('piano-type'),
             merke:     _verdi('piano-merke'),
             alder:     _verdi('piano-alder'),
             sistStemt: _verdi('piano-sist-stemt')
@@ -635,6 +696,14 @@ function _bind(id, fn) {
 function _verdi(id) {
     const el = document.getElementById(id);
     return el ? el.value : '';
+}
+
+/**
+ * Henter verdi fra en radiogruppe (name-basert).
+ */
+function _verdiRadio(name) {
+    const checked = document.querySelector(`input[name="${name}"]:checked`);
+    return checked ? checked.value : '';
 }
 
 function _visSkannFeil(melding) {

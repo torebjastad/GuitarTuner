@@ -322,6 +322,7 @@
             margin-bottom: var(--space-md);
         }
         .status-bekreftet { color: var(--suksess); font-weight: 600; }
+        .status-lytter    { color: var(--info); }
         .status-advarsel  { color: var(--advarsel); }
         .status-feil      { color: var(--fare); }
 
@@ -508,12 +509,16 @@
             font-weight: 600;
             color: rgba(245,240,232,0.9);
         }
-        .score-god     { --ring-farge: var(--suksess-mork); }
-        .score-tilsyn  { --ring-farge: var(--advarsel-mork); }
-        .score-kritisk { --ring-farge: var(--fare-mork); }
-        .score-god    #score-ring-bue { stroke: #2DA870; }
-        .score-tilsyn #score-ring-bue { stroke: #E09020; }
-        .score-kritisk #score-ring-bue{ stroke: #EF4444; }
+        /* Score-sirkel nivåer: se style.css §26 */
+        .score-nivaa-1 #score-ring-bue { stroke: #2DA870; }   /* 85–100 grønn */
+        .score-nivaa-2 #score-ring-bue { stroke: #2E7D5E; }   /* 70–84 turkis */
+        .score-nivaa-3 #score-ring-bue { stroke: #E09020; }   /* 50–69 amber */
+        .score-nivaa-4 #score-ring-bue { stroke: #D4650A; }   /* 30–49 oransje-rød */
+        .score-nivaa-5 #score-ring-bue { stroke: #EF4444; }   /* <30 rød */
+        /* Bakoverkompatibilitet */
+        .score-god    #score-ring-bue  { stroke: #2DA870; }
+        .score-tilsyn #score-ring-bue  { stroke: #E09020; }
+        .score-kritisk #score-ring-bue { stroke: #EF4444; }
 
         /* Helse-badge */
         .helse-badge {
@@ -579,7 +584,7 @@
         /* Stemningskurve */
         .kurve-container {
             position: relative;
-            height: 200px;
+            min-height: 360px;
         }
 
         /* Oktav-tabell */
@@ -783,7 +788,7 @@
     </div>
 
     <h1 class="velkomst-tittel">PianoHelse</h1>
-    <p class="velkomst-undertekst">Helsesjekken for pianoet ditt</p>
+    <p class="velkomst-undertekst">Sjekk pianoets helsetilstand med mobiltelefonen</p>
 
     <button id="start-diagnose-knapp"
             aria-label="Start diagnose av pianoet ditt">
@@ -900,6 +905,32 @@
             Ca. 2 minutter · 52 taster · Hold hver tast i ~2 sekunder
         </p>
 
+        <!-- Mini-tastatur-illustrasjon: retning og spilleorden -->
+        <div class="forberedelse-illustrasjon" aria-label="Illustrasjon: Spill fra venstre til høyre, én tast om gangen">
+            <div class="illustrasjon-tastatur">
+                <!-- 7 hvite taster, de 3 første fremhevet (aktive) -->
+                <svg viewBox="0 0 154 56" fill="none" xmlns="http://www.w3.org/2000/svg"
+                     aria-hidden="true" style="width:100%;max-width:240px;display:block;margin:0 auto">
+                    <!-- Hvite taster -->
+                    <rect x="2"   y="2" width="18" height="46" rx="3" fill="#F5F0E8" stroke="#C9A84C" stroke-width="2"/>
+                    <rect x="24"  y="2" width="18" height="46" rx="3" fill="#F5F0E8" stroke="#C9A84C" stroke-width="2"/>
+                    <rect x="46"  y="2" width="18" height="46" rx="3" fill="#F5F0E8" stroke="#C9A84C" stroke-width="2"/>
+                    <rect x="68"  y="2" width="18" height="46" rx="3" fill="#E5E7EB" stroke="#D1D5DB" stroke-width="1.5"/>
+                    <rect x="90"  y="2" width="18" height="46" rx="3" fill="#E5E7EB" stroke="#D1D5DB" stroke-width="1.5"/>
+                    <rect x="112" y="2" width="18" height="46" rx="3" fill="#E5E7EB" stroke="#D1D5DB" stroke-width="1.5"/>
+                    <rect x="134" y="2" width="18" height="46" rx="3" fill="#E5E7EB" stroke="#D1D5DB" stroke-width="1.5"/>
+                    <!-- Svarte taster (nedtonet) -->
+                    <rect x="16"  y="2" width="12" height="28" rx="2" fill="#9CA3AF" opacity="0.5"/>
+                    <rect x="38"  y="2" width="12" height="28" rx="2" fill="#9CA3AF" opacity="0.5"/>
+                    <rect x="82"  y="2" width="12" height="28" rx="2" fill="#9CA3AF" opacity="0.5"/>
+                    <rect x="104" y="2" width="12" height="28" rx="2" fill="#9CA3AF" opacity="0.5"/>
+                    <rect x="126" y="2" width="12" height="28" rx="2" fill="#9CA3AF" opacity="0.5"/>
+                </svg>
+            </div>
+            <div class="illustrasjon-pil" aria-hidden="true">&#8594;</div>
+            <p class="illustrasjon-tekst">Spill fra venstre til høyre — én tast om gangen</p>
+        </div>
+
         <!-- Valg av taster -->
         <div style="background:var(--overflate-sekundaer);border:1px solid var(--kant);border-radius:var(--radius-lg);padding:var(--space-md);margin-bottom:var(--space-lg)">
             <h2 style="font-size:1rem;margin-bottom:var(--space-sm);font-weight:600">Hvilke taster vil du skanne?</h2>
@@ -945,6 +976,16 @@
             </li>
         </ul>
 
+        <!-- Advarsel for digitale pianoer (vises dynamisk) -->
+        <div id="digitalt-piano-advarsel" style="display:none;background:var(--advarsel-lys);border:1px solid var(--advarsel);border-left:4px solid var(--advarsel);border-radius:var(--radius-md);padding:var(--space-md);margin-bottom:var(--space-lg)">
+            <p style="font-size:0.875rem;color:var(--advarsel);font-weight:600;margin-bottom:4px">Digitalt piano oppdaget</p>
+            <p style="font-size:0.875rem;color:var(--advarsel)">
+                Digitale pianoer trenger ikke og kan ikke stemmes akustisk.
+                Diagnostikken er beregnet på akustiske pianoer.
+                Du kan fortsette om du ønsker å utforske appen, men resultatet vil ikke gi meningsfull informasjon.
+            </p>
+        </div>
+
         <div style="background:var(--info-lys);border:1px solid var(--info);border-radius:var(--radius-md);padding:var(--space-md);margin-bottom:var(--space-xl)">
             <p style="font-size:0.875rem;color:var(--info)">
                 Appen vil be om mikrofontilgang når du trykker Start.
@@ -968,7 +1009,7 @@
         <button class="avbryt-knapp" id="stopp-skanning-knapp"
                 style="display:none;color:var(--fare)"
                 aria-label="Avbryt pågående skanning">
-            Stopp
+            &#9209; Stopp skanning
         </button>
         <span class="topplinje-tittel">Skanning</span>
         <span style="width:80px"></span>
@@ -989,6 +1030,14 @@
     </div>
 
     <div class="side-innhold">
+        <!-- Start-knapp øverst (synlig på liten skjerm uten scroll) -->
+        <div class="skanning-knapper" style="margin-top:0;margin-bottom:var(--space-md)">
+            <button id="start-skanning-knapp" class="knapp-primer"
+                    aria-label="Start skanning av piano">
+                Start skanning
+            </button>
+        </div>
+
         <!-- Mikrofon-puls-animasjon -->
         <div class="skanning-puls-wrapper">
             <div class="mikrofon-puls" id="mikrofon-puls" aria-hidden="true">
@@ -998,9 +1047,18 @@
             </div>
         </div>
 
-        <!-- Neste tast -->
+        <!-- Gjeldende og neste tast -->
         <div class="spill-tast-visning">
-            <div id="spill-tast-label" aria-live="polite">Klar til skanning</div>
+            <div class="tast-info-rad">
+                <div class="gjeldende-tast">
+                    <span class="tast-etikett">Nå:</span>
+                    <span id="spill-tast-label" aria-live="polite">—</span>
+                </div>
+                <div class="neste-tast">
+                    <span class="tast-etikett">Neste:</span>
+                    <span id="neste-tast-label" style="color:var(--tekst-tersiaer)">—</span>
+                </div>
+            </div>
             <p class="spill-tast-hint">Hold tangenten nede i minst 2 sekunder</p>
         </div>
 
@@ -1035,14 +1093,6 @@
         <!-- Feilmelding (skjult som standard) -->
         <div id="skanning-feil" class="skanning-feil" style="display:none"
              role="alert" aria-live="assertive">
-        </div>
-
-        <!-- Knapper -->
-        <div class="skanning-knapper">
-            <button id="start-skanning-knapp" class="knapp-primer"
-                    aria-label="Start skanning av piano">
-                Start skanning
-            </button>
         </div>
     </div>
 </section>
@@ -1096,12 +1146,26 @@
             </div>
 
             <p id="score-status-tekst" style="margin-top:var(--space-sm)">—</p>
+
+            <div id="neste-stemming-chip" class="neste-stemming-chip" style="display:none"
+                 aria-live="polite">
+                Neste stemming: <strong>—</strong>
+            </div>
         </div>
     </div>
 
     <!-- Rapport-innhold -->
     <div style="background:var(--overflate-sekundaer);flex:1">
         <div class="side-innhold">
+
+            <!-- Opptrekk-advarsel (vises kun ved kritisk avvik) -->
+            <div id="opptrekk-advarsel" style="display:none;background:var(--fare-lys);border:1px solid var(--fare);border-left:4px solid var(--fare);border-radius:var(--radius-md);padding:var(--space-md);margin-bottom:var(--space-md)">
+                <p style="font-weight:700;color:var(--fare);margin-bottom:4px">Obs: Pianoet kan trenge opptrekk</p>
+                <p style="font-size:0.875rem;color:var(--fare)">
+                    Avviket er så stort at én stemming kanskje ikke er nok — strenger under ekstremt lav spenning mister stemming raskt igjen.
+                    Fortell stemmeren om resultatet ved bestilling, slik at de kan planlegge for opptrekk (pitch raise) dersom det trengs.
+                </p>
+            </div>
 
             <!-- Beskrivelse -->
             <div class="rapport-seksjon">
@@ -1180,8 +1244,8 @@
     <!-- Handlingsknapper -->
     <div class="rapport-knapper">
         <button id="book-stemmer-knapp" class="knapp-primer"
-                aria-label="Finn og book en pianostemmer nær deg">
-            Finn stemmer nær deg
+                aria-label="Se tilgjengelige pianostemmere">
+            Se tilgjengelige pianostemmere
         </button>
         <button id="del-rapport-knapp" class="knapp-sekunder"
                 aria-label="Del rapport">

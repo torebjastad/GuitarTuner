@@ -352,6 +352,19 @@ p { line-height: 1.6; }
 }
 .knapp-ghost:hover { text-decoration: underline; }
 
+/* Tekst-lenke-knapp (ingen bakgrunn, ser ut som lenke) */
+.knapp-tekst-lenke {
+    background:      transparent;
+    color:           var(--tekst-sekundaer);
+    border:          none;
+    text-decoration: underline;
+    font-size:       0.875rem;
+    min-height:      auto;
+    padding:         var(--space-sm);
+    font-weight:     400;
+}
+.knapp-tekst-lenke:hover { color: var(--primary); }
+
 /* Full bredde */
 .knapp-full { width: 100%; }
 
@@ -1508,3 +1521,227 @@ piano-tangenter {
 ::-webkit-scrollbar-track     { background: transparent; }
 ::-webkit-scrollbar-thumb     { background: var(--graa-300); border-radius: var(--radius-full); }
 ::-webkit-scrollbar-thumb:hover { background: var(--graa-400); }
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/* 26. SCORE-SIRKEL: 5 NIVÅER                                                 */
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+/* Nye CSS-tokens for de to mellomfargene */
+:root {
+    --score-bra:      #2E7D5E;   /* Nivå 2: lyse grønn/turkis */
+    --score-alvorlig: #D4650A;   /* Nivå 4: oransje-rød */
+}
+
+/* Ringer — 5 nivåer */
+.score-nivaa-1 #score-ring-bue { stroke: var(--suksess-mork); }    /* 85–100 grønn */
+.score-nivaa-2 #score-ring-bue { stroke: var(--score-bra); }        /* 70–84 turkis */
+.score-nivaa-3 #score-ring-bue { stroke: var(--advarsel-mork); }    /* 50–69 amber */
+.score-nivaa-4 #score-ring-bue { stroke: var(--score-alvorlig); }   /* 30–49 oransje-rød */
+.score-nivaa-5 #score-ring-bue { stroke: var(--fare-mork); }        /* <30 rød */
+
+/* Bakoverkompatible klasser (brukes evt. av badges o.l.) */
+.score-god     #score-ring-bue { stroke: var(--suksess-mork); }
+.score-tilsyn  #score-ring-bue { stroke: var(--advarsel-mork); }
+.score-kritisk #score-ring-bue { stroke: var(--fare-mork); }
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/* 27. NESTE STEMMING CHIP                                                     */
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+.neste-stemming-chip {
+    display:         inline-flex;
+    align-items:     center;
+    gap:             var(--space-xs);
+    margin-top:      var(--space-md);
+    padding:         6px 16px;
+    background:      rgba(255, 255, 255, 0.15);
+    border:          1px solid rgba(255, 255, 255, 0.25);
+    border-radius:   var(--radius-full);
+    font-size:       0.8125rem;
+    color:           rgba(245, 240, 232, 0.9);
+    text-align:      center;
+}
+
+.neste-stemming-chip strong {
+    color:       var(--accent);
+    font-weight: 700;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/* 28. SKANNING: GJELDENDE OG NESTE TAST                                      */
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+.tast-info-rad {
+    display:         flex;
+    justify-content: center;
+    gap:             var(--space-xl);
+    margin-bottom:   var(--space-xs);
+}
+
+.gjeldende-tast,
+.neste-tast {
+    display:        flex;
+    flex-direction: column;
+    align-items:    center;
+    gap:            2px;
+}
+
+.tast-etikett {
+    font-size:      0.7rem;
+    font-weight:    600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color:          var(--tekst-tersiaer);
+}
+
+.gjeldende-tast #spill-tast-label {
+    font-size:   1.75rem;
+    font-weight: 700;
+    color:       var(--tekst-primer);
+    font-family: var(--font-mono);
+}
+
+.neste-tast #neste-tast-label {
+    font-size:   1.25rem;
+    font-weight: 600;
+    color:       var(--tekst-tersiaer);
+    font-family: var(--font-mono);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/* 29. FORBEREDELSE: TASTATUR-ILLUSTRASJON                                     */
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+.forberedelse-illustrasjon {
+    background:    var(--overflate-sekundaer);
+    border:        1px solid var(--kant);
+    border-radius: var(--radius-lg);
+    padding:       var(--space-md);
+    margin-bottom: var(--space-lg);
+    text-align:    center;
+}
+
+.illustrasjon-tastatur {
+    margin-bottom: var(--space-sm);
+}
+
+.illustrasjon-pil {
+    font-size:     1.5rem;
+    color:         var(--primary);
+    margin-bottom: var(--space-xs);
+    display:       block;
+}
+
+.illustrasjon-tekst {
+    font-size:  0.875rem;
+    color:      var(--tekst-sekundaer);
+    font-weight: 500;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/* 30. FINN STEMMER: STEMMER-KORT                                              */
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+.stemmer-liste {
+    display:        flex;
+    flex-direction: column;
+    gap:            var(--space-md);
+}
+
+.stemmer-kort {
+    background:    var(--overflate-primer);
+    border:        1px solid var(--kant);
+    border-radius: var(--radius-lg);
+    padding:       var(--space-lg);
+    box-shadow:    var(--skygge-1);
+}
+
+.stemmer-hode {
+    display:        flex;
+    align-items:    center;
+    gap:            var(--space-md);
+    margin-bottom:  var(--space-md);
+}
+
+.stemmer-avatar {
+    width:           48px;
+    height:          48px;
+    min-width:       48px;
+    background:      var(--primary);
+    color:           var(--primary-text);
+    border-radius:   var(--radius-full);
+    display:         flex;
+    align-items:     center;
+    justify-content: center;
+    font-weight:     700;
+    font-size:       1rem;
+    letter-spacing:  0.02em;
+}
+
+.stemmer-info {
+    flex: 1;
+}
+
+.stemmer-navn {
+    font-size:   1rem;
+    font-weight: 600;
+    color:       var(--tekst-primer);
+    margin-bottom: 2px;
+}
+
+.stemmer-by {
+    font-size: 0.8125rem;
+    color:     var(--tekst-tersiaer);
+    margin-bottom: 4px;
+}
+
+.stemmer-stjerner {
+    font-size:  0.875rem;
+    color:      var(--accent-dark);
+    display:    flex;
+    align-items: center;
+    gap:         4px;
+}
+
+.stemmer-antall {
+    font-size: 0.75rem;
+    color:     var(--tekst-tersiaer);
+}
+
+.stemmer-detaljer {
+    display:               grid;
+    grid-template-columns: 1fr 1fr;
+    gap:                   var(--space-sm);
+    margin-bottom:         var(--space-md);
+    padding:               var(--space-sm) 0;
+    border-top:            1px solid var(--kant);
+    border-bottom:         1px solid var(--kant);
+}
+
+.stemmer-detalj {
+    display:        flex;
+    flex-direction: column;
+    gap:            2px;
+}
+
+.stemmer-detalj .detalj-etikett {
+    font-size:      0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color:          var(--tekst-tersiaer);
+    font-weight:    600;
+}
+
+.stemmer-detalj .detalj-verdi {
+    font-size:   0.9rem;
+    color:       var(--tekst-primer);
+    font-weight: 500;
+}
+
+.stemmer-ring-knapp {
+    display:         block;
+    width:           100%;
+    text-align:      center;
+    text-decoration: none;
+    margin-top:      var(--space-md);
+}

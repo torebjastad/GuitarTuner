@@ -68,6 +68,11 @@ class TuningCurve {
         // Generer Railsback-referanselinje for samme note-posisjoner
         const railsbackData = noteIndices.map(i => TuningCurve._railsbackRef(i));
 
+        // Dynamisk y-akse: minst ±50 cent, utvid hvis data krever det
+        const maksCent = chartData.length > 0
+            ? Math.max(50, Math.ceil(Math.max(...chartData.map(Math.abs)) / 10) * 10 + 10)
+            : 50;
+
         // Chart.js dataset-konfigurasjon
         const chartConfig = {
             type: 'line',
@@ -78,28 +83,26 @@ class TuningCurve {
                         // Faktisk stemningskurve
                         label:                'Målt avvik (cent)',
                         data:                 chartData,
-                        borderColor:          'rgba(61, 107, 181, 0.9)',
-                        backgroundColor:      chartKolorer,
+                        borderColor:          'rgba(59, 130, 246, 0.95)',
+                        backgroundColor:      'rgba(59, 130, 246, 0.08)',
                         pointBackgroundColor: chartKolorer,
                         pointBorderColor:     chartKolorer,
-                        pointRadius:          4,
-                        pointHoverRadius:     6,
-                        borderWidth:          2,
+                        pointRadius:          5,
+                        pointHoverRadius:     7,
+                        borderWidth:          2.5,
                         tension:              0.2,
-                        fill:                 false
+                        fill:                 { target: { value: 0 }, above: 'rgba(59, 130, 246, 0.10)', below: 'rgba(59, 130, 246, 0.10)' }
                     },
                     {
                         // Railsback-referanselinje (ideell strekningskurve)
-                        label:           'Railsback-referanse',
+                        label:           'Railsback-referanse (ideell stretch)',
                         data:            railsbackData,
-                        borderColor:     'rgba(180, 180, 180, 0.4)',
-                        borderDash:      [5, 5],
-                        borderWidth:     1.5,
+                        borderColor:     'rgba(255, 200, 60, 0.7)',
+                        borderDash:      [8, 4],
+                        borderWidth:     2.5,
                         pointRadius:     0,
                         tension:         0.4,
-                        fill:            false,
-                        // Ikke vis i tooltip som primær data
-                        parsing:         false
+                        fill:            false
                     }
                 ]
             },
@@ -148,21 +151,34 @@ class TuningCurve {
                             display: true,
                             text:    'Avvik fra temperert stemming (cent)',
                             color:   '#6B7280',
-                            font:    { family: 'Inter', size: 11 }
+                            font:    { family: 'Inter', size: 12, weight: '500' }
                         },
-                        min:  -60,
-                        max:   60,
+                        min:  -maksCent,
+                        max:   maksCent,
                         ticks: {
-                            color:    '#6B7280',
+                            stepSize:  10,
+                            color:    '#4B5563',
                             font:     { family: 'JetBrains Mono', size: 11 },
-                            callback: (v) => `${v > 0 ? '+' : ''}${v}¢`
+                            callback: (v) => `${v > 0 ? '+' : ''}${v}¢`,
+                            includeBounds: true
                         },
                         grid: {
-                            color:     'rgba(209, 213, 219, 0.3)',
-                            lineWidth: 1
+                            color: (ctx) => {
+                                const v = ctx.tick.value;
+                                if (v === 0)                    return 'rgba(220, 38, 38, 0.8)';   // Nullinje — sterk rød
+                                if (v === 10 || v === -10)      return 'rgba(22, 163, 74, 0.35)';  // ±10¢ — grønn sone
+                                if (v === 20 || v === -20)      return 'rgba(234, 179, 8, 0.5)';   // ±20¢ — amber advarsel
+                                return 'rgba(209, 213, 219, 0.2)';
+                            },
+                            lineWidth: (ctx) => {
+                                const v = ctx.tick.value;
+                                if (v === 0)                    return 2.5;
+                                if (Math.abs(v) === 10)         return 1.5;
+                                if (Math.abs(v) === 20)         return 2;
+                                return 0.8;
+                            }
                         },
-                        // Nullinje fremhevet
-                        border: { dash: [3, 3] }
+                        border: { color: 'rgba(107, 114, 128, 0.3)' }
                     },
                     x: {
                         title: {
@@ -257,43 +273,44 @@ class TuningCurve {
 
     /**
      * Lager en mørk-modus versjon av Chart.js-konfigurasjonen.
-     * Brukes automatisk ved @media (prefers-color-scheme: dark).
+     * Muterer originalen direkte (unngår JSON.stringify som dreper callbacks).
      *
      * @param {object} chartConfig - Basis-config fra TuningCurve.generer()
-     * @returns {object} Endret config for mørk modus
+     * @returns {object} Samme config, tilpasset mørk modus
      */
     static morkModusConfig(chartConfig) {
-        // Klone konfigurasjonen dypt nok til å endre farger
-        const mork = JSON.parse(JSON.stringify(chartConfig));
-
-        // Legg til Railsback-datasett-farge (blå for mørk bakgrunn)
-        if (mork.data && mork.data.datasets && mork.data.datasets[0]) {
-            mork.data.datasets[0].borderColor = 'rgba(96, 165, 250, 0.9)';
+        // Hovedlinje: lysere blå for mørk bakgrunn
+        if (chartConfig.data?.datasets?.[0]) {
+            chartConfig.data.datasets[0].borderColor = 'rgba(96, 165, 250, 0.9)';
+        }
+        // Railsback-referanse: varmere gul for mørk bakgrunn
+        if (chartConfig.data?.datasets?.[1]) {
+            chartConfig.data.datasets[1].borderColor = 'rgba(255, 210, 80, 0.75)';
         }
 
-        const opts = mork.options;
-        if (!opts) return mork;
+        const opts = chartConfig.options;
+        if (!opts) return chartConfig;
 
-        // Legend-farger
+        // Legend
         if (opts.plugins?.legend?.labels) {
             opts.plugins.legend.labels.color = '#D1D5DB';
         }
 
-        // Aksetitler og ticks
+        // Aksetitler og ticks (farger oppdateres, callbacks beholdes)
         const yAxis = opts.scales?.y;
         const xAxis = opts.scales?.x;
 
         if (yAxis) {
             if (yAxis.title) yAxis.title.color = '#9CA3AF';
             if (yAxis.ticks) yAxis.ticks.color = '#9CA3AF';
-            if (yAxis.grid)  yAxis.grid.color  = 'rgba(255,255,255,0.08)';
+            // VIKTIG: Ikke overskriv grid.color — det er en callback-funksjon
         }
         if (xAxis) {
             if (xAxis.title) xAxis.title.color = '#9CA3AF';
             if (xAxis.ticks) xAxis.ticks.color = '#9CA3AF';
-            if (xAxis.grid)  xAxis.grid.color  = 'rgba(255,255,255,0.05)';
+            if (xAxis.grid)  xAxis.grid.color  = 'rgba(255,255,255,0.06)';
         }
 
-        return mork;
+        return chartConfig;
     }
 }

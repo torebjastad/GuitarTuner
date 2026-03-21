@@ -140,7 +140,7 @@ class HealthScorer {
 
     /**
      * Returnerer en norsk tekstbeskrivelse av scoreresultatet.
-     * Fem faglig korrekte nivåer basert på diagnose-validering.md.
+     * Fem faglige nivåer med presise anbefalinger.
      *
      * @param {{ score: number, status: string, detaljer: object }} scoreResultat
      * @returns {string}
@@ -156,56 +156,61 @@ class HealthScorer {
         const s     = score ?? 0;
 
         if (s >= 85) {
-            return 'Pianoet er nylig stemt og i utmerket stand. ' +
+            return `Pianoet er i utmerket stand og fremstår nylig stemt. ` +
                    `Gjennomsnittlig avvik er kun ${avvik} cent. ` +
                    'Neste stemming anbefales om 9–12 måneder.';
         }
         if (s >= 70) {
-            return 'Pianoet er i god stand med mindre avvik. ' +
-                   `Gjennomsnittlig avvik er ${avvik} cent — stemmebildet er jevnt. ` +
+            return `Pianoet er i god stand med merkbare, men moderate avvik (${avvik} cent gjennomsnitt). ` +
                    'Planlegg stemming innen ett år.';
         }
         if (s >= 50) {
-            return `Merkbar forringelse — gjennomsnittlig avvik er ${avvik} cent. ` +
-                   (detaljer.antallKritiske > 0
-                       ? `${detaljer.antallKritiske} tone${detaljer.antallKritiske === 1 ? '' : 'r'} avviker kritisk. `
-                       : '') +
-                   'Pianoet bør stemmes innen 3–6 måneder.';
+            return `Pianoet viser merkbar forringelse med et gjennomsnittlig avvik på ${avvik} cent. ` +
+                   'Bør stemmes innen 3–6 måneder.';
         }
         if (s >= 30) {
-            return `Tydelig hørbar skjevhet — gjennomsnittlig avvik er ${avvik} cent. ` +
-                   `${detaljer.antallKritiske} toner avviker over 20 cent. ` +
-                   'Book stemmer snarest.';
+            return `Pianoet har tydelig hørbar skjevhet (${avvik} cent gjennomsnitt). ` +
+                   'Book en stemmer snarest — innen 1–2 måneder.';
         }
         // Under 30
-        return `Kritisk tilstand — gjennomsnittlig avvik er ${avvik} cent og ` +
-               `${detaljer.antallKritiske} toner avviker kraftig. ` +
-               'Pianoet kan kreve opptrekk (pitch raise) i tillegg til stemming. ' +
+        return `Pianoet er i kritisk tilstand (${avvik} cent gjennomsnitt). ` +
+               'Dette kan kreve opptrekk (pitch raise) i tillegg til stemming. ' +
                'Book profesjonell stemmer umiddelbart.';
     }
 
     /**
+     * Returnerer nivåobjekt for en gitt numerisk score.
+     * Brukes for farge-koding, tittel og handling i UI.
+     *
+     * @param {number|null} score - Helsescore 0–100
+     * @returns {{ nivaa: number, tittel: string, farge: string, handling: string }}
+     */
+    static scoreNivaa(score) {
+        const s = score ?? 0;
+        if (s >= 85) {
+            return { nivaa: 1, tittel: 'Utmerket stand',       farge: '#1A7A4A', handling: 'Neste stemming om 9–12 måneder' };
+        }
+        if (s >= 70) {
+            return { nivaa: 2, tittel: 'God stand',            farge: '#2E7D5E', handling: 'Planlegg stemming innen ett år' };
+        }
+        if (s >= 50) {
+            return { nivaa: 3, tittel: 'Trenger stemming',     farge: '#C47B00', handling: 'Bør stemmes innen 3–6 måneder' };
+        }
+        if (s >= 30) {
+            return { nivaa: 4, tittel: 'Book stemmer snarest', farge: '#D4650A', handling: 'Book stemmer innen 1–2 måneder' };
+        }
+        return     { nivaa: 5, tittel: 'Kritisk tilstand',     farge: '#B91C1C', handling: 'Book profesjonell stemmer umiddelbart' };
+    }
+
+    /**
      * Returnerer kategoriobjekt for en gitt numerisk score.
-     * Brukes for farge-koding og tittel i UI.
+     * Beholdes for bakoverkompatibilitet — bruk scoreNivaa() for ny kode.
      *
      * @param {number|null} score - Helsescore 0–100
      * @returns {{ nivaa: number, tittel: string, farge: string }}
      */
     static scoreKategori(score) {
-        const s = score ?? 0;
-        if (s >= 85) {
-            return { nivaa: 1, tittel: 'Utmerket stand',      farge: '#1A7A4A' };
-        }
-        if (s >= 70) {
-            return { nivaa: 2, tittel: 'God stand',           farge: '#2DA870' };
-        }
-        if (s >= 50) {
-            return { nivaa: 3, tittel: 'Trenger stemming',    farge: '#C47B00' };
-        }
-        if (s >= 30) {
-            return { nivaa: 4, tittel: 'Book stemmer snarest', farge: '#E07020' };
-        }
-        return     { nivaa: 5, tittel: 'Kritisk tilstand',    farge: '#B91C1C' };
+        return HealthScorer.scoreNivaa(score);
     }
 
     /**

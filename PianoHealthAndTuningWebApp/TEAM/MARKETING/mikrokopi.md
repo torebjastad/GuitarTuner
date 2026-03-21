@@ -784,49 +784,252 @@ Tekst: Fuktighet og temperatur kan ha påvirket stemningen. Sjekk pianoets helse
 
 ---
 
-## 10. E-post-emnelinjer (drip-kampanje)
+## 10. E-post drip-kampanje (7 e-poster med full kropp)
 
 ### E-post 1 — Velkomst (umiddelbart etter signup)
+
+**Emnelinje:**
 ```
 Velkommen til PianoHelse — la oss se hvordan pianoet ditt har det
 ```
 
+**Kropp:**
+```
+Hei,
+
+Takk for at du er med!
+
+PianoHelse er laget for deg som har et piano hjemme og vil vite om det er i god stand — uten å måtte ringe rundt til ukjente stemmere og håpe på det beste.
+
+Slik kommer du i gang:
+
+1. Åpne pianohelse.no på mobilen
+2. Legg telefonen 20–30 cm fra pianotangentene
+3. Spill én tangent av gangen etter instruksjonen på skjermen
+4. Appen analyserer alle 52 taster og gir deg en helsescore med konkrete anbefalinger
+
+Det tar fem minutter og er helt gratis.
+
+Start diagnosen her: pianohelse.no
+
+Hilsen,
+PianoHelse-teamet
+```
+
+---
+
 ### E-post 2 — Utdanning (dag 2)
+
+**Emnelinje:**
 ```
 Visste du at norske vinterhjem er særlig hardt for pianoer?
 ```
 
+**Kropp:**
+```
+Hei,
+
+Her er noe de fleste pianoeiere ikke vet:
+
+Sentralvarme tørker ut inneluften i norske hjem om vinteren — ofte ned til 20–30 % relativ luftfuktighet. Et piano trives best mellom 45 og 55 %. Forskjellen betyr at lydplaten krymper, strengene løsner, og pianoet faller gradvis ut av stemning.
+
+Det skjer uten at du hører det. Fordi vi tilpasser oss gradvis.
+
+Den enkleste løsningen er en luftfukter i rommet der pianoet står. Den nest enkleste? En gratis diagnose med PianoHelse — slik at du vet om pianoet faktisk har lidd.
+
+Sjekk pianoet gratis: pianohelse.no
+
+Hilsen,
+PianoHelse-teamet
+```
+
+---
+
 ### E-post 3 — Sosial bevis (dag 4)
+
+**Emnelinje:**
 ```
 Mormors piano hadde ikke vært stemt på 18 år. Her er hva vi fant.
 ```
 
+**Kropp:**
+```
+Hei,
+
+En av de første PianoHelse-brukerne fortalte oss dette:
+
+"Mormors gamle Østerberg-klaver hadde stått i stua i 18 år. Vi visste ikke engang at det kunne stemmes. Jeg prøvde PianoHelse nesten som en vits — og fikk en rapport som viste at pianoet var 40 cent nedstemt i bassregisteret. Stemmeren sa det var nær grensen for opptrekk. Etter stemming hørtes det ut som et nytt instrument."
+
+Det er den historien vi hører oftest. Pianoet ser greit ut, det høres "akseptabelt" ut — men en diagnose forteller en annen historie.
+
+Er du nysgjerrig på pianoet ditt? Sjekk det gratis på planohelse.no.
+
+Hilsen,
+PianoHelse-teamet
+```
+
+---
+
 ### E-post 4 — Produktfeature (dag 7)
+
+**Emnelinje:**
 ```
 Slik fungerer pianodiagnostikken — steg for steg
 ```
 
+**Kropp:**
+```
+Hei,
+
+Mange lurer på hva PianoHelse faktisk måler — og hvorfor det er mer enn en vanlig stemmeapp.
+
+Her er forskjellen:
+
+En vanlig stemmeapp sammenligner tonehøyden med matematisk ren likesvevet temperatur (12-TET). Men et korrekt stemt piano avviker systematisk fra 12-TET — dette kalles Railsback-kurven. Basstonene skal ligge litt lavere enn perfekt, diskanttonene litt høyere.
+
+PianoHelse sammenligner pianoet ditt med Railsback-referansen, ikke med 12-TET. Det betyr at du får en diagnose som stemmer overens med hva en profesjonell pianostemmer faktisk måler.
+
+Appen analyserer:
+- Avvik fra Railsback-referansen per tone
+- Register-ubalanse (bass vs. diskant)
+- Enkelttonet som avviker uvanlig mye fra nabotonene
+- Samlet helsescore fra 0 til 100
+
+Start diagnosen på pianohelse.no
+
+Hilsen,
+PianoHelse-teamet
+```
+
+---
+
 ### E-post 5 — FOMO + verdi (dag 9)
+
+**Emnelinje:**
 ```
 De første 100 brukerne i Oslo får 15 % rabatt — er du én av dem?
 ```
 
+**Kropp:**
+```
+Hei,
+
+Som en av de første PianoHelse-brukerne i Oslo tilbyr vi deg 15 % rabatt på din første bestilte stemming via appen.
+
+Slik bruker du tilbudet:
+
+1. Fullfør en gratis pianodiagnose på pianohelse.no
+2. Finn en autorisert stemmer i ditt nærområde
+3. Book via appen — rabatten legges til automatisk
+
+Tilbudet gjelder for de første 100 bookingene. Vi er ikke der ennå, men det nærmer seg.
+
+Start diagnosen her: pianohelse.no
+
+Hilsen,
+PianoHelse-teamet
+
+P.S. Uansett om du benytter tilbudet eller ikke — selve diagnosen er alltid gratis.
+```
+
+---
+
 ### E-post 6 — Stemmer-introduksjon (dag 12)
+
+**Emnelinje:**
 ```
 Møt stemmerne bak PianoHelse — autoriserte fagfolk i ditt nærområde
 ```
 
+**Kropp:**
+```
+Hei,
+
+Det finnes bare 66 autoriserte pianostemmere i hele Norge.
+
+De er alle medlemmer av Norsk Pianoteknikerforening (NPTF) — og de har alle gjennomgått en godkjent fagutdanning. Stemmerne i PianoHelse er valgt fordi de oppfyller disse kravene, og fordi de har sagt ja til å vise pris og tilgjengelighet åpent.
+
+Ingen skjulte kostnader. Ingen ukjente kvalifikasjoner.
+
+Etter at du har fullført en gratis pianodiagnose, finner appen den nærmeste tilgjengelige stemmeren i ditt område. Stemmeren mottar en kopi av diagnosen din som forberedelse — slik at besøket går raskere og mer presist.
+
+Finn din lokale stemmer: pianohelse.no
+
+Hilsen,
+PianoHelse-teamet
+```
+
+---
+
 ### E-post 7 — Launch-invitasjon (dag 14)
+
+**Emnelinje:**
 ```
 PianoHelse er live i Oslo — din tur til å sjekke pianoet
 ```
 
+**Kropp:**
+```
+Hei,
+
+PianoHelse er nå fullt tilgjengelig i Oslo, med stemmere i Bergen og Trondheim på vei.
+
+Nå er det din tur.
+
+Fem minutter. Et piano. En gratis diagnose. Og et tydelig svar på om pianoet ditt trenger stemming — og hvem du skal ringe.
+
+Start her: pianohelse.no
+
+Vi er glade for at du er med fra starten.
+
+Hilsen,
+PianoHelse-teamet
+
+P.S. Har du en venn med piano som burde sjekke det? Del pianohelse.no med dem — diagnosen er alltid gratis.
+```
+
+---
+
 ### Re-engasjement (30 dager uten aktivitet)
+
+**Emnelinje:**
 ```
 Vet du om pianoet ditt trenger stemming? Sjekk det gratis nå.
 ```
 
+**Kropp:**
+```
+Hei,
+
+Det er en stund siden vi hørte fra deg — og fra pianoet ditt.
+
+Et piano som ikke er stemt på over ett år, kan ha falt merkbart ut av stemning — selv om det ikke er åpenbart å høre. En fem-minutters diagnose med PianoHelse gir deg et tydelig svar.
+
+Kom tilbake og sjekk pianoet: pianohelse.no
+
+Hilsen,
+PianoHelse-teamet
+```
+
+---
+
 ### Re-engasjement (sesong)
+
+**Emnelinje:**
 ```
 Ny sesong, nytt sjekk — er pianoet klart for høsten?
+```
+
+**Kropp:**
+```
+Hei,
+
+Høst er den travleste perioden for pianostemmere i Norge — og det er ikke tilfeldig.
+
+Etter en sommer med fuktighetssvingninger, og rett før innesesongen begynner med tørr sentralvarmeluft, er dette det ideelle tidspunktet for en stemming. Pianoet starter sesongen friskt, og du slipper å konkurrere med alle andre om ledigkapasitet hos stemmerne i desember.
+
+Sjekk pianoets helse gratis, og book en stemmer mens det fortsatt er god kapasitet: pianohelse.no
+
+Hilsen,
+PianoHelse-teamet
 ```
