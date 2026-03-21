@@ -35,9 +35,18 @@ class PianoScanner {
         this.SAMLETID_MS       = 1000;   // Samletid for medianen (1 sekund)
         this.MAKS_VENTETID_MS  = 10000;  // Timeout per tast (ms)
         this.GODKJENT_AVSTAND  = 0.45;   // Halvtoner — innenfor dette = riktig tast
-        this.MIN_RMS           = 0.0001; // Minimum RMS — kun for å filtrere rent digitalt stillhet
+        this.MIN_RMS           = 0.0002; // Minimum RMS — filtrerer digitalt stillhet
         this.MAKS_REL_STD      = 0.005;  // Maks relativ standardavvik for stabilitet (0.5%)
         this.RMS_FALLOFF       = 0.15;   // Stopp tidlig hvis RMS faller under 15% av toppverdi
+
+        // Onset detection — forhindrer at etterklang fra forrige tone fanges opp
+        this.ONSET_STILLE_RMS  = 0.005;  // RMS må falle under dette før vi lytter etter ny tone
+        this.ONSET_ANSLAG_RMS  = 0.008;  // RMS må stige over dette for å registrere et nytt anslag
+
+        // Skanneomfang: C1 (noteIndex 3) til A7 (noteIndex 84)
+        // Hopper over A0–B0 (for bass for mobil-mikrofon) og A#7–C8 (for lyse/vanskelige)
+        this.START_NOTE_INDEX  = 3;      // C1 (MIDI 24)
+        this.SLUTT_NOTE_INDEX  = 84;     // A7 (MIDI 105)
 
         // --- Callbacks til UI ---
         this.onNoteMalt          = null;
@@ -45,6 +54,7 @@ class PianoScanner {
         this.onNoteIkkeDetektert = null;
         this.onSkanningFullfort  = null;
         this.onFremdrift         = null;
+        this.onVenterPåStille    = null;  // Viser "venter på stillhet" i UI
 
         // Privat
         this._lydChunks = [];
@@ -142,23 +152,28 @@ class PianoScanner {
     /**
      * Skanner én enkelt tast basert på noteIndex (0=A0 ... 87=C8).
      *
-     * Algoritme:
-     * 1. Venter på at brukeren slår an riktig tast (frekvens nær forventet)
-     * 2. Samler 1 fullt sekund med pitch-avlesninger fra første treff
-     * 3. Stopper tidlig hvis lyden dør ut (RMS faller under 15% av topp)
-     * 4. Bruker median av alle gode avlesninger (robust mot uteliggere)
+     * Tre-fase onset detection:
+     * 1. "vent_på_stille" — Venter på at forrige tone har dødd ut (RMS < ONSET_STILLE_RMS)
+     * 2. "vent_på_anslag" — Venter på et nytt anslag (RMS > ONSET_ANSLAG_RMS)
+     * 3. "sampling" — Samler 1 sekund med pitch-avlesninger, bruker median
+     *
+     * @param {number} noteIndex - 0-basert tastindeks
+     * @param {boolean} erFørste - Hopp over onset-faser for første tone i sekvensen
      */
-    skannNote(noteIndex) {
+    skannNote(noteIndex, erFørste = false) {
         return new Promise((resolve) => {
             const forventetHz = PianoScanner.idealHz(noteIndex);
             const buffer      = new Float32Array(this.BUFFER_SIZE);
             const sampleRate  = this.audioCtx.sampleRate;
 
-            let avlesninger    = [];   // Alle gode Hz-avlesninger
-            let førsteTreffTid = null; // Tidspunkt for første gyldige avlesning
-            let toppRms        = 0;    // Høyeste RMS sett under sampling
+            let avlesninger    = [];
+            let førsteTreffTid = null;
+            let toppRms        = 0;
             const startTid     = performance.now();
             let rafId          = null;
+
+            // Onset detection: første tone trenger ikke vente på stillhet
+            let fase = erFørste ? 'vent_på_anslag' : 'vent_på_stille';
 
             const _ferdig = (resultat) => {
                 cancelAnimationFrame(rafId);
@@ -189,7 +204,6 @@ class PianoScanner {
             };
 
             const loop = () => {
-                // Avbrutt?
                 if (!this.isScanning) {
                     _ferdig({ noteIndex, status: 'avbrutt', hz: null, cents: null, klarhet: 0 });
                     return;
@@ -197,9 +211,7 @@ class PianoScanner {
 
                 const tidBrukt = performance.now() - startTid;
 
-                // Timeout
                 if (tidBrukt > this.MAKS_VENTETID_MS) {
-                    // Hvis vi har nok data, bekreft likevel
                     if (avlesninger.length >= this.STABIL_TERSKEL) {
                         _bekreft();
                     } else {
@@ -209,25 +221,42 @@ class PianoScanner {
                     return;
                 }
 
-                // Hent audiobuffer
                 this.analyser.getFloatTimeDomainData(buffer);
                 const signalRms = PianoScanner.rms(buffer);
 
-                // Ignorer rent digitalt stillhet
+                // ── Fase 1: Vent på stillhet (forrige tone dør ut) ──
+                if (fase === 'vent_på_stille') {
+                    if (this.onVenterPåStille) this.onVenterPåStille(noteIndex);
+                    if (signalRms < this.ONSET_STILLE_RMS) {
+                        fase = 'vent_på_anslag';
+                    }
+                    rafId = requestAnimationFrame(loop);
+                    return;
+                }
+
+                // ── Fase 2: Vent på nytt anslag ──
+                if (fase === 'vent_på_anslag') {
+                    if (signalRms > this.ONSET_ANSLAG_RMS) {
+                        fase = 'sampling';
+                        // Liten forsinkelse: hopp over de første ~50ms for å la tonen stabilisere
+                        // (anslags-transienten inneholder mye støy)
+                    }
+                    rafId = requestAnimationFrame(loop);
+                    return;
+                }
+
+                // ── Fase 3: Sampling ──
                 if (signalRms < this.MIN_RMS) {
                     rafId = requestAnimationFrame(loop);
                     return;
                 }
 
-                // Kjør pitch-detektor
                 const hz = this.detector.getPitch(buffer, sampleRate);
 
                 if (hz > 0) {
-                    // Er detektert frekvens nær forventet tast?
                     const semitonerBort = Math.abs(12 * Math.log2(hz / forventetHz));
 
                     if (semitonerBort <= this.GODKJENT_AVSTAND) {
-                        // Registrer første treff-tidspunkt
                         if (førsteTreffTid === null) {
                             førsteTreffTid = performance.now();
                             toppRms = signalRms;
@@ -236,20 +265,17 @@ class PianoScanner {
                         avlesninger.push({ hz, tid: tidBrukt, rms: signalRms });
                         if (signalRms > toppRms) toppRms = signalRms;
 
-                        // Oppdater sanntids-UI
                         if (this.onNoteMalt) this.onNoteMalt(noteIndex, hz);
 
-                        // Sjekk om vi har samlet nok data
                         const samletid = performance.now() - førsteTreffTid;
 
-                        // Har vi 1 fullt sekund med data OG nok avlesninger?
+                        // 1 fullt sekund samlet OG nok avlesninger → bekreft
                         if (samletid >= this.SAMLETID_MS && avlesninger.length >= this.STABIL_TERSKEL) {
                             _bekreft();
                             return;
                         }
 
-                        // Har lyden dødd ut? (RMS falt under 15% av topp)
-                        // Bare sjekk etter minst noen avlesninger
+                        // Lyden har dødd ut (RMS falt under 15% av topp) → bekreft tidlig
                         if (avlesninger.length >= this.STABIL_TERSKEL &&
                             signalRms < toppRms * this.RMS_FALLOFF) {
                             _bekreft();
@@ -257,11 +283,8 @@ class PianoScanner {
                         }
 
                     } else if (førsteTreffTid === null) {
-                        // Feil tast FØR vi har begynt å sample — nullstill
                         avlesninger = [];
                     }
-                    // Etter at sampling har startet, ignorer enkelt-frames med feil frekvens
-                    // (kan skje ved overgang mellom toner)
                 }
 
                 rafId = requestAnimationFrame(loop);
@@ -287,7 +310,7 @@ class PianoScanner {
             if (!this.isScanning) break;
             const noteIndex = sekvens[i];
             if (this.onFremdrift) this.onFremdrift(i, sekvens.length);
-            await this.skannNote(noteIndex);
+            await this.skannNote(noteIndex, i === 0);
         }
 
         if (this.recorder && this.recorder.state === 'recording') {
@@ -336,7 +359,8 @@ class PianoScanner {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * 52 hvite taster fra A0 til C8.
+     * Hvite taster fra C1 til A7.
+     * Hopper over A0–B0 (for dype for mobilmikrofon) og A#7–C8 (for lyse/vanskelige).
      */
     _hviteTasterSekvens() {
         const hviteOffsets = [0, 2, 4, 5, 7, 9, 11];
@@ -344,18 +368,23 @@ class PianoScanner {
         for (let okt = 0; okt <= 7; okt++) {
             for (const offset of hviteOffsets) {
                 const midi = (okt + 1) * 12 + offset;
-                if (midi >= 21 && midi <= 108) sekvens.push(midi - 21);
+                const noteIndex = midi - 21;
+                if (noteIndex >= this.START_NOTE_INDEX && noteIndex <= this.SLUTT_NOTE_INDEX) {
+                    sekvens.push(noteIndex);
+                }
             }
         }
         return sekvens;
     }
 
     /**
-     * Alle 88 taster fra A0 til C8.
+     * Alle taster (hvite + svarte) fra C1 til A7.
      */
     _alleTasterSekvens() {
         const sekvens = [];
-        for (let i = 0; i < 88; i++) sekvens.push(i);
+        for (let i = this.START_NOTE_INDEX; i <= this.SLUTT_NOTE_INDEX; i++) {
+            sekvens.push(i);
+        }
         return sekvens;
     }
 }

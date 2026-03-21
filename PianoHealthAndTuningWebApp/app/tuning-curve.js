@@ -68,10 +68,10 @@ class TuningCurve {
         // Generer Railsback-referanselinje for samme note-posisjoner
         const railsbackData = noteIndices.map(i => TuningCurve._railsbackRef(i));
 
-        // Dynamisk y-akse: minst ±50 cent, utvid hvis data krever det
+        // Dynamisk y-akse: minst ±30 cent, utvid hvis data krever det
         const maksCent = chartData.length > 0
-            ? Math.max(50, Math.ceil(Math.max(...chartData.map(Math.abs)) / 10) * 10 + 10)
-            : 50;
+            ? Math.max(30, Math.ceil(Math.max(...chartData.map(Math.abs)) / 10) * 10 + 5)
+            : 30;
 
         // Chart.js dataset-konfigurasjon
         const chartConfig = {
@@ -109,6 +109,13 @@ class TuningCurve {
             options: {
                 responsive:          true,
                 maintainAspectRatio: false,
+                onHover: (evt, elements) => {
+                    const target = evt.native?.target;
+                    if (target) {
+                        target.style.cursor = (elements.length > 0 && elements[0].datasetIndex === 0)
+                            ? 'pointer' : 'default';
+                    }
+                },
                 animation: {
                     // Stemningskurven animerer inn punkt for punkt (500ms total)
                     // for å gi en følelse av at analysen "avslører" resultatet
@@ -120,7 +127,7 @@ class TuningCurve {
                         display: true,
                         labels: {
                             color:    '#374151',
-                            font:     { family: 'Inter', size: 12 },
+                            font:     { family: 'Inter', size: 14 },
                             padding:  16,
                             usePointStyle: true
                         }
@@ -128,10 +135,14 @@ class TuningCurve {
                     tooltip: {
                         backgroundColor: 'rgba(10, 15, 26, 0.92)',
                         titleColor:      '#F9FAFB',
+                        titleFont:       { family: 'Inter', size: 15, weight: '600' },
                         bodyColor:       '#D1D5DB',
+                        bodyFont:        { family: 'Inter', size: 13 },
+                        footerColor:     '#9CA3AF',
+                        footerFont:      { family: 'Inter', size: 11 },
                         borderColor:     '#374151',
                         borderWidth:     1,
-                        padding:         10,
+                        padding:         12,
                         callbacks: {
                             title: (ctx) => ctx[0].label,
                             label: (ctx) => {
@@ -141,6 +152,10 @@ class TuningCurve {
                                 const v = ctx.parsed.y;
                                 const tegn = v > 0 ? '+' : '';
                                 return `Avvik: ${tegn}${v} cent`;
+                            },
+                            footer: (ctx) => {
+                                if (ctx[0]?.datasetIndex === 0) return 'Trykk for å måle på nytt';
+                                return '';
                             }
                         }
                     }
@@ -151,14 +166,14 @@ class TuningCurve {
                             display: true,
                             text:    'Avvik fra temperert stemming (cent)',
                             color:   '#6B7280',
-                            font:    { family: 'Inter', size: 12, weight: '500' }
+                            font:    { family: 'Inter', size: 14, weight: '500' }
                         },
                         min:  -maksCent,
                         max:   maksCent,
                         ticks: {
                             stepSize:  10,
                             color:    '#4B5563',
-                            font:     { family: 'JetBrains Mono', size: 11 },
+                            font:     { family: 'JetBrains Mono', size: 13 },
                             callback: (v) => `${v > 0 ? '+' : ''}${v}¢`,
                             includeBounds: true
                         },
@@ -185,23 +200,42 @@ class TuningCurve {
                             display: true,
                             text:    'Tone',
                             color:   '#6B7280',
-                            font:    { family: 'Inter', size: 11 }
+                            font:    { family: 'Inter', size: 13 }
                         },
                         ticks: {
-                            color:         '#6B7280',
-                            font:          { family: 'Inter', size: 10 },
-                            maxTicksLimit: 24,
-                            maxRotation:   45
+                            color:         '#4B5563',
+                            font:          { family: 'Inter', size: 12, weight: (ctx) => {
+                                // Fett for C-noter (oktavgrenser)
+                                const label = ctx.tick?.label || '';
+                                return label.startsWith('C') && !label.startsWith('C#') ? '700' : '400';
+                            }},
+                            maxRotation:   45,
+                            callback: function(value, index) {
+                                const label = this.getLabelForValue(value);
+                                return label;
+                            }
                         },
                         grid: {
-                            color: 'rgba(209, 213, 219, 0.15)'
+                            color: (ctx) => {
+                                // Markere oktavgrenser (C-noter) med tydeligere linje
+                                const label = chartLabels[ctx.index] || '';
+                                if (label.startsWith('C') && !label.startsWith('C#')) {
+                                    return 'rgba(107, 114, 128, 0.4)';
+                                }
+                                return 'rgba(209, 213, 219, 0.1)';
+                            },
+                            lineWidth: (ctx) => {
+                                const label = chartLabels[ctx.index] || '';
+                                if (label.startsWith('C') && !label.startsWith('C#')) return 2;
+                                return 0.5;
+                            }
                         }
                     }
                 }
             }
         };
 
-        return { kurve, chartConfig };
+        return { kurve, chartConfig, noteIndices };
     }
 
     /**

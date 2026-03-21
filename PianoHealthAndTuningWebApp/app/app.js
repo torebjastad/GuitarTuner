@@ -125,6 +125,13 @@ function _visSkanning() {
         _oppdaterNesteTastLabel(indeks, totalt);
         _oppdaterBassAdvarsel(indeks);
     };
+    AppTilstand.scanner.onVenterPåStille = () => {
+        const statusEl = document.getElementById('skanning-status');
+        if (statusEl) {
+            statusEl.textContent = 'Vent — lytter etter stillhet før neste tone…';
+            statusEl.className   = 'skanning-status status-lytter';
+        }
+    };
 
     const antall = AppTilstand.skanneValg === 'alle' ? 88 : 52;
     _settSkanneStatus('venter');
@@ -240,11 +247,12 @@ function _visFinnStemmer() {
 
 function _oppdaterForberedelseTekst() {
     const erAlle = AppTilstand.skanneValg === 'alle';
-    const antall = erAlle ? 88 : 52;
-    const minutter = Math.ceil(antall * 1.5 / 60);  // ca 1-2 sek per tast
+    const sekvens = erAlle ? _lagAlleTasterSekvens() : _lagHvitTastSekvens();
+    const antall = sekvens.length;
+    const minutter = Math.ceil(antall * 1.5 / 60);
     const tidsEl = document.getElementById('forberedelse-tidsestimat');
     if (tidsEl) {
-        tidsEl.textContent = `Ca. ${minutter} minutter · ${antall} taster · Hold hver tast i ~2 sekunder`;
+        tidsEl.textContent = `Ca. ${minutter} minutter · ${antall} taster (C1–A7) · Hold hver tast i ~2 sekunder`;
     }
 
     // Oppdater radio-knapper
@@ -439,13 +447,20 @@ function _oppdaterBassAdvarsel(skanneIndeks) {
         ? '' : 'none';
 }
 
+// Skanneomfang: C1 (noteIndex 3) til A7 (noteIndex 84)
+const SKANN_START = 3;
+const SKANN_SLUTT = 84;
+
 function _lagHvitTastSekvens() {
     const hviteOffsets = [0, 2, 4, 5, 7, 9, 11];
     const sekvens = [];
     for (let okt = 0; okt <= 7; okt++) {
         for (const offset of hviteOffsets) {
             const midi = (okt + 1) * 12 + offset;
-            if (midi >= 21 && midi <= 108) sekvens.push(midi - 21);
+            const noteIndex = midi - 21;
+            if (noteIndex >= SKANN_START && noteIndex <= SKANN_SLUTT) {
+                sekvens.push(noteIndex);
+            }
         }
     }
     return sekvens;
@@ -453,7 +468,7 @@ function _lagHvitTastSekvens() {
 
 function _lagAlleTasterSekvens() {
     const sekvens = [];
-    for (let i = 0; i < 88; i++) sekvens.push(i);
+    for (let i = SKANN_START; i <= SKANN_SLUTT; i++) sekvens.push(i);
     return sekvens;
 }
 
@@ -540,24 +555,104 @@ function _tegnStemningskurve() {
     }
 
     // Gjør canvas bred nok til å vise alle toner uten komprimering
-    // Minimum 12px per datapunkt, minimum 900px total
     const antallPunkter = AppTilstand.kurveData.chartConfig.data.labels.length;
-    const bredde = Math.max(900, antallPunkter * 16);
+    const bredde = Math.max(900, antallPunkter * 18);
     canvas.style.width  = bredde + 'px';
-    canvas.style.height = '340px';
+    canvas.style.height = '380px';
     canvas.width  = bredde * 2;  // Retina
-    canvas.height = 680;
+    canvas.height = 760;
 
     const morkModus = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const config    = morkModus
         ? TuningCurve.morkModusConfig(AppTilstand.kurveData.chartConfig)
         : AppTilstand.kurveData.chartConfig;
 
-    // Overstyr responsive for bred kurve
     config.options.responsive = false;
     config.options.maintainAspectRatio = false;
 
+    // Klikk-handler: trykk på datapunkt for å måle tonen på nytt
+    config.options.onClick = (evt, elements) => {
+        if (!elements || elements.length === 0) return;
+        const el = elements[0];
+        if (el.datasetIndex !== 0) return; // Bare hovedkurven
+        const idx = el.index;
+        const noteIndices = AppTilstand.kurveData.noteIndices;
+        if (!noteIndices || idx >= noteIndices.length) return;
+        const noteIndex = noteIndices[idx];
+        _startEnkeltNoteMåling(noteIndex);
+    };
+
     AppTilstand.stemningskurve = new Chart(canvas, config);
+}
+
+/**
+ * Re-skanner en enkelt tone fra Railsback-kurven.
+ * Viser tastatur med markert tast, lytter, oppdaterer og tegner kurven på nytt.
+ */
+async function _startEnkeltNoteMåling(noteIndex) {
+    const info = PianoScanner.frekvensInfo(PianoScanner.idealHz(noteIndex));
+    if (!info) return;
+    const noteNavn = info.noteNavn + info.oktav;
+
+    // Vis overlay
+    const overlay = document.getElementById('reskan-overlay');
+    if (!overlay) return;
+
+    const overlayNavn   = document.getElementById('reskan-note-navn');
+    const overlayStatus = document.getElementById('reskan-status');
+    const overlayAvbryt = document.getElementById('reskan-avbryt');
+
+    if (overlayNavn)   overlayNavn.textContent = noteNavn;
+    if (overlayStatus) overlayStatus.textContent = 'Spill tasten nå…';
+    overlay.style.display = 'flex';
+
+    // Vis tasten på tastaturet
+    if (AppTilstand.tastatur) {
+        AppTilstand.tastatur.settAktiv(noteIndex);
+    }
+
+    // Opprett ny scanner for enkeltmåling (gjenbruker mikrofon hvis mulig)
+    let scanner = AppTilstand.scanner;
+    if (!scanner) {
+        scanner = new PianoScanner();
+        try { await scanner.startMikrofon(); } catch { overlay.style.display = 'none'; return; }
+    }
+
+    // Avbryt-knapp
+    let avbrutt = false;
+    const _avbryt = () => { avbrutt = true; scanner.isScanning = false; overlay.style.display = 'none'; };
+    if (overlayAvbryt) overlayAvbryt.addEventListener('click', _avbryt, { once: true });
+
+    scanner.isScanning = true;
+    scanner.onNoteMalt = (ni, hz) => {
+        if (overlayStatus) {
+            const cents = 1200 * Math.log2(hz / PianoScanner.idealHz(ni));
+            overlayStatus.textContent = `Lytter… ${hz.toFixed(1)} Hz (${cents > 0 ? '+' : ''}${cents.toFixed(1)}¢)`;
+        }
+    };
+
+    const resultat = await scanner.skannNote(noteIndex, true);
+
+    if (avbrutt) return;
+    overlay.style.display = 'none';
+
+    if (resultat.status === 'bekreftet') {
+        // Oppdater resultatet og tegn kurven på nytt
+        AppTilstand.skanneResultater[noteIndex] = resultat;
+        const kurveData = TuningCurve.generer(AppTilstand.skanneResultater);
+        AppTilstand.kurveData = kurveData;
+
+        // Recalculate score
+        const scoreResultat = HealthScorer.score(AppTilstand.skanneResultater);
+        AppTilstand.scoreResultat = scoreResultat;
+
+        _tegnStemningskurve();
+        _oppdaterScoreSirkel(scoreResultat.score, scoreResultat.status);
+        _oppdaterDetaljerPanel(scoreResultat.detaljer);
+        _oppdaterOktavTabell(scoreResultat.detaljer.perOktav);
+
+        _spillBekreftelseslyd();
+    }
 }
 
 function _oppdaterOktavTabell(perOktav) {

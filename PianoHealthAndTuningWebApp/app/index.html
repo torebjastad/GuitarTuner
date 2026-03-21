@@ -902,33 +902,45 @@
     <div class="side-innhold">
         <h1 style="margin-bottom:var(--space-sm)">Klar for analyse?</h1>
         <p id="forberedelse-tidsestimat" style="color:var(--tekst-tersiaer);margin-bottom:var(--space-lg)">
-            Ca. 2 minutter · 52 taster · Hold hver tast i ~2 sekunder
+            Ca. 2 minutter · 48 taster (C1–A7) · Hold hver tast i ~2 sekunder
         </p>
 
         <!-- Mini-tastatur-illustrasjon: retning og spilleorden -->
         <div class="forberedelse-illustrasjon" aria-label="Illustrasjon: Spill fra venstre til høyre, én tast om gangen">
             <div class="illustrasjon-tastatur">
                 <!-- 7 hvite taster, de 3 første fremhevet (aktive) -->
-                <svg viewBox="0 0 154 56" fill="none" xmlns="http://www.w3.org/2000/svg"
-                     aria-hidden="true" style="width:100%;max-width:240px;display:block;margin:0 auto">
-                    <!-- Hvite taster -->
-                    <rect x="2"   y="2" width="18" height="46" rx="3" fill="#F5F0E8" stroke="#C9A84C" stroke-width="2"/>
-                    <rect x="24"  y="2" width="18" height="46" rx="3" fill="#F5F0E8" stroke="#C9A84C" stroke-width="2"/>
-                    <rect x="46"  y="2" width="18" height="46" rx="3" fill="#F5F0E8" stroke="#C9A84C" stroke-width="2"/>
-                    <rect x="68"  y="2" width="18" height="46" rx="3" fill="#E5E7EB" stroke="#D1D5DB" stroke-width="1.5"/>
-                    <rect x="90"  y="2" width="18" height="46" rx="3" fill="#E5E7EB" stroke="#D1D5DB" stroke-width="1.5"/>
+                <svg viewBox="0 0 198 66" fill="none" xmlns="http://www.w3.org/2000/svg"
+                     aria-hidden="true" style="width:100%;max-width:300px;display:block;margin:0 auto">
+                    <!-- A0, A#0, B0: grå/nedtonet (hoppes over) -->
+                    <rect x="2"   y="2" width="18" height="46" rx="3" fill="#E5E7EB" stroke="#D1D5DB" stroke-width="1" opacity="0.4"/>
+                    <rect x="24"  y="2" width="18" height="46" rx="3" fill="#E5E7EB" stroke="#D1D5DB" stroke-width="1" opacity="0.4"/>
+                    <!-- Svart A#0 -->
+                    <rect x="16"  y="2" width="12" height="28" rx="2" fill="#9CA3AF" opacity="0.25"/>
+                    <!-- Liten separator -->
+                    <line x1="44" y1="4" x2="44" y2="46" stroke="#C9A84C" stroke-width="2" stroke-dasharray="3,3"/>
+                    <!-- C1 → fremhevet startpunkt med gull-kant og label -->
+                    <rect x="46"  y="2" width="18" height="46" rx="3" fill="#FEF3C7" stroke="#C9A84C" stroke-width="2.5"/>
+                    <text x="55" y="58" text-anchor="middle" font-size="9" font-weight="700" fill="#C9A84C" font-family="Inter, sans-serif">C1</text>
+                    <!-- D1, E1: også fremhevet -->
+                    <rect x="68"  y="2" width="18" height="46" rx="3" fill="#F5F0E8" stroke="#C9A84C" stroke-width="2"/>
+                    <rect x="90"  y="2" width="18" height="46" rx="3" fill="#F5F0E8" stroke="#C9A84C" stroke-width="2"/>
+                    <!-- F1, G1: neste i kø -->
                     <rect x="112" y="2" width="18" height="46" rx="3" fill="#E5E7EB" stroke="#D1D5DB" stroke-width="1.5"/>
                     <rect x="134" y="2" width="18" height="46" rx="3" fill="#E5E7EB" stroke="#D1D5DB" stroke-width="1.5"/>
-                    <!-- Svarte taster (nedtonet) -->
-                    <rect x="16"  y="2" width="12" height="28" rx="2" fill="#9CA3AF" opacity="0.5"/>
-                    <rect x="38"  y="2" width="12" height="28" rx="2" fill="#9CA3AF" opacity="0.5"/>
+                    <rect x="156" y="2" width="18" height="46" rx="3" fill="#E5E7EB" stroke="#D1D5DB" stroke-width="1.5"/>
+                    <rect x="178" y="2" width="18" height="46" rx="3" fill="#E5E7EB" stroke="#D1D5DB" stroke-width="1.5"/>
+                    <!-- Svarte taster -->
+                    <rect x="60"  y="2" width="12" height="28" rx="2" fill="#9CA3AF" opacity="0.5"/>
                     <rect x="82"  y="2" width="12" height="28" rx="2" fill="#9CA3AF" opacity="0.5"/>
-                    <rect x="104" y="2" width="12" height="28" rx="2" fill="#9CA3AF" opacity="0.5"/>
                     <rect x="126" y="2" width="12" height="28" rx="2" fill="#9CA3AF" opacity="0.5"/>
+                    <rect x="148" y="2" width="12" height="28" rx="2" fill="#9CA3AF" opacity="0.5"/>
+                    <rect x="170" y="2" width="12" height="28" rx="2" fill="#9CA3AF" opacity="0.5"/>
+                    <!-- "hopp over" label over A0/B0 -->
+                    <text x="22" y="58" text-anchor="middle" font-size="7" fill="#9CA3AF" font-family="Inter, sans-serif">hopp over</text>
                 </svg>
             </div>
             <div class="illustrasjon-pil" aria-hidden="true">&#8594;</div>
-            <p class="illustrasjon-tekst">Spill fra venstre til høyre — én tast om gangen</p>
+            <p class="illustrasjon-tekst">Start på <strong>C1</strong> (fjerde tast fra venstre) og spill til høyre — én tast om gangen</p>
         </div>
 
         <!-- Valg av taster -->
@@ -937,12 +949,12 @@
             <div class="radio-gruppe" role="radiogroup" aria-label="Velg skanneomfang">
                 <label class="radio-valg">
                     <input type="radio" name="skanne-valg" id="valg-hvite" value="hvite" checked>
-                    <span><strong>Kun hvite taster</strong> (52 taster, ~2 min)<br>
+                    <span><strong>Kun hvite taster</strong> (C1–A7, ~2 min)<br>
                     <small style="color:var(--tekst-tersiaer)">Raskere — gir en god oversikt over pianoets helse</small></span>
                 </label>
                 <label class="radio-valg">
                     <input type="radio" name="skanne-valg" id="valg-alle" value="alle">
-                    <span><strong>Alle 88 taster</strong> (hvite + svarte, ~3 min)<br>
+                    <span><strong>Alle taster</strong> (C1–A7 inkl. svarte, ~3 min)<br>
                     <small style="color:var(--tekst-tersiaer)">Grundigere — inkluderer kromatiske toner</small></span>
                 </label>
             </div>
@@ -1204,15 +1216,16 @@
             <!-- Stemningskurve (Chart.js) — horisontalt scrollbar som Wikipedia-Railsback -->
             <div class="rapport-seksjon">
                 <h3>Stemningskurve</h3>
-                <p style="font-size:0.8rem;color:var(--tekst-tersiaer);margin-bottom:var(--space-sm)">
-                    Sveip sidelengs for å se alle toner →
+                <p style="font-size:0.9rem;color:var(--tekst-tersiaer);margin-bottom:var(--space-sm)">
+                    Sveip sidelengs for å se alle toner. Trykk på et punkt for å måle på nytt.
                 </p>
                 <div class="kurve-container" style="overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;border:1px solid var(--kant);border-radius:var(--radius-md);padding:var(--space-sm)">
                     <canvas id="stemningskurve-canvas"
                             aria-label="Stemningskurve — cents-avvik per tone"></canvas>
                 </div>
-                <p style="font-size:0.75rem;color:var(--tekst-tersiaer);margin-top:var(--space-sm)">
-                    Stiplet linje = Railsback-referanse (ideell strekningsstemming)
+                <p style="font-size:0.85rem;color:var(--tekst-tersiaer);margin-top:var(--space-sm)">
+                    Stiplet gul linje = Railsback-referanse (ideell strekningsstemming)<br>
+                    <strong style="color:var(--tekst-sekundaer)">Trykk på et punkt for å måle tonen på nytt</strong>
                 </p>
             </div>
 
@@ -1264,6 +1277,22 @@
             Resultatet er veiledende — ikke en erstatning for profesjonell faglig vurdering.
             Nøyaktigheten varierer med romakustikk, mikrofonkvalitet og spilleteknikk.
         </p>
+    </div>
+
+    <!-- Re-skanning overlay -->
+    <div id="reskan-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100;
+         align-items:center;justify-content:center;padding:var(--space-lg)">
+        <div style="background:var(--overflate);border-radius:var(--radius-xl);padding:var(--space-xl);
+             max-width:380px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+            <h3 style="margin-bottom:var(--space-sm);font-size:1.3rem">
+                Mål <span id="reskan-note-navn" style="color:var(--aksent)">—</span> på nytt
+            </h3>
+            <div style="font-size:3rem;margin:var(--space-md) 0" aria-hidden="true">🎹</div>
+            <p id="reskan-status" style="color:var(--tekst-sekundaer);margin-bottom:var(--space-lg);font-size:0.95rem">
+                Spill tasten nå…
+            </p>
+            <button id="reskan-avbryt" class="knapp-sekunder" style="width:100%">Avbryt</button>
+        </div>
     </div>
 
 </section>
