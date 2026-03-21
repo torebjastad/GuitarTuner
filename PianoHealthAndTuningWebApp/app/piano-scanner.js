@@ -40,8 +40,10 @@ class PianoScanner {
         this.RMS_FALLOFF       = 0.15;   // Stopp tidlig hvis RMS faller under 15% av toppverdi
 
         // Onset detection — forhindrer at etterklang fra forrige tone fanges opp
-        this.ONSET_STILLE_RMS  = 0.002;  // RMS må falle under dette før vi lytter etter ny tone
-        this.ONSET_ANSLAG_RMS  = 0.003;  // RMS må stige over dette for å registrere et nytt anslag
+        this.ONSET_STILLE_RMS      = 0.005;  // RMS under dette = "stille" (piano-sustain dør ut)
+        this.ONSET_ANSLAG_RMS      = 0.010;  // RMS over dette = nytt anslag detektert
+        this.ONSET_STILLE_MS       = 150;    // Minimum stillhet (ms) før vi lytter etter nytt anslag
+        this.ONSET_STILLE_TIMEOUT_MS = 4000; // Etter 4s tvinger vi overgang (unngår evig venting)
 
         // Skanneomfang: C1 (noteIndex 3) til A7 (noteIndex 84)
         // Hopper over A0–B0 (for bass for mobil-mikrofon) og A#7–C8 (for lyse/vanskelige)
@@ -243,7 +245,9 @@ class PianoScanner {
             let rafId          = null;
 
             // Onset detection: første tone trenger ikke vente på stillhet
-            let fase = erFørste ? 'vent_på_anslag' : 'vent_på_stille';
+            let fase          = erFørste ? 'vent_på_anslag' : 'vent_på_stille';
+            let faseTid       = performance.now();   // Tidspunkt vi gikk inn i gjeldende fase
+            let stilleStartTid = null;               // Tidspunkt RMS gikk under ONSET_STILLE_RMS
 
             const _ferdig = (resultat) => {
                 cancelAnimationFrame(rafId);
@@ -309,9 +313,27 @@ class PianoScanner {
                 // ── Fase 1: Vent på stillhet (forrige tone dør ut) ──
                 if (fase === 'vent_på_stille') {
                     if (this.onVenterPåStille) this.onVenterPåStille(noteIndex);
+
                     if (signalRms < this.ONSET_STILLE_RMS) {
-                        fase = 'vent_på_anslag';
+                        // Signalet er stille — start eller fortsett stillhetsmåling
+                        if (stilleStartTid === null) stilleStartTid = performance.now();
+                        // Krev minimum stillhet (ONSET_STILLE_MS) for å unngå falskt utløsning
+                        if (performance.now() - stilleStartTid >= this.ONSET_STILLE_MS) {
+                            fase = 'vent_på_anslag';
+                            faseTid = performance.now();
+                        }
+                    } else {
+                        // Ikke stille ennå — nullstill stillhetsmåler
+                        stilleStartTid = null;
                     }
+
+                    // Tvangsovergang: etter ONSET_STILLE_TIMEOUT_MS gir vi opp å vente på stillhet
+                    // (håndterer piano med lang sustain som aldri går helt stille)
+                    if (performance.now() - faseTid >= this.ONSET_STILLE_TIMEOUT_MS) {
+                        fase = 'vent_på_anslag';
+                        faseTid = performance.now();
+                    }
+
                     rafId = requestAnimationFrame(loop);
                     return;
                 }

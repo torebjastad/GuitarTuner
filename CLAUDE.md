@@ -187,3 +187,10 @@ There is no automated test framework. Testing is done manually:
 ## Documentation Convention
 
 Important knowledge — algorithms, architecture decisions, debugging insights — should be documented in an appropriate `.md` file in the repository. When existing documentation becomes outdated or incorrect due to code changes, update or correct it. See `pitch-detection-algorithms.md` for an example.
+
+**Algorithm documentation must be kept in sync with code.** Every time an algorithm is changed — parameters, logic, thresholds, data flow — the corresponding `.md` file must be updated in the same commit. The canonical algorithm docs are:
+
+| Code file | Documentation |
+|-----------|--------------|
+| `pitch-detection-algorithms.md` | Guitar tuner pitch detection algorithms |
+| `PianoHealthAndTuningWebApp/piano-scanning-algorithm.md` | Piano scanning onset detection and pitch detection pipeline |

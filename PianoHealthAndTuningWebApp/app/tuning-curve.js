@@ -121,7 +121,7 @@ class TuningCurve {
                         display: true,
                         labels: {
                             color:    '#374151',
-                            font:     { family: 'Inter, sans-serif', size: 15, weight: '500' },
+                            font:     { family: 'Inter, sans-serif', size: 22, weight: '500' },
                             padding:  20,
                             usePointStyle: true
                         }
@@ -129,11 +129,11 @@ class TuningCurve {
                     tooltip: {
                         backgroundColor: 'rgba(10, 15, 26, 0.95)',
                         titleColor:      '#F9FAFB',
-                        titleFont:       { family: 'Inter, sans-serif', size: 16, weight: '700' },
+                        titleFont:       { family: 'Inter, sans-serif', size: 22, weight: '700' },
                         bodyColor:       '#E5E7EB',
-                        bodyFont:        { family: 'Inter, sans-serif', size: 14 },
+                        bodyFont:        { family: 'Inter, sans-serif', size: 18 },
                         footerColor:     '#93C5FD',
-                        footerFont:      { family: 'Inter, sans-serif', size: 12, weight: '600' },
+                        footerFont:      { family: 'Inter, sans-serif', size: 16, weight: '600' },
                         borderColor:     '#4B5563',
                         borderWidth:     1,
                         padding:         14,
@@ -163,14 +163,14 @@ class TuningCurve {
                             display: true,
                             text:    'Avvik fra temperert stemming (cent)',
                             color:   '#4B5563',
-                            font:    { family: 'Inter, sans-serif', size: 15, weight: '600' }
+                            font:    { family: 'Inter, sans-serif', size: 20, weight: '600' }
                         },
                         min:  -maksCent,
                         max:   maksCent,
                         ticks: {
                             stepSize:  10,
                             color:    '#374151',
-                            font:     { family: 'JetBrains Mono, monospace', size: 14, weight: '500' },
+                            font:     { family: 'JetBrains Mono, monospace', size: 20, weight: '500' },
                             callback: (v) => `${v > 0 ? '+' : ''}${v}¢`,
                             includeBounds: true
                         },
@@ -203,7 +203,7 @@ class TuningCurve {
                             display: true,
                             text:    'Tone',
                             color:   '#4B5563',
-                            font:    { family: 'Inter, sans-serif', size: 14, weight: '500' }
+                            font:    { family: 'Inter, sans-serif', size: 18, weight: '500' }
                         },
                         ticks: {
                             color: (ctx) => {
@@ -214,7 +214,7 @@ class TuningCurve {
                             },
                             font: {
                                 family: 'Inter, sans-serif',
-                                size:   13,
+                                size:   16,
                                 weight: '400'
                             },
                             maxRotation: 45

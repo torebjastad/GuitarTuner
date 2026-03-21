@@ -559,8 +559,9 @@ function _tegnStemningskurve() {
     const bredde = Math.max(900, antallPunkter * 20);
     canvas.style.width  = bredde + 'px';
     canvas.style.height = '420px';
-    canvas.width  = bredde * 2;  // Retina
-    canvas.height = 840;
+    // Set canvas pixel dimensions to CSS dimensions (Chart.js handles DPR internally)
+    canvas.width  = bredde;
+    canvas.height = 420;
 
     const config = AppTilstand.kurveData.chartConfig;
     const morkModus = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -576,8 +577,11 @@ function _tegnStemningskurve() {
 
     // Klikk-handler via canvas-event (mer pålitelig enn config.options.onClick)
     canvas.onclick = (evt) => {
+        // 'index' mode: snaps to nearest x-axis label and returns all datasets at that x.
+        // Do NOT use 'nearest' with intersect:false — that uses Euclidean distance,
+        // which selects wrong data points when the click y differs from the data y.
         const points = chart.getElementsAtEventForMode(
-            evt, 'nearest', { intersect: false, axis: 'x' }, false
+            evt, 'index', { intersect: false }, false
         );
         if (!points || points.length === 0) return;
 
@@ -596,11 +600,68 @@ function _tegnStemningskurve() {
     // Peker-cursor på hover over datapunkter
     canvas.onmousemove = (evt) => {
         const points = chart.getElementsAtEventForMode(
-            evt, 'nearest', { intersect: false, axis: 'x' }, false
+            evt, 'index', { intersect: false }, false
         );
         canvas.style.cursor = (points && points.length > 0 && points.some(p => p.datasetIndex === 0))
             ? 'pointer' : 'default';
     };
+}
+
+/**
+ * Tegner et mini-tastatur (2 oktaver) som SVG med mål-tasten uthevet.
+ * noteIndex: 0=A0 … 87=C8 (MIDI 21–108)
+ */
+function _lagMiniTastatur(noteIndex) {
+    const targetMidi = noteIndex + 21;
+    // Center 2 octaves around the target note
+    const startOktav = Math.max(0, Math.min(7, Math.floor((targetMidi - 21) / 12) - 1));
+    const startMidi  = 12 * (startOktav + 1) + 12; // C of startOktav+1, approx
+    // Align to nearest C below targetMidi - 12
+    const cBase = 12 * Math.floor((targetMidi - 12) / 12);
+    const endMidi = cBase + 24; // 2 octaves
+
+    const WHITE = [0, 2, 4, 5, 7, 9, 11]; // offsets within octave for white keys
+    const BLACK = [1, 3, 6, 8, 10];        // offsets for black keys
+
+    // Collect white keys
+    const whites = [];
+    for (let m = cBase; m <= endMidi; m++) {
+        if (WHITE.includes(m % 12)) whites.push(m);
+    }
+
+    const W = 14, H = 52, BW = 9, BH = 32;
+    const totalW = whites.length * W;
+
+    let svg = `<svg width="${totalW}" height="${H + 4}" viewBox="0 0 ${totalW} ${H + 4}"
+        style="border:1px solid #ccc;border-radius:4px;background:#f8f8f8" role="img"
+        aria-label="Tastatur — spill ${PianoScanner.frekvensInfo(PianoScanner.idealHz(noteIndex))?.noteNavn}">`;
+
+    // White keys
+    whites.forEach((midi, i) => {
+        const isTarget = midi === targetMidi;
+        const fill = isTarget ? '#1B2B4B' : '#F8F8F8';
+        const stroke = '#888';
+        svg += `<rect x="${i * W}" y="2" width="${W - 1}" height="${H}"
+            fill="${fill}" stroke="${stroke}" stroke-width="0.8" rx="2"/>`;
+        if (isTarget) {
+            svg += `<rect x="${i * W + 2}" y="${H - 12}" width="${W - 5}" height="8"
+                fill="#C9A84C" rx="1"/>`;
+        }
+    });
+
+    // Black keys (drawn on top)
+    whites.forEach((midi, i) => {
+        const nextSemitone = midi + 1;
+        if (BLACK.includes(nextSemitone % 12) && nextSemitone <= endMidi) {
+            const isTarget = nextSemitone === targetMidi;
+            const fill = isTarget ? '#C9A84C' : '#1A1A2A';
+            svg += `<rect x="${i * W + W - Math.floor(BW / 2)}" y="2" width="${BW}" height="${BH}"
+                fill="${fill}" stroke="#333" stroke-width="0.5" rx="1"/>`;
+        }
+    });
+
+    svg += '</svg>';
+    return svg;
 }
 
 /**
@@ -612,14 +673,19 @@ async function _startEnkeltNoteMåling(noteIndex) {
     if (!info) return;
     const noteNavn = info.noteNavn + info.oktav;
 
-    const overlay       = document.getElementById('reskan-overlay');
-    const overlayNavn   = document.getElementById('reskan-note-navn');
-    const overlayStatus = document.getElementById('reskan-status');
-    const overlayAvbryt = document.getElementById('reskan-avbryt');
+    const overlay        = document.getElementById('reskan-overlay');
+    const overlayNavn    = document.getElementById('reskan-note-navn');
+    const overlayHz      = document.getElementById('reskan-note-hz');
+    const overlayStatus  = document.getElementById('reskan-status');
+    const overlayAvbryt  = document.getElementById('reskan-avbryt');
+    const overlayTastatur = document.getElementById('reskan-tastatur');
     if (!overlay) return;
 
+    const idealHz = PianoScanner.idealHz(noteIndex);
     if (overlayNavn)   overlayNavn.textContent = noteNavn;
+    if (overlayHz)     overlayHz.textContent   = idealHz.toFixed(1) + ' Hz';
     if (overlayStatus) overlayStatus.textContent = 'Starter mikrofon…';
+    if (overlayTastatur) overlayTastatur.innerHTML = _lagMiniTastatur(noteIndex);
     overlay.style.display = 'flex';
 
     // Alltid opprett ny scanner med fersk mikrofontilgang

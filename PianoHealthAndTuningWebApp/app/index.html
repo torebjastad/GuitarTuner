@@ -1280,17 +1280,21 @@
     </div>
 
     <!-- Re-skanning overlay -->
-    <div id="reskan-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100;
+    <div id="reskan-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:100;
          align-items:center;justify-content:center;padding:var(--space-lg)">
-        <div style="background:var(--overflate);border-radius:var(--radius-xl);padding:var(--space-xl);
-             max-width:380px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
-            <h3 style="margin-bottom:var(--space-sm);font-size:1.3rem">
-                Mål <span id="reskan-note-navn" style="color:var(--aksent)">—</span> på nytt
-            </h3>
-            <div style="font-size:3rem;margin:var(--space-md) 0" aria-hidden="true">🎹</div>
-            <p id="reskan-status" style="color:var(--tekst-sekundaer);margin-bottom:var(--space-lg);font-size:0.95rem">
-                Spill tasten nå…
-            </p>
+        <div style="background:var(--overflate-primer);border-radius:var(--radius-xl);padding:var(--space-xl);
+             max-width:400px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.5)">
+            <p style="font-size:0.8rem;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;
+               color:var(--tekst-tersiaer);margin-bottom:var(--space-xs)">Mål på nytt</p>
+            <div style="font-size:3.5rem;font-weight:800;color:var(--primary);
+                 letter-spacing:-0.02em;line-height:1;margin-bottom:var(--space-xs)"
+                 id="reskan-note-navn">—</div>
+            <p id="reskan-note-hz" style="font-size:0.9rem;color:var(--tekst-tersiaer);
+               margin-bottom:var(--space-md)"></p>
+            <!-- Mini piano-tastatur som viser riktig tast -->
+            <div id="reskan-tastatur" style="margin:var(--space-md) auto;max-width:320px"></div>
+            <p id="reskan-status" style="color:var(--tekst-sekundaer);margin-bottom:var(--space-lg);
+               font-size:0.95rem;min-height:1.4em">Spill tasten nå…</p>
             <button id="reskan-avbryt" class="knapp-sekunder" style="width:100%">Avbryt</button>
         </div>
     </div>
