@@ -107,6 +107,19 @@ class KeySpecificDetector:
 
         return fine_freqs[fine_peak]
 
+    @staticmethod
+    def optimal_buffer_size(expected_freq, sample_rate=44100):
+        """Calculate optimal buffer size for a given expected frequency.
+
+        Ensures at least 6 full periods in the buffer for reliable MPM.
+        Returns a power-of-2 buffer size.
+        """
+        period_samples = sample_rate / expected_freq
+        min_samples = int(period_samples * 8)  # At least 8 full periods
+        # Round up to power of 2, minimum 8192
+        buf_size = max(8192, 1 << int(np.ceil(np.log2(min_samples))))
+        return min(buf_size, 32768)  # Cap at 32k
+
     def detect_cents(self, buffer, sample_rate, expected_freq):
         """Returns cents deviation from expected frequency, or None."""
         freq = self.detect(buffer, sample_rate, expected_freq)
