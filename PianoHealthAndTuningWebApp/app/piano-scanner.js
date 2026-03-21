@@ -93,6 +93,76 @@ class PianoScanner {
     }
 
     /**
+     * DTFT refinement for sub-cent pitch accuracy.
+     * Two-pass: coarse (±10 cents, 1-cent steps) then fine (±2 cents, 0.1-cent steps).
+     * Uses Goertzel-like evaluation at specific frequencies.
+     *
+     * @param {Float32Array} buffer - Audio samples
+     * @param {number} sampleRate - Sample rate in Hz
+     * @param {number} centerFreq - Center frequency to refine around (Hz)
+     * @returns {number} Refined frequency in Hz, or -1 if failed
+     */
+    static dtftRefine(buffer, sampleRate, centerFreq) {
+        const N = buffer.length;
+
+        // Apply Hanning window
+        const windowed = new Float32Array(N);
+        for (let i = 0; i < N; i++) {
+            windowed[i] = buffer[i] * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / (N - 1)));
+        }
+
+        // Evaluate DFT magnitude at specific frequencies
+        const evalFreq = (freq) => {
+            const omega = 2 * Math.PI * freq / sampleRate;
+            let real = 0, imag = 0;
+            for (let n = 0; n < N; n++) {
+                real += windowed[n] * Math.cos(omega * n);
+                imag += windowed[n] * Math.sin(omega * n);
+            }
+            return Math.sqrt(real * real + imag * imag);
+        };
+
+        // Coarse pass: ±10 cents, 1-cent steps
+        let bestMag = -1, bestFreq = centerFreq;
+        for (let c = -10; c <= 10; c++) {
+            const f = centerFreq * Math.pow(2, c / 1200);
+            const mag = evalFreq(f);
+            if (mag > bestMag) { bestMag = mag; bestFreq = f; }
+        }
+
+        // Fine pass: ±2 cents around coarse peak, 0.1-cent steps
+        const coarseCenter = bestFreq;
+        bestMag = -1;
+        let fineFreqs = [];
+        let fineMags = [];
+        for (let c = -20; c <= 20; c++) {
+            const f = coarseCenter * Math.pow(2, (c * 0.1) / 1200);
+            const mag = evalFreq(f);
+            fineFreqs.push(f);
+            fineMags.push(mag);
+            if (mag > bestMag) { bestMag = mag; bestFreq = f; }
+        }
+
+        // Parabolic interpolation on fine pass
+        const peakIdx = fineMags.indexOf(bestMag);
+        if (peakIdx > 0 && peakIdx < fineMags.length - 1) {
+            const a = fineMags[peakIdx - 1];
+            const b = fineMags[peakIdx];
+            const c = fineMags[peakIdx + 1];
+            const d = a - 2 * b + c;
+            if (d !== 0) {
+                const adj = 0.5 * (a - c) / d;
+                const refinedIdx = peakIdx + adj;
+                const fLo = fineFreqs[0];
+                const fHi = fineFreqs[fineFreqs.length - 1];
+                return fLo + refinedIdx * (fHi - fLo) / (fineFreqs.length - 1);
+            }
+        }
+
+        return bestFreq;
+    }
+
+    /**
      * Median av en tallarray. Mer robust enn gjennomsnitt mot uteliggere.
      */
     static median(arr) {
@@ -183,11 +253,23 @@ class PianoScanner {
 
             const _bekreft = () => {
                 const hzVerdier = avlesninger.map(a => a.hz);
-                const medianHz  = PianoScanner.median(hzVerdier);
+                let medianHz    = PianoScanner.median(hzVerdier);
                 const snitt     = hzVerdier.reduce((a, b) => a + b, 0) / hzVerdier.length;
                 const varians   = hzVerdier.reduce((s, v) => s + (v - snitt) ** 2, 0) / hzVerdier.length;
                 const relStd    = Math.sqrt(varians) / snitt;
-                const info      = PianoScanner.frekvensInfo(medianHz);
+
+                // DTFT refinement for non-bass notes (≥ 80 Hz)
+                // Sub-cent precision by evaluating DFT at exact frequencies
+                if (forventetHz >= 80) {
+                    this.analyser.getFloatTimeDomainData(buffer);
+                    const refined = PianoScanner.dtftRefine(buffer, sampleRate, medianHz);
+                    if (refined > 0) {
+                        const refinedCents = Math.abs(1200 * Math.log2(refined / forventetHz));
+                        if (refinedCents < 100) medianHz = refined;
+                    }
+                }
+
+                const info = PianoScanner.frekvensInfo(medianHz);
                 const resultat  = {
                     noteIndex,
                     status:            'bekreftet',
