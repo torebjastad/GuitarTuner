@@ -44,7 +44,7 @@ class PianoScanner {
         this.ONSET_ANSLAG_RMS      = 0.004;  // RMS over dette = nytt anslag detektert
         this.ONSET_STILLE_MS       = 150;    // Minimum stillhet (ms) før vi lytter etter nytt anslag
         this.ONSET_STILLE_TIMEOUT_MS = 4000; // Etter 4s tvinger vi overgang (unngår evig venting)
-        this.ONSET_TRANSIENT_MS    = 60;     // Hopp over anslags-transienten (ms) for stabilitet
+        this.ONSET_TRANSIENT_MS    = 60;     // Minimum transient-skip (ms). I praksis brukes maks(60, 5000/Hz) slik at bass-noter får lengre skip (C1→153ms, A0→182ms)
 
         // Skanneomfang: C1 (noteIndex 3) til A7 (noteIndex 84)
         // Hopper over A0–B0 (for bass for mobil-mikrofon) og A#7–C8 (for lyse/vanskelige)
@@ -350,9 +350,15 @@ class PianoScanner {
                 if (fase === 'vent_på_anslag') {
                     if (signalRms > this.ONSET_ANSLAG_RMS) {
                         if (transientTid === null) transientTid = performance.now();
-                        // Hopp over anslags-transienten (skarpe overtoner i anslaget)
-                        // for å få mer stabil pitchdeteksjon fra steady-state signal
-                        if (performance.now() - transientTid >= this.ONSET_TRANSIENT_MS) {
+                        // Hopp over anslags-transienten (inharmoniske overtoner i anslaget).
+                        // Bass-noter trenger lengre skip fordi:
+                        //   - Fundamentalperioden er lengre (C1 = 30ms/periode)
+                        //   - Hammerimpulsen dominerer lenger i lavt frekvensspekter
+                        //   - Streng trenger flere perioder for å stabilisere
+                        // Krav: minst 5 fulle fundamentalperioder, men minst ONSET_TRANSIENT_MS.
+                        const transientMs = Math.max(this.ONSET_TRANSIENT_MS,
+                                                      Math.round(5000 / forventetHz));
+                        if (performance.now() - transientTid >= transientMs) {
                             fase = 'sampling';
                         }
                     } else {

@@ -77,13 +77,28 @@ Three-phase state machine running inside a `requestAnimationFrame` loop:
 
 **Logic:**
 1. If `RMS > ONSET_ANSLAG_RMS` → record `transientTid` (onset timestamp).
-2. Once onset is detected, wait `ONSET_TRANSIENT_MS` (60 ms) before advancing to Phase 3.
+2. Once onset is detected, wait `transientMs = max(ONSET_TRANSIENT_MS, round(5000 / expectedHz))` ms before advancing to Phase 3. This is a **frequency-adaptive** skip.
 3. If RMS drops below `ONSET_ANSLAG_RMS` during the transient wait → reset and wait again.
 4. Otherwise loop until timeout.
 
 `ONSET_ANSLAG_RMS` (0.004) is set above typical ambient room noise (0.001–0.003) but well below a clear piano keystroke.
 
-**Why the transient skip?** The first 50–80 ms of a piano key press contains the inharmonic attack transient — a noisy burst that confuses pitch detectors and can bias the median result. Waiting 60 ms after onset ensures Phase 3 collects only the stable sustain portion of the note.
+**Why the transient skip?** The attack transient of a hard piano keystroke contains inharmonic noise that confuses pitch detectors. For bass notes this problem is more severe:
+
+- The transient lasts longer relative to the fundamental period (C1 fundamental period = 30 ms → the attack lasts 5–6 periods at high velocity).
+- Bass strings exhibit strong **inharmonicity** (stretched overtones). During the attack, higher partials temporarily dominate; detectors may latch onto the 2nd or 3rd partial and report a pitch 8–15 cents sharp.
+- Hard strikes (forte) excite more upper-partial energy than soft strikes, making the error velocity-dependent.
+
+**Frequency-adaptive skip ensures at least 5 full fundamental periods** are skipped after onset, so the detector always reads from the periodic sustain phase:
+
+| Note | Freq | Skip (ms) |
+|------|------|-----------|
+| A0   | 27.5 Hz | 182 ms |
+| C1   | 32.7 Hz | 153 ms |
+| E1   | 41.2 Hz | 122 ms |
+| A1   | 55.0 Hz | 91 ms  |
+| C2   | 65.4 Hz | 77 ms  |
+| C3   | 130 Hz  | 60 ms (capped at minimum) |
 
 ---
 
