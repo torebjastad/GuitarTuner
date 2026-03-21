@@ -935,6 +935,61 @@ piano-tangenter {
     padding:       var(--space-sm);
 }
 
+/* Toneinfo-panel (vises under stemningskurven etter klikk) */
+#toneinfo-panel {
+    margin-top:    var(--space-sm);
+    padding:       var(--space-md) var(--space-lg);
+    background:    var(--overflate-sekundaer);
+    border:        1px solid var(--kant);
+    border-radius: var(--radius-md);
+    font-family:   var(--font-sans);
+}
+
+.toneinfo-rad {
+    display:        flex;
+    align-items:    baseline;
+    gap:            var(--space-sm);
+    flex-wrap:      wrap;
+    margin-bottom:  var(--space-xs);
+}
+
+.toneinfo-notenavn {
+    font-size:   2rem;
+    font-weight: 800;
+    color:       var(--primary);
+    line-height: 1;
+    min-width:   3.5rem;
+}
+
+.toneinfo-hz {
+    font-family: var(--font-mono);
+    font-size:   1rem;
+    color:       var(--tekst-sekundaer);
+}
+
+.toneinfo-cents {
+    font-family: var(--font-mono);
+    font-size:   1.1rem;
+    font-weight: 600;
+}
+
+.toneinfo-ok      { color: #16A34A; }
+.toneinfo-advarsel { color: #CA8A04; }
+.toneinfo-kritisk  { color: #DC2626; }
+
+.toneinfo-live {
+    font-size:  0.875rem;
+    color:      var(--tekst-tersiaer);
+    margin-top: var(--space-xs);
+    min-height: 1.4em;
+}
+
+.toneinfo-knapp {
+    margin-top: var(--space-sm);
+    padding:    var(--space-xs) var(--space-md);
+    font-size:  0.9rem;
+}
+
 /* Cent-avvik-bar (horisontal, per tast) */
 .cent-bar-liste {
     display:        flex;

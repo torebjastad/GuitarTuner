@@ -554,175 +554,174 @@ function _tegnStemningskurve() {
         AppTilstand.stemningskurve = null;
     }
 
-    // Bred nok til å vise alle toner uten komprimering
-    const antallPunkter = AppTilstand.kurveData.chartConfig.data.labels.length;
-    const bredde = Math.max(900, antallPunkter * 20);
+    // Bred nok til å vise alle 82 noter uten komprimering (15px per note)
+    const n = AppTilstand.kurveData.noteIndices.length;
+    const bredde = Math.max(1000, n * 15 + 80);  // +80 for y-akse
+    const hoyde  = 520;  // 420px data + ~85px piano-tangenter + 15px marger
+
     canvas.style.width  = bredde + 'px';
-    canvas.style.height = '420px';
-    // Set canvas pixel dimensions to CSS dimensions (Chart.js handles DPR internally)
+    canvas.style.height = hoyde + 'px';
     canvas.width  = bredde;
-    canvas.height = 420;
+    canvas.height = hoyde;
 
     const config = AppTilstand.kurveData.chartConfig;
-    const morkModus = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    if (morkModus) TuningCurve.morkModusConfig(config);
-
-    config.options.responsive = false;
+    config.options.responsive          = false;
     config.options.maintainAspectRatio = false;
 
-    // ── Interaktiv klikk-handler (Chart.js v4) ──
-    // Bruker getElementsAtEventForMode etter chart-opprettelse
     const chart = new Chart(canvas, config);
     AppTilstand.stemningskurve = chart;
 
-    // Klikk-handler via canvas-event (mer pålitelig enn config.options.onClick)
+    // Gjenopprett valgt note hvis den finnes
+    if (AppTilstand.valgtNoteIndex !== undefined) {
+        const chartIdx = AppTilstand.kurveData.noteIndices.indexOf(AppTilstand.valgtNoteIndex);
+        if (chartIdx >= 0) {
+            chart._selectedChartIndex = chartIdx;
+            chart.update('none');
+        }
+    }
+
+    // Klikk-handler: bruker x-koordinat direkte for å støtte klikk både i
+    // chart-området og på piano-tangentene i bunnmargin-området.
     canvas.onclick = (evt) => {
-        // 'index' mode: snaps to nearest x-axis label and returns all datasets at that x.
-        // Do NOT use 'nearest' with intersect:false — that uses Euclidean distance,
-        // which selects wrong data points when the click y differs from the data y.
-        const points = chart.getElementsAtEventForMode(
-            evt, 'index', { intersect: false }, false
-        );
-        if (!points || points.length === 0) return;
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = evt.clientX - rect.left;
+        const ca = chart.chartArea;
+        if (!ca || mouseX < ca.left || mouseX > ca.right) return;
 
-        // Finn nærmeste punkt fra dataset 0 (målt kurve, ikke Railsback)
-        const punkt = points.find(p => p.datasetIndex === 0);
-        if (!punkt) return;
-
-        const chartIndex  = punkt.index;
+        const chartIndex = Math.round(chart.scales.x.getValueForPixel(mouseX));
         const noteIndices = AppTilstand.kurveData.noteIndices;
-        if (!noteIndices || chartIndex >= noteIndices.length) return;
+        if (chartIndex < 0 || chartIndex >= noteIndices.length) return;
 
-        const noteIndex = noteIndices[chartIndex];
-        _startEnkeltNoteMåling(noteIndex);
+        _velgNote(chart, noteIndices[chartIndex], chartIndex);
     };
 
-    // Peker-cursor på hover over datapunkter
     canvas.onmousemove = (evt) => {
-        const points = chart.getElementsAtEventForMode(
-            evt, 'index', { intersect: false }, false
-        );
-        canvas.style.cursor = (points && points.length > 0 && points.some(p => p.datasetIndex === 0))
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = evt.clientX - rect.left;
+        const ca = chart.chartArea;
+        canvas.style.cursor = (ca && mouseX >= ca.left && mouseX <= ca.right)
             ? 'pointer' : 'default';
     };
 }
 
 /**
- * Tegner et mini-tastatur (2 oktaver) som SVG med mål-tasten uthevet.
- * noteIndex: 0=A0 … 87=C8 (MIDI 21–108)
+ * Velger en note: fremhever tangenten i kartet og viser info-panel nedenfor.
  */
-function _lagMiniTastatur(noteIndex) {
-    const targetMidi = noteIndex + 21;
-    // Center 2 octaves around the target note
-    const startOktav = Math.max(0, Math.min(7, Math.floor((targetMidi - 21) / 12) - 1));
-    const startMidi  = 12 * (startOktav + 1) + 12; // C of startOktav+1, approx
-    // Align to nearest C below targetMidi - 12
-    const cBase = 12 * Math.floor((targetMidi - 12) / 12);
-    const endMidi = cBase + 24; // 2 octaves
+function _velgNote(chart, noteIndex, chartIndex) {
+    AppTilstand.valgtNoteIndex = noteIndex;
+    chart._selectedChartIndex  = chartIndex;
 
-    const WHITE = [0, 2, 4, 5, 7, 9, 11]; // offsets within octave for white keys
-    const BLACK = [1, 3, 6, 8, 10];        // offsets for black keys
-
-    // Collect white keys
-    const whites = [];
-    for (let m = cBase; m <= endMidi; m++) {
-        if (WHITE.includes(m % 12)) whites.push(m);
-    }
-
-    const W = 14, H = 52, BW = 9, BH = 32;
-    const totalW = whites.length * W;
-
-    let svg = `<svg width="${totalW}" height="${H + 4}" viewBox="0 0 ${totalW} ${H + 4}"
-        style="border:1px solid #ccc;border-radius:4px;background:#f8f8f8" role="img"
-        aria-label="Tastatur — spill ${PianoScanner.frekvensInfo(PianoScanner.idealHz(noteIndex))?.noteNavn}">`;
-
-    // White keys
-    whites.forEach((midi, i) => {
-        const isTarget = midi === targetMidi;
-        const fill = isTarget ? '#1B2B4B' : '#F8F8F8';
-        const stroke = '#888';
-        svg += `<rect x="${i * W}" y="2" width="${W - 1}" height="${H}"
-            fill="${fill}" stroke="${stroke}" stroke-width="0.8" rx="2"/>`;
-        if (isTarget) {
-            svg += `<rect x="${i * W + 2}" y="${H - 12}" width="${W - 5}" height="8"
-                fill="#C9A84C" rx="1"/>`;
-        }
+    // Oppdater punkt-radius for å fremheve valgt note
+    const dataset = chart.data.datasets[0];
+    dataset.pointRadius = dataset.data.map((v, i) => {
+        if (v === null) return 0;
+        return i === chartIndex ? 10 : 5;
     });
-
-    // Black keys (drawn on top)
-    whites.forEach((midi, i) => {
-        const nextSemitone = midi + 1;
-        if (BLACK.includes(nextSemitone % 12) && nextSemitone <= endMidi) {
-            const isTarget = nextSemitone === targetMidi;
-            const fill = isTarget ? '#C9A84C' : '#1A1A2A';
-            svg += `<rect x="${i * W + W - Math.floor(BW / 2)}" y="2" width="${BW}" height="${BH}"
-                fill="${fill}" stroke="#333" stroke-width="0.5" rx="1"/>`;
-        }
+    dataset.pointBorderWidth = dataset.data.map((v, i) => {
+        if (v === null) return 0;
+        return i === chartIndex ? 3 : 2;
     });
+    chart.update('none');
 
-    svg += '</svg>';
-    return svg;
+    _visNoteInfo(noteIndex, AppTilstand.skanneResultater[noteIndex]);
 }
 
 /**
- * Re-skanner en enkelt tone fra Railsback-kurven.
- * Oppretter alltid en ny scanner med fersk mikrofontilgang.
+ * Viser note-info-panelet nedenfor kurven.
+ * Inneholder Hz, cents, Railsback-avvik og "Remål"-knapp.
+ */
+function _visNoteInfo(noteIndex, resultat) {
+    const panel = document.getElementById('toneinfo-panel');
+    if (!panel) return;
+
+    const idealHz      = PianoScanner.idealHz(noteIndex);
+    const info         = PianoScanner.frekvensInfo(idealHz);
+    const noteNavn     = info.noteNavn + info.oktav;
+    const railsRef     = TuningCurve._railsbackRef(noteIndex);
+
+    if (resultat?.status === 'bekreftet') {
+        const tegn    = resultat.cents > 0 ? '+' : '';
+        const avvFra  = resultat.cents - railsRef;
+        const avvTegn = avvFra > 0 ? '+' : '';
+        const stCss   = Math.abs(resultat.cents) <= 5  ? 'toneinfo-ok'
+                      : Math.abs(resultat.cents) <= 15 ? 'toneinfo-advarsel'
+                      :                                  'toneinfo-kritisk';
+
+        panel.innerHTML = `
+            <div class="toneinfo-rad">
+                <span class="toneinfo-notenavn">${noteNavn}</span>
+                <span class="toneinfo-hz">${resultat.hz.toFixed(2)} Hz</span>
+                <span class="toneinfo-cents ${stCss}">${tegn}${resultat.cents.toFixed(1)} ¢</span>
+                <span class="toneinfo-railsback">Railsback: ${avvTegn}${avvFra.toFixed(1)} ¢</span>
+                <button id="remaal-knapp" class="knapp-primer toneinfo-knapp">Remål</button>
+            </div>`;
+    } else {
+        panel.innerHTML = `
+            <div class="toneinfo-rad">
+                <span class="toneinfo-notenavn">${noteNavn}</span>
+                <span class="toneinfo-hz">${idealHz.toFixed(2)} Hz (ideell)</span>
+                <span class="toneinfo-cents" style="color:var(--tekst-tersiaer)">Ikke målt</span>
+                <button id="remaal-knapp" class="knapp-primer toneinfo-knapp">Mål nå</button>
+            </div>`;
+    }
+
+    panel.style.display = 'block';
+    document.getElementById('remaal-knapp')?.addEventListener('click', () => {
+        _startEnkeltNoteMåling(noteIndex);
+    }, { once: true });
+}
+
+/**
+ * Remåler én enkelt tone inline (ingen modal-overlay).
+ * Statusoppdateringer vises i toneinfo-panelet under kurven.
  */
 async function _startEnkeltNoteMåling(noteIndex) {
-    const info = PianoScanner.frekvensInfo(PianoScanner.idealHz(noteIndex));
-    if (!info) return;
+    const panel = document.getElementById('toneinfo-panel');
+    const idealHz  = PianoScanner.idealHz(noteIndex);
+    const info     = PianoScanner.frekvensInfo(idealHz);
     const noteNavn = info.noteNavn + info.oktav;
 
-    const overlay        = document.getElementById('reskan-overlay');
-    const overlayNavn    = document.getElementById('reskan-note-navn');
-    const overlayHz      = document.getElementById('reskan-note-hz');
-    const overlayStatus  = document.getElementById('reskan-status');
-    const overlayAvbryt  = document.getElementById('reskan-avbryt');
-    const overlayTastatur = document.getElementById('reskan-tastatur');
-    if (!overlay) return;
+    // Vis "måler"-tilstand i panelet
+    if (panel) {
+        panel.innerHTML = `
+            <div class="toneinfo-rad">
+                <span class="toneinfo-notenavn">${noteNavn}</span>
+                <span id="remaal-status" class="toneinfo-live">Starter mikrofon…</span>
+                <button id="remaal-avbryt" class="knapp-sekunder toneinfo-knapp">Avbryt</button>
+            </div>`;
+        panel.style.display = 'block';
+    }
 
-    const idealHz = PianoScanner.idealHz(noteIndex);
-    if (overlayNavn)   overlayNavn.textContent = noteNavn;
-    if (overlayHz)     overlayHz.textContent   = idealHz.toFixed(1) + ' Hz';
-    if (overlayStatus) overlayStatus.textContent = 'Starter mikrofon…';
-    if (overlayTastatur) overlayTastatur.innerHTML = _lagMiniTastatur(noteIndex);
-    overlay.style.display = 'flex';
-
-    // Alltid opprett ny scanner med fersk mikrofontilgang
     const scanner = new PianoScanner();
     let avbrutt = false;
 
-    const _lukk = () => {
-        overlay.style.display = 'none';
-        scanner.avslutt();
-    };
-
-    // Avbryt-knapp
-    const _avbryt = () => {
+    document.getElementById('remaal-avbryt')?.addEventListener('click', () => {
         avbrutt = true;
         scanner.isScanning = false;
-        _lukk();
-    };
-    if (overlayAvbryt) overlayAvbryt.addEventListener('click', _avbryt, { once: true });
+        scanner.avslutt();
+        _visNoteInfo(noteIndex, AppTilstand.skanneResultater[noteIndex]);
+    }, { once: true });
 
-    // Start mikrofon
     try {
         await scanner.startMikrofon();
     } catch (err) {
-        if (overlayStatus) overlayStatus.textContent = 'Kunne ikke starte mikrofon: ' + err.message;
-        setTimeout(_lukk, 2000);
+        const el = document.getElementById('remaal-status');
+        if (el) el.textContent = 'Mikrofon feilet: ' + err.message;
+        setTimeout(() => _visNoteInfo(noteIndex, AppTilstand.skanneResultater[noteIndex]), 2500);
         return;
     }
 
-    if (overlayStatus) overlayStatus.textContent = 'Spill tasten nå…';
+    const statusEl = document.getElementById('remaal-status');
+    if (statusEl) statusEl.textContent = `Spill ${noteNavn} nå…`;
 
-    // Live-oppdatering under måling
+    // Live Hz/¢-oppdatering i panelet mens måling pågår
     scanner.onNoteMalt = (ni, hz) => {
-        if (overlayStatus) {
-            const cents = 1200 * Math.log2(hz / PianoScanner.idealHz(ni));
-            const tegn = cents > 0 ? '+' : '';
-            overlayStatus.textContent = `Lytter… ${hz.toFixed(1)} Hz (${tegn}${cents.toFixed(1)}¢)`;
-        }
+        if (avbrutt) return;
+        const el = document.getElementById('remaal-status');
+        if (!el) return;
+        const cents = 1200 * Math.log2(hz / PianoScanner.idealHz(ni));
+        const tegn  = cents > 0 ? '+' : '';
+        el.textContent = `Lytter: ${hz.toFixed(1)} Hz (${tegn}${cents.toFixed(1)} ¢)`;
     };
 
     scanner.isScanning = true;
@@ -730,27 +729,25 @@ async function _startEnkeltNoteMåling(noteIndex) {
     scanner.avslutt();
 
     if (avbrutt) return;
-    overlay.style.display = 'none';
 
     if (resultat.status === 'bekreftet') {
-        // Oppdater resultatet
         AppTilstand.skanneResultater[noteIndex] = resultat;
-
-        // Regenerer kurve og score
         AppTilstand.kurveData     = TuningCurve.generer(AppTilstand.skanneResultater);
         AppTilstand.scoreResultat = HealthScorer.score(AppTilstand.skanneResultater);
 
-        // Tegn alt på nytt
         _tegnStemningskurve();
         _oppdaterScoreSirkel(AppTilstand.scoreResultat.score, AppTilstand.scoreResultat.status);
         _oppdaterDetaljerPanel(AppTilstand.scoreResultat.detaljer);
         _oppdaterOktavTabell(AppTilstand.scoreResultat.detaljer.perOktav);
-
         _spillBekreftelseslyd();
+
+        // Vis oppdatert info for den remålte tonen
+        _visNoteInfo(noteIndex, resultat);
     } else {
-        if (overlayStatus) overlayStatus.textContent = 'Tonen ble ikke detektert. Prøv igjen.';
-        overlay.style.display = 'flex';
-        setTimeout(() => { overlay.style.display = 'none'; }, 2000);
+        // Ikke detektert — vis feilmelding i panelet, gjenopprett etter 2.5 s
+        const el = document.getElementById('remaal-status');
+        if (el) el.textContent = 'Tonen ble ikke detektert — prøv igjen.';
+        setTimeout(() => _visNoteInfo(noteIndex, AppTilstand.skanneResultater[noteIndex]), 2500);
     }
 }
 

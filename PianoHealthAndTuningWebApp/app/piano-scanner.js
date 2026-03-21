@@ -31,19 +31,20 @@ class PianoScanner {
 
         // --- Konfigurering ---
         this.BUFFER_SIZE       = 8192;
-        this.STABIL_TERSKEL    = 8;      // Minimum gode avlesninger for bekreftelse
-        this.SAMLETID_MS       = 1000;   // Samletid for medianen (1 sekund)
-        this.MAKS_VENTETID_MS  = 10000;  // Timeout per tast (ms)
+        this.STABIL_TERSKEL    = 12;     // Minimum gode avlesninger for bekreftelse
+        this.SAMLETID_MS       = 2500;   // Samletid for medianen (2.5 sekunder — bedre stabilitet)
+        this.MAKS_VENTETID_MS  = 12000;  // Timeout per tast (ms)
         this.GODKJENT_AVSTAND  = 0.45;   // Halvtoner — innenfor dette = riktig tast
         this.MIN_RMS           = 0.0001; // Minimum RMS — filtrerer digitalt stillhet
         this.MAKS_REL_STD      = 0.005;  // Maks relativ standardavvik for stabilitet (0.5%)
-        this.RMS_FALLOFF       = 0.15;   // Stopp tidlig hvis RMS faller under 15% av toppverdi
+        this.RMS_FALLOFF       = 0.10;   // Stopp tidlig hvis RMS faller under 10% av toppverdi
 
         // Onset detection — forhindrer at etterklang fra forrige tone fanges opp
-        this.ONSET_STILLE_RMS      = 0.005;  // RMS under dette = "stille" (piano-sustain dør ut)
-        this.ONSET_ANSLAG_RMS      = 0.010;  // RMS over dette = nytt anslag detektert
+        this.ONSET_STILLE_RMS      = 0.003;  // RMS under dette = "stille"
+        this.ONSET_ANSLAG_RMS      = 0.004;  // RMS over dette = nytt anslag detektert
         this.ONSET_STILLE_MS       = 150;    // Minimum stillhet (ms) før vi lytter etter nytt anslag
         this.ONSET_STILLE_TIMEOUT_MS = 4000; // Etter 4s tvinger vi overgang (unngår evig venting)
+        this.ONSET_TRANSIENT_MS    = 60;     // Hopp over anslags-transienten (ms) for stabilitet
 
         // Skanneomfang: C1 (noteIndex 3) til A7 (noteIndex 84)
         // Hopper over A0–B0 (for bass for mobil-mikrofon) og A#7–C8 (for lyse/vanskelige)
@@ -245,9 +246,10 @@ class PianoScanner {
             let rafId          = null;
 
             // Onset detection: første tone trenger ikke vente på stillhet
-            let fase          = erFørste ? 'vent_på_anslag' : 'vent_på_stille';
-            let faseTid       = performance.now();   // Tidspunkt vi gikk inn i gjeldende fase
-            let stilleStartTid = null;               // Tidspunkt RMS gikk under ONSET_STILLE_RMS
+            let fase           = erFørste ? 'vent_på_anslag' : 'vent_på_stille';
+            let faseTid        = performance.now();   // Tidspunkt vi gikk inn i gjeldende fase
+            let stilleStartTid = null;                // Tidspunkt RMS gikk under ONSET_STILLE_RMS
+            let transientTid   = null;                // Tidspunkt anslaget ble detektert
 
             const _ferdig = (resultat) => {
                 cancelAnimationFrame(rafId);
@@ -262,14 +264,20 @@ class PianoScanner {
                 const varians   = hzVerdier.reduce((s, v) => s + (v - snitt) ** 2, 0) / hzVerdier.length;
                 const relStd    = Math.sqrt(varians) / snitt;
 
-                // DTFT refinement for non-bass notes (≥ 80 Hz)
-                // Sub-cent precision by evaluating DFT at exact frequencies
+                // DTFT refinement for non-bass notes (≥ 80 Hz).
+                // Only applied when the correction vs. the raw median is ≤ 3 cents —
+                // DTFT is a sub-cent fine-tuner, not a major corrector.
+                // Larger corrections indicate a sidelobe or wrong peak → reject.
                 if (forventetHz >= 80) {
                     this.analyser.getFloatTimeDomainData(buffer);
                     const refined = PianoScanner.dtftRefine(buffer, sampleRate, medianHz);
                     if (refined > 0) {
-                        const refinedCents = Math.abs(1200 * Math.log2(refined / forventetHz));
-                        if (refinedCents < 100) medianHz = refined;
+                        const dtftVsMedian   = Math.abs(1200 * Math.log2(refined / medianHz));
+                        const dtftVsExpected = Math.abs(1200 * Math.log2(refined / forventetHz));
+                        // Accept only when DTFT makes a small sub-3-cent adjustment
+                        if (dtftVsMedian <= 3.0 && dtftVsExpected < 100) {
+                            medianHz = refined;
+                        }
                     }
                 }
 
@@ -341,9 +349,14 @@ class PianoScanner {
                 // ── Fase 2: Vent på nytt anslag ──
                 if (fase === 'vent_på_anslag') {
                     if (signalRms > this.ONSET_ANSLAG_RMS) {
-                        fase = 'sampling';
-                        // Liten forsinkelse: hopp over de første ~50ms for å la tonen stabilisere
-                        // (anslags-transienten inneholder mye støy)
+                        if (transientTid === null) transientTid = performance.now();
+                        // Hopp over anslags-transienten (skarpe overtoner i anslaget)
+                        // for å få mer stabil pitchdeteksjon fra steady-state signal
+                        if (performance.now() - transientTid >= this.ONSET_TRANSIENT_MS) {
+                            fase = 'sampling';
+                        }
+                    } else {
+                        transientTid = null; // Signal falt, nullstill transientsikring
                     }
                     rafId = requestAnimationFrame(loop);
                     return;
