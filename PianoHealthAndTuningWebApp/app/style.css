@@ -1,139 +1,126 @@
-/* style.css — PianoHelse Pianoeier-app
-   Designsystem: Se TEAM/DESIGNER/designsystem.md
-   Mobiloptimert (390px base), dark mode via prefers-color-scheme */
+/* ══════════════════════════════════════════════════════════════════════════
+   style.css — PianoHelse · Obsidian Grand
+   Aesthetic: dark, editorial, precision-instrument
+   Fonts: Cormorant Garamond (display) · Outfit (UI) · JetBrains Mono (data)
+══════════════════════════════════════════════════════════════════════════ */
 
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 1. DESIGN TOKENS (CSS Custom Properties)                                   */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
+/* ──────────────────────────────────────────────────────────────────────────
+   1. DESIGN TOKENS
+────────────────────────────────────────────────────────────────────────── */
 :root {
-    /* Primærfarger */
-    --primary:           #1B2B4B;
-    --primary-light:     #2D4A7A;
-    --primary-pale:      #D6E4F7;
-    --primary-text:      #FFFFFF;
+    /* Core palette — piano-black */
+    --bg:    #07090C;
+    --sf:    #0D1319;
+    --sf2:   #131C26;
+    --sf3:   #1A2535;
+    --bd:    rgba(255,255,255,0.07);
+    --bd2:   rgba(255,255,255,0.14);
 
-    /* Aksentfarger */
-    --accent:            #F5F0E8;
-    --accent-dark:       #C9A84C;
-    --wood-tone:         #5C3317;
+    /* Text — warm ivory */
+    --t1:  #E9E7E0;
+    --t2:  rgba(233,231,224,0.55);
+    --t3:  rgba(233,231,224,0.30);
 
-    /* Semantiske farger */
-    --suksess:           #1A7A4A;
-    --suksess-lys:       #E6F5EE;
-    --suksess-mork:      #2DA870;
-    --advarsel:          #C47B00;
-    --advarsel-lys:      #FFF3D6;
-    --advarsel-mork:     #E09020;
-    --fare:              #B91C1C;
-    --fare-lys:          #FDEAEA;
-    --fare-mork:         #EF4444;
-    --info:              #1D6FA4;
-    --info-lys:          #E3F1FA;
-    --info-mork:         #3B9BD4;
+    /* Gold — the one accent (all measurements, primary CTA) */
+    --gold:    #C9960C;
+    --gold-l:  #E8B44D;
+    --gold-d:  #8A6208;
+    --gold-bg: rgba(201,150,12,0.10);
 
-    /* Nøytrale farger */
-    --graa-900:          #0A0F1A;
-    --graa-800:          #1F2937;
-    --graa-700:          #374151;
-    --graa-500:          #6B7280;
-    --graa-400:          #9CA3AF;
-    --graa-300:          #D1D5DB;
-    --graa-200:          #E5E7EB;
-    --graa-100:          #F3F4F6;
-    --hvit:              #FFFFFF;
+    /* Semantic health colors */
+    --ok:       #16A34A;   --ok-bg:   rgba(22,163,74,0.12);
+    --warn:     #CA8A04;   --warn-bg: rgba(202,138,4,0.12);
+    --crit:     #DC2626;   --crit-bg: rgba(220,38,38,0.12);
+    --info:     #3B82F6;   --info-bg: rgba(59,130,246,0.12);
 
-    /* Overflatefarger (lys modus) */
-    --overflate-primer:      #FFFFFF;
-    --overflate-sekundaer:   #F3F4F6;
-    --overflate-hevet:       #FFFFFF;
+    /* Typography */
+    --serif: 'Cormorant Garamond', Georgia, serif;
+    --sans:  'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+    --mono:  'JetBrains Mono', 'Courier New', monospace;
 
-    /* Tekstfarger (lys modus) */
-    --tekst-primer:      #0A0F1A;
-    --tekst-sekundaer:   #374151;
-    --tekst-tersiaer:    #6B7280;
+    /* Spacing — 4px grid */
+    --s1:  4px;   --s2:  8px;   --s3:  12px;  --s4:  16px;
+    --s5:  20px;  --s6:  24px;  --s8:  32px;  --s10: 40px;
+    --s12: 48px;  --s16: 64px;  --s20: 80px;
 
-    /* Grenser */
-    --kant:              #E5E7EB;
+    /* Radii */
+    --r1: 2px;  --r2: 4px;  --r3: 6px;  --r4: 8px;  --r5: 12px;
 
-    /* Piano-spesifikke tokens */
-    --helse-god:         #1A7A4A;
-    --helse-tilsyn:      #C47B00;
-    --helse-kritisk:     #B91C1C;
-    --tast-hvit:         #F8F8F8;
-    --tast-svart:        #1A1A2A;
-    --tast-bekreftet:    rgba(26, 122, 74, 0.35);
-    --tast-advarsel:     rgba(196, 123, 0, 0.35);
-    --tast-kritisk:      rgba(185, 28, 28, 0.35);
-    --piano-kant:        rgba(0,0,0,0.15);
+    /* Transitions */
+    --fast: 110ms ease;
+    --mid:  210ms ease;
+    --slow: 380ms ease;
 
-    /* Typografi */
-    --font-ui:           'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    --font-display:      'Playfair Display', Georgia, serif;
-    --font-mono:         'JetBrains Mono', 'Courier New', monospace;
+    /* Layout */
+    --nav-h: 52px;
+    --max-w: 480px;
+    --pad:   24px;
 
-    /* Romlig system (4px grid) */
-    --space-xs:          4px;
-    --space-sm:          8px;
-    --space-md-:         12px;
-    --space-md:          16px;
-    --space-md+:         20px;
-    --space-lg:          24px;
-    --space-xl:          32px;
-    --space-2xl:         48px;
-    --space-3xl:         64px;
+    /* ── JS-compatibility: inline styles in app.js reference these ── */
+    --fare:           #DC2626;
+    --fare-lys:       rgba(220,38,38,0.12);
+    --radius-md:      8px;
+    --space-md:       16px;
+    --tekst-tersiaer: rgba(233,231,224,0.30);
 
-    /* Grenseradius */
-    --radius-sm:         4px;
-    --radius-md:         8px;
-    --radius-lg:         12px;
-    --radius-xl:         16px;
-    --radius-full:       50%;
+    /* ── piano-keyboard.js _cssVar() canvas aliases ── */
+    --graa-800:   #131C26;
+    --tast-hvit:  #EAE8E1;
+    --tast-svart: #0D1015;
+    --piano-kant: rgba(0,0,0,0.55);
 
-    /* Heving (skygger) */
-    --skygge-0:          none;
-    --skygge-1:          0 1px 3px rgba(0,0,0,0.08);
-    --skygge-2:          0 4px 12px rgba(0,0,0,0.10);
-    --skygge-3:          0 8px 24px rgba(0,0,0,0.15);
-    --skygge-4:          0 16px 48px rgba(0,0,0,0.20);
-
-    /* Animasjonstider */
-    --tid-rask:          150ms;
-    --tid-normal:        250ms;
-    --tid-langsom:       400ms;
-
-    /* Navigasjonsbar */
-    --nav-hoyde:         64px;
+    /* ── Kept for any residual references ── */
+    --primary:       #C9960C;
+    --primary-light: #E8B44D;
+    --primary-pale:  rgba(201,150,12,0.12);
+    --accent:        #E9E7E0;
+    --accent-dark:   #C9960C;
+    --suksess:       #16A34A;
+    --suksess-lys:   rgba(22,163,74,0.12);
+    --suksess-mork:  #22C55E;
+    --advarsel:      #CA8A04;
+    --advarsel-lys:  rgba(202,138,4,0.12);
+    --advarsel-mork: #EAB308;
+    --graa-100:      #131C26;
+    --graa-200:      #1A2535;
+    --graa-300:      rgba(255,255,255,0.14);
+    --graa-400:      rgba(233,231,224,0.30);
+    --graa-500:      rgba(233,231,224,0.40);
+    --graa-700:      rgba(233,231,224,0.55);
+    --graa-800:      #131C26;
+    --graa-900:      #07090C;
+    --hvit:          #E9E7E0;
+    --kant:          rgba(255,255,255,0.07);
+    --overflate-primer:    #0D1319;
+    --overflate-sekundaer: #07090C;
+    --overflate-hevet:     #131C26;
+    --tekst-primer:  #E9E7E0;
+    --tekst-sekundaer: rgba(233,231,224,0.55);
+    --font-ui:       'Outfit', -apple-system, sans-serif;
+    --font-display:  'Cormorant Garamond', Georgia, serif;
+    --font-mono:     'JetBrains Mono', monospace;
+    --space-xs:  4px;  --space-sm:  8px;  --space-md-: 12px;
+    --space-md:  16px; --space-lg:  24px; --space-xl:  32px;
+    --space-2xl: 48px; --space-3xl: 64px;
+    --radius-sm: 2px;  --radius-md: 8px;  --radius-lg: 6px;
+    --radius-xl: 8px;  --radius-full: 999px;
+    --skygge-0: none;
+    --skygge-1: 0 1px 4px rgba(0,0,0,0.4);
+    --skygge-2: 0 4px 16px rgba(0,0,0,0.5);
+    --skygge-3: 0 8px 28px rgba(0,0,0,0.6);
+    --skygge-4: 0 16px 48px rgba(0,0,0,0.7);
+    --tid-rask:    110ms;
+    --tid-normal:  210ms;
+    --tid-langsom: 380ms;
+    --nav-hoyde:   52px;
+    --helse-god:    #16A34A;
+    --helse-tilsyn: #CA8A04;
+    --helse-kritisk: #DC2626;
 }
 
-/* Mørk modus — token-overstyringer */
-@media (prefers-color-scheme: dark) {
-    :root {
-        --primary:           #3D6BB5;
-        --primary-pale:      #1A2840;
-        --accent:            #2C2620;
-        --overflate-primer:      #111827;
-        --overflate-sekundaer:   #1F2937;
-        --overflate-hevet:       #273549;
-        --tekst-primer:      #F9FAFB;
-        --tekst-sekundaer:   #D1D5DB;
-        --tekst-tersiaer:    #9CA3AF;
-        --kant:              #374151;
-        --graa-100:          #111827;
-        --graa-200:          #1F2937;
-        --skygge-1:          0 1px 3px rgba(0,0,0,0.30);
-        --skygge-2:          0 4px 12px rgba(0,0,0,0.40);
-        --skygge-3:          0 8px 24px rgba(0,0,0,0.50);
-        --tast-hvit:         #D8D8D8;
-        --tast-svart:        #0A0A14;
-        --piano-kant:        rgba(255,255,255,0.1);
-    }
-}
-
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 2. RESET OG BASE                                                            */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
+/* ──────────────────────────────────────────────────────────────────────────
+   2. RESET & BASE
+────────────────────────────────────────────────────────────────────────── */
 *, *::before, *::after {
     box-sizing: border-box;
     margin:     0;
@@ -141,1662 +128,1153 @@
 }
 
 html {
-    font-size:      16px;
-    scroll-behavior: smooth;
+    font-size:        16px;
+    scroll-behavior:  smooth;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
 }
 
 body {
-    font-family:      var(--font-ui);
-    font-size:        1rem;
-    line-height:      1.6;
-    color:            var(--tekst-primer);
-    background-color: var(--overflate-sekundaer);
-    min-height:       100dvh;
-    overflow-x:       hidden;
-    /* Padding for iOS safe area (notch + hjemknapp) */
-    padding-bottom:   env(safe-area-inset-bottom);
+    font-family:   var(--sans);
+    font-size:     0.9375rem;
+    line-height:   1.6;
+    color:         var(--t1);
+    background:    var(--bg);
+    min-height:    100dvh;
+    overflow-x:    hidden;
+    padding-bottom: env(safe-area-inset-bottom);
 }
 
-img, svg {
-    display:   block;
-    max-width: 100%;
-}
+img, svg { display: block; max-width: 100%; }
 
-button, input, select, textarea {
-    font-family: inherit;
-    font-size:   inherit;
-}
+button, input, select, textarea { font-family: inherit; font-size: inherit; }
 
-a {
-    color:           var(--primary);
-    text-decoration: none;
-}
+a { color: var(--gold-l); text-decoration: none; }
+a:hover { text-decoration: underline; }
 
-a:hover {
-    text-decoration: underline;
-}
-
-/* Fokus-ring: synlig for tastaturnavigering */
 :focus-visible {
-    outline:        3px solid var(--primary-light);
+    outline:        2px solid var(--gold);
     outline-offset: 2px;
-    border-radius:  var(--radius-sm);
+    border-radius:  var(--r2);
 }
 
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 3. TYPOGRAFI                                                                */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-h1, h2, h3, h4, h5, h6 {
-    line-height:    1.25;
-    color:          var(--tekst-primer);
-    font-weight:    700;
-}
-
-h1 { font-size: 1.75rem;   letter-spacing: -0.01em; }
-h2 { font-size: 1.375rem;  font-weight: 600; }
-h3 { font-size: 1.125rem;  font-weight: 600; line-height: 1.4; }
+h1, h2, h3, h4, h5, h6 { line-height: 1.2; }
+h1 { font-size: 1.625rem; font-weight: 700; letter-spacing: -0.02em; color: var(--t1); }
+h2 { font-size: 1.125rem; font-weight: 600; color: var(--t1); }
+h3 { font-size: 0.6875rem; font-weight: 700; text-transform: uppercase;
+     letter-spacing: 0.1em; color: var(--t3); margin-bottom: var(--s4); }
 
 p { line-height: 1.6; }
 
-.tekst-sekundaer { color: var(--tekst-sekundaer); }
-.tekst-tersiaer  { color: var(--tekst-tersiaer);  font-size: 0.875rem; }
+/* ──────────────────────────────────────────────────────────────────────────
+   3. SCREEN LAYOUT
+────────────────────────────────────────────────────────────────────────── */
+/* .skjerm and .skjul are defined inline in HTML for routing */
 
-.undertekst {
-    font-size:  0.875rem;
-    color:      var(--tekst-tersiaer);
-    margin-top: var(--space-xs);
+.side-innhold {
+    flex:      1;
+    padding:   var(--pad);
+    max-width: var(--max-w);
+    margin:    0 auto;
+    width:     100%;
 }
 
-.etikett {
-    font-size:      0.75rem;
-    font-weight:    500;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    color:          var(--tekst-tersiaer);
-}
-
-.datanummer {
-    font-family: var(--font-mono);
-    font-weight: 500;
-}
-
-.display-tittel {
-    font-family:     var(--font-display);
-    font-size:       2.25rem;
-    font-weight:     700;
-    line-height:     1.2;
-    letter-spacing:  -0.02em;
-}
-
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 4. LAYOUT OG APP-SKALL                                                     */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-#app {
-    max-width:    430px;
-    margin:       0 auto;
-    min-height:   100dvh;
-    position:     relative;
-    background:   var(--overflate-primer);
-    display:      flex;
-    flex-direction: column;
-}
-
-.skjerm {
-    flex:       1;
-    overflow-y: auto;
-    padding:    var(--space-md) var(--space-md);
-    padding-bottom: calc(var(--nav-hoyde) + var(--space-lg) + env(safe-area-inset-bottom));
-}
-
-/* iOS installasjonsbanner */
-#ios-installer-banner {
-    display:         none;
+/* ──────────────────────────────────────────────────────────────────────────
+   4. COMMON: TOP BAR
+────────────────────────────────────────────────────────────────────────── */
+.topplinje {
+    display:         flex;
     align-items:     center;
-    gap:             var(--space-md);
-    padding:         var(--space-md+);
-    background:      var(--overflate-hevet);
-    border-bottom:   1px solid var(--kant);
-    font-size:       0.875rem;
-    color:           var(--tekst-sekundaer);
+    justify-content: space-between;
+    height:          var(--nav-h);
+    padding:         0 var(--pad);
+    background:      var(--bg);
+    border-bottom:   1px solid var(--bd);
+    position:        sticky;
+    top:             0;
+    z-index:         10;
 }
 
-#ios-installer-banner .banner-lukk {
-    margin-left: auto;
-    font-size:   1.25rem;
+.topplinje-tittel {
+    font-size:      0.8125rem;
+    font-weight:    700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color:          var(--t3);
+}
+
+.tilbake-knapp,
+.avbryt-knapp {
     background:  none;
     border:      none;
-    cursor:      pointer;
-    color:       var(--tekst-tersiaer);
-    padding:     var(--space-xs);
-}
-
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 5. KNAPPER                                                                  */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-/* Basis for alle knapper */
-.knapp {
-    display:         inline-flex;
-    align-items:     center;
-    justify-content: center;
-    gap:             var(--space-sm);
-    height:          48px;
-    min-width:       120px;
-    padding:         12px 24px;
-    font-family:     var(--font-ui);
-    font-size:       1rem;
-    font-weight:     600;
-    line-height:     1;
-    border:          none;
-    border-radius:   var(--radius-md);
-    cursor:          pointer;
-    text-decoration: none;
-    transition:      background-color var(--tid-rask) ease,
-                     box-shadow       var(--tid-rask) ease,
-                     transform        var(--tid-rask) ease;
-    white-space:     nowrap;
-    -webkit-tap-highlight-color: transparent;
-}
-
-.knapp:active { transform: scale(0.97); }
-
-.knapp:disabled,
-.knapp[disabled] {
-    background:     var(--graa-400) !important;
-    color:          var(--hvit) !important;
-    border-color:   transparent !important;
-    cursor:         not-allowed;
-    transform:      none;
-}
-
-/* Primærknapp */
-.knapp-primer {
-    background: var(--primary);
-    color:      var(--primary-text);
-}
-.knapp-primer:hover  { background: var(--primary-light); }
-.knapp-primer:active { background: #0F1E36; }
-
-/* Sekundærknapp (outlined) */
-.knapp-sekunder {
-    background:   transparent;
-    color:        var(--primary);
-    border:       1.5px solid var(--primary);
-}
-.knapp-sekunder:hover { background: var(--primary-pale); }
-
-/* Suksess-knapp */
-.knapp-suksess {
-    background: var(--suksess);
-    color:      var(--hvit);
-}
-.knapp-suksess:hover { background: #146340; }
-
-/* Fare-knapp */
-.knapp-fare {
-    background: var(--fare);
-    color:      var(--hvit);
-}
-.knapp-fare:hover { background: #991B1B; }
-
-/* Ghost/tekst-knapp */
-.knapp-ghost {
-    background: transparent;
-    color:      var(--primary);
-    min-width:  auto;
-    padding:    8px 12px;
-}
-.knapp-ghost:hover { text-decoration: underline; }
-
-/* Tekst-lenke-knapp (ingen bakgrunn, ser ut som lenke) */
-.knapp-tekst-lenke {
-    background:      transparent;
-    color:           var(--tekst-sekundaer);
-    border:          none;
-    text-decoration: underline;
-    font-size:       0.875rem;
-    min-height:      auto;
-    padding:         var(--space-sm);
-    font-weight:     400;
-}
-.knapp-tekst-lenke:hover { color: var(--primary); }
-
-/* Full bredde */
-.knapp-full { width: 100%; }
-
-/* FAB — Flytende handlingsknapp */
-.fab {
-    width:        56px;
-    height:       56px;
-    min-width:    56px;
-    border-radius: var(--radius-full);
-    padding:      0;
-    background:   var(--primary);
-    color:        var(--hvit);
-    box-shadow:   0 4px 16px rgba(27, 43, 75, 0.3);
-    position:     fixed;
-    bottom:       calc(var(--nav-hoyde) + var(--space-lg) + env(safe-area-inset-bottom));
-    right:        var(--space-lg);
-    z-index:      100;
-}
-.fab:hover { background: var(--primary-light); box-shadow: 0 6px 20px rgba(27,43,75,0.4); }
-
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 6. INNDATAFELT                                                              */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-.felt-gruppe {
-    display:        flex;
-    flex-direction: column;
-    gap:            var(--space-xs);
-    margin-bottom:  var(--space-md);
-}
-
-.felt-gruppe label {
-    font-size:      0.75rem;
-    font-weight:    500;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    color:          var(--tekst-tersiaer);
-}
-
-.felt-gruppe input,
-.felt-gruppe select,
-.felt-gruppe textarea {
-    height:           48px;
-    padding:          12px 16px;
-    border:           1px solid var(--graa-300);
-    border-radius:    var(--radius-md);
-    background:       var(--overflate-primer);
-    color:            var(--tekst-primer);
-    font-size:        1rem;
-    transition:       border-color var(--tid-rask) ease,
-                      box-shadow   var(--tid-rask) ease;
-    -webkit-appearance: none;
-    appearance:       none;
-}
-
-.felt-gruppe textarea {
-    height:     auto;
-    min-height: 100px;
-    resize:     vertical;
-}
-
-.felt-gruppe input::placeholder,
-.felt-gruppe textarea::placeholder {
-    color: var(--graa-400);
-}
-
-.felt-gruppe input:focus,
-.felt-gruppe select:focus,
-.felt-gruppe textarea:focus {
-    outline:     none;
-    border-color: var(--primary);
-    box-shadow:  0 0 0 3px var(--primary-pale);
-}
-
-.felt-gruppe.feil input,
-.felt-gruppe.feil select {
-    border-color: var(--fare);
-    box-shadow:   0 0 0 3px var(--fare-lys);
-}
-
-.felt-feil {
-    display:    flex;
-    align-items: center;
-    gap:        var(--space-xs);
-    font-size:  0.875rem;
-    color:      var(--fare);
-}
-
-/* Avmerkingsboks */
-.avkryssing {
-    display:     flex;
-    align-items: flex-start;
-    gap:         var(--space-sm);
-    cursor:      pointer;
-    font-size:   0.9375rem;
-    line-height: 1.5;
-}
-
-.avkryssing input[type="checkbox"] {
-    width:        20px;
-    height:       20px;
-    min-width:    20px;
-    margin-top:   2px;
-    accent-color: var(--primary);
-    cursor:       pointer;
-}
-
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 7. KORT (CARDS)                                                             */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-.kort {
-    background:    var(--overflate-primer);
-    border:        1px solid var(--kant);
-    border-radius: var(--radius-lg);
-    box-shadow:    var(--skygge-1);
-    padding:       var(--space-md+);
-    margin-bottom: var(--space-md);
-}
-
-.kort-klikk {
-    cursor: pointer;
-    transition: box-shadow var(--tid-normal) ease,
-                transform  var(--tid-normal) ease;
-}
-.kort-klikk:hover {
-    box-shadow: var(--skygge-2);
-    transform:  translateY(-2px);
-}
-.kort-klikk:active {
-    transform: translateY(0);
-    box-shadow: var(--skygge-1);
-}
-
-/* Helserapport-kort (farget venstre kant) */
-.helse-kort {
-    border-left: 4px solid var(--graa-300);
-}
-.helse-kort.status-god      { border-left-color: var(--suksess); }
-.helse-kort.status-tilsyn   { border-left-color: var(--advarsel); }
-.helse-kort.status-kritisk  { border-left-color: var(--fare); }
-
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 8. HELSE-BADGE                                                              */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-.helse-badge {
-    display:       inline-flex;
-    align-items:   center;
-    gap:           var(--space-sm);
-    padding:       var(--space-xs) var(--space-md-);
-    border-radius: var(--radius-sm);
-    font-size:     0.875rem;
-    font-weight:   600;
-    line-height:   1.4;
-}
-
-.badge-god {
-    background: var(--suksess-lys);
-    color:      var(--suksess);
-}
-.badge-tilsyn {
-    background: var(--advarsel-lys);
-    color:      var(--advarsel);
-}
-.badge-kritisk {
-    background: var(--fare-lys);
-    color:      var(--fare);
-}
-
-.badge-score {
-    font-family: var(--font-mono);
-    font-size:   0.8125rem;
-    opacity:     0.85;
-}
-
-/* Sirkulær helsescore */
-.helse-ring-container {
-    display:         flex;
-    flex-direction:  column;
-    align-items:     center;
-    gap:             var(--space-sm);
-}
-
-.helse-ring-svg {
-    width:  120px;
-    height: 120px;
-    transform: rotate(-90deg);
-}
-
-.helse-ring-svg.mini {
-    width:  64px;
-    height: 64px;
-}
-
-.helse-ring-bak {
-    fill:         none;
-    stroke:       var(--graa-200);
-    stroke-width: 8;
-}
-
-.helse-ring-fremst {
-    fill:             none;
-    stroke-width:     8;
-    stroke-linecap:   round;
-    transition:       stroke-dashoffset var(--tid-langsom) ease,
-                      stroke 0.4s ease;
-}
-
-.helse-ring-fremst.status-god     { stroke: var(--suksess); }
-.helse-ring-fremst.status-tilsyn  { stroke: var(--advarsel); }
-.helse-ring-fremst.status-kritisk { stroke: var(--fare); }
-
-.helse-ring-tall {
-    font-family:   var(--font-mono);
-    font-size:     1.5rem;
-    font-weight:   500;
-    color:         var(--tekst-primer);
-    margin-top:    -8px;
-}
-
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 9. FREMDRIFTSINDIKATOR                                                      */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-.fremdrift-bar-container {
-    width:    100%;
-    margin:   var(--space-md) 0;
-}
-
-.fremdrift-bar {
-    height:        8px;
-    background:    var(--graa-200);
-    border-radius: var(--radius-full);
-    overflow:      hidden;
-    position:      relative;
-}
-
-.fremdrift-fylt {
-    height:           100%;
-    background:       var(--primary);
-    border-radius:    var(--radius-full);
-    transition:       width var(--tid-normal) linear;
-    position:         relative;
-    overflow:         hidden;
-}
-
-/* Shimmer-animasjon under aktiv skanning */
-.fremdrift-fylt.aktiv::after {
-    content:    '';
-    position:   absolute;
-    inset:      0;
-    background: linear-gradient(
-        90deg,
-        transparent 0%,
-        rgba(255,255,255,0.25) 50%,
-        transparent 100%
-    );
-    animation: shimmer 1.5s ease-in-out infinite;
-}
-
-.fremdrift-tekst {
-    font-size:  0.875rem;
-    color:      var(--tekst-tersiaer);
-    margin-top: var(--space-xs);
-    text-align: center;
-}
-
-/* Steg-indikator (flertrinn) */
-.steg-indikator {
-    display:         flex;
-    align-items:     center;
-    justify-content: center;
-    gap:             0;
-    margin-bottom:   var(--space-lg);
-}
-
-.steg {
-    display:        flex;
-    flex-direction: column;
-    align-items:    center;
-    gap:            var(--space-xs);
-    position:       relative;
-}
-
-.steg-prikk {
-    width:         24px;
-    height:        24px;
-    border-radius: var(--radius-full);
-    border:        2px solid var(--graa-300);
-    background:    var(--overflate-primer);
-    display:       flex;
-    align-items:   center;
-    justify-content: center;
-    font-size:     0.625rem;
-    color:         var(--hvit);
-    font-weight:   700;
-    transition:    border-color var(--tid-normal), background var(--tid-normal);
-}
-
-.steg.fullfort .steg-prikk {
-    background:   var(--primary);
-    border-color: var(--primary);
-}
-
-.steg.aktiv .steg-prikk {
-    background:   var(--primary);
-    border-color: var(--primary);
-    box-shadow:   0 0 0 4px var(--primary-pale);
-}
-
-.steg-etikett {
-    font-size:  0.6875rem;
-    color:      var(--tekst-tersiaer);
-    white-space: nowrap;
-}
-
-.steg.fullfort .steg-etikett,
-.steg.aktiv .steg-etikett {
-    color:       var(--primary);
-    font-weight: 600;
-}
-
-.steg-linje {
-    flex:        1;
-    height:      2px;
-    background:  var(--graa-300);
-    margin-bottom: 18px;
-    min-width:   24px;
-    max-width:   48px;
-    transition:  background var(--tid-normal);
-}
-
-.steg-linje.fullfort { background: var(--primary); }
-
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 10. SKANNEFLYT                                                              */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-.skann-skjerm header {
-    text-align:    center;
-    margin-bottom: var(--space-lg);
-}
-
-/* Opptakspuls-animasjon */
-.opptak-puls-container {
-    display:         flex;
-    justify-content: center;
-    margin:          var(--space-lg) 0;
-}
-
-.opptak-puls {
-    width:           80px;
-    height:          80px;
-    border-radius:   var(--radius-full);
-    background:      var(--primary-pale);
-    display:         flex;
-    align-items:     center;
-    justify-content: center;
-    position:        relative;
-}
-
-.opptak-puls svg {
-    width:  32px;
-    height: 32px;
-    color:  var(--primary);
-}
-
-.opptak-puls.aktiv {
-    background: var(--primary);
-}
-.opptak-puls.aktiv svg { color: var(--hvit); }
-
-.opptak-puls.bekreftet {
-    background: var(--suksess);
-}
-.opptak-puls.bekreftet svg { color: var(--hvit); }
-
-/* Puls-ringer (kun under aktiv innspilling) */
-.puls-ring {
-    position:      absolute;
-    border-radius: var(--radius-full);
-    border:        2px solid var(--primary);
-    opacity:       0;
-    animation:     puls-ring 1.5s ease-out infinite;
-}
-.puls-ring:nth-child(1) { animation-delay: 0s;    width: 100%; height: 100%; }
-.puls-ring:nth-child(2) { animation-delay: 0.5s;  width: 100%; height: 100%; }
-.puls-ring:nth-child(3) { animation-delay: 1.0s;  width: 100%; height: 100%; }
-
-.opptak-puls.bekreftet .puls-ring {
-    border-color: var(--suksess);
-}
-
-/* Nål (centavvik-indikator) */
-.naal-container {
-    position:      relative;
-    height:        48px;
-    background:    var(--graa-100);
-    border-radius: var(--radius-md);
-    border:        1px solid var(--kant);
-    overflow:      hidden;
-    margin:        var(--space-md) 0;
-}
-
-.naal-midtlinje {
-    position:   absolute;
-    left:       50%;
-    top:        0;
-    bottom:     0;
-    width:      2px;
-    background: var(--graa-300);
-    transform:  translateX(-50%);
-}
-
-.naal {
-    position:        absolute;
-    top:             4px;
-    bottom:          4px;
-    width:           3px;
-    background:      var(--primary);
-    border-radius:   var(--radius-full);
-    left:            50%;
-    transform:       translateX(-50%);
-    transition:      left var(--tid-rask) linear;
-}
-
-.naal.intonasjon-god     { background: var(--suksess); }
-.naal.intonasjon-advarsel { background: var(--advarsel); }
-.naal.intonasjon-kritisk  { background: var(--fare); }
-
-.neste-tast-container {
-    text-align:    center;
-    padding:       var(--space-md);
-    background:    var(--primary-pale);
-    border-radius: var(--radius-lg);
-    margin-bottom: var(--space-md);
-}
-
-.tast-navn {
-    font-family:   var(--font-mono);
-    font-size:     2rem;
-    font-weight:   500;
-    color:         var(--primary);
-    display:       block;
-}
-
-.tast-hz {
-    font-size:  0.875rem;
-    color:      var(--tekst-tersiaer);
-    font-family: var(--font-mono);
-}
-
-.status-melding {
-    text-align:  center;
-    font-size:   0.9375rem;
-    color:       var(--tekst-sekundaer);
-    min-height:  1.5em;
-    margin:      var(--space-sm) 0;
-}
-
-.skann-knapper {
-    display:        flex;
-    flex-direction: column;
-    gap:            var(--space-sm);
-    margin-top:     var(--space-md);
-}
-
-.lydsamtykke {
-    margin-top:  var(--space-md);
-    padding:     var(--space-md);
-    background:  var(--info-lys);
-    border:      1px solid var(--info);
-    border-radius: var(--radius-md);
-    font-size:   0.9rem;
-}
-
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 11. PIANO-TANGENTER                                                         */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-.piano-tangenter-container {
-    margin:         var(--space-md) 0;
-    overflow-x:     auto;
-    overflow-y:     hidden;
-    border-radius:  var(--radius-md);
-    border:         1px solid var(--piano-kant);
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-}
-
-piano-tangenter {
-    display: block;
-}
-
-.tangent-wrapper {
-    display:  flex;
-    height:   80px;
-    position: relative;
-    padding:  4px 4px 0;
-    background: #2A2A3A;
-    min-width: max-content;
-}
-
-.tangent {
-    display:       inline-block;
-    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
-    border:        1px solid var(--piano-kant);
-    cursor:        default;
-    transition:    background-color var(--tid-rask) ease;
-    position:      relative;
-}
-
-/* Hvite taster */
-.tangent.hvit {
-    width:      14px;
-    height:     72px;
-    background: var(--tast-hvit);
-    z-index:    1;
-    margin:     0 1px;
-}
-
-/* Svarte taster — overlapper de hvite */
-.tangent.svart {
-    width:      9px;
-    height:     46px;
-    background: var(--tast-svart);
-    z-index:    2;
-    margin:     0 -5px;
-    border:     1px solid rgba(255,255,255,0.1);
-}
-
-/* Resultatfarger */
-.tangent.bekreftet-god {
-    background: var(--tast-bekreftet) !important;
-    box-shadow: 0 0 0 1px var(--suksess);
-}
-.tangent.bekreftet-advarsel {
-    background: var(--tast-advarsel) !important;
-    box-shadow: 0 0 0 1px var(--advarsel);
-}
-.tangent.bekreftet-kritisk {
-    background: var(--tast-kritisk) !important;
-    box-shadow: 0 0 0 1px var(--fare);
-}
-
-.tangent.aktiv {
-    background: var(--primary-pale) !important;
-    box-shadow: 0 0 0 2px var(--primary);
-}
-
-.tangent.hoppet-over {
-    opacity: 0.4;
-}
-
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 12. STEMNINGSKURVE                                                          */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-.stemningskurve-container {
-    width:         100%;
-    height:        260px;
-    position:      relative;
-    margin:        var(--space-md) 0;
-    background:    var(--overflate-sekundaer);
-    border-radius: var(--radius-md);
-    border:        1px solid var(--kant);
-    padding:       var(--space-sm);
-}
-
-/* Toneinfo-panel (vises under stemningskurven etter klikk) */
-#toneinfo-panel {
-    margin-top:    var(--space-sm);
-    padding:       var(--space-md) var(--space-lg);
-    background:    var(--overflate-sekundaer);
-    border:        1px solid var(--kant);
-    border-radius: var(--radius-md);
-    font-family:   var(--font-sans);
-}
-
-.toneinfo-rad {
-    display:        flex;
-    align-items:    baseline;
-    gap:            var(--space-sm);
-    flex-wrap:      wrap;
-    margin-bottom:  var(--space-xs);
-}
-
-.toneinfo-notenavn {
-    font-size:   2rem;
-    font-weight: 800;
-    color:       var(--primary);
-    line-height: 1;
-    min-width:   3.5rem;
-}
-
-.toneinfo-hz {
-    font-family: var(--font-mono);
-    font-size:   1rem;
-    color:       var(--tekst-sekundaer);
-}
-
-.toneinfo-cents {
-    font-family: var(--font-mono);
-    font-size:   1.1rem;
-    font-weight: 600;
-}
-
-.toneinfo-ok      { color: #16A34A; }
-.toneinfo-advarsel { color: #CA8A04; }
-.toneinfo-kritisk  { color: #DC2626; }
-
-.toneinfo-live {
-    font-size:  0.875rem;
-    color:      var(--tekst-tersiaer);
-    margin-top: var(--space-xs);
-    min-height: 1.4em;
-}
-
-.toneinfo-knapp {
-    margin-top: var(--space-sm);
-    padding:    var(--space-xs) var(--space-md);
-    font-size:  0.9rem;
-}
-
-/* Cent-avvik-bar (horisontal, per tast) */
-.cent-bar-liste {
-    display:        flex;
-    flex-direction: column;
-    gap:            var(--space-xs);
-    margin:         var(--space-md) 0;
-}
-
-.cent-bar-rad {
-    display:     flex;
-    align-items: center;
-    gap:         var(--space-sm);
-    font-size:   0.8125rem;
-}
-
-.cent-bar-etikett {
-    font-family: var(--font-mono);
-    width:       36px;
-    text-align:  right;
-    color:       var(--tekst-tersiaer);
-    flex-shrink: 0;
-}
-
-.cent-bar-track {
-    flex:          1;
-    height:        6px;
-    background:    var(--graa-200);
-    border-radius: var(--radius-full);
-    position:      relative;
-    overflow:      visible;
-}
-
-.cent-bar-midtlinje {
-    position:   absolute;
-    left:       50%;
-    top:        -2px;
-    bottom:     -2px;
-    width:      1px;
-    background: var(--graa-400);
-}
-
-.cent-bar-fyll {
-    position:      absolute;
-    height:        100%;
-    border-radius: var(--radius-full);
-    top:           0;
-}
-
-.cent-bar-fyll.groen  { background: var(--suksess); }
-.cent-bar-fyll.amber  { background: var(--advarsel); }
-.cent-bar-fyll.rod    { background: var(--fare); }
-
-.cent-bar-verdi {
-    font-family: var(--font-mono);
-    font-size:   0.75rem;
-    width:       44px;
-    flex-shrink: 0;
-    color:       var(--tekst-tersiaer);
-}
-
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 13. NAVIGASJONSBAR (BUNNMENY)                                               */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-.bunnmeny {
-    position:   fixed;
-    bottom:     0;
-    left:       50%;
-    transform:  translateX(-50%);
-    width:      100%;
-    max-width:  430px;
-    height:     calc(var(--nav-hoyde) + env(safe-area-inset-bottom));
-    padding-bottom: env(safe-area-inset-bottom);
-    background: var(--overflate-primer);
-    border-top: 1px solid var(--kant);
-    display:    flex;
-    align-items: flex-start;
-    z-index:    200;
-}
-
-.bunnmeny-nav {
-    display:          flex;
-    width:            100%;
-    height:           var(--nav-hoyde);
-}
-
-.bunnmeny-tab {
-    flex:            1;
-    display:         flex;
-    flex-direction:  column;
-    align-items:     center;
-    justify-content: center;
-    gap:             3px;
-    padding:         var(--space-xs);
-    background:      none;
-    border:          none;
-    cursor:          pointer;
-    color:           var(--graa-400);
-    text-decoration: none;
-    transition:      color var(--tid-rask) ease;
-    -webkit-tap-highlight-color: transparent;
-}
-
-.bunnmeny-tab:focus-visible {
-    outline:        2px solid var(--primary);
-    outline-offset: -2px;
-}
-
-.bunnmeny-tab.aktiv {
-    color: var(--primary);
-}
-
-.bunnmeny-tab svg {
-    width:  24px;
-    height: 24px;
-}
-
-.bunnmeny-tab span {
-    font-size:   0.625rem;
-    font-weight: 500;
-    line-height: 1;
-}
-
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 14. TOAST-VARSLER                                                           */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-.toast-container {
-    position:       fixed;
-    top:            env(safe-area-inset-top, 16px);
-    left:           50%;
-    transform:      translateX(-50%);
-    width:          calc(100% - var(--space-xl));
-    max-width:      400px;
-    z-index:        9999;
-    display:        flex;
-    flex-direction: column;
-    gap:            var(--space-sm);
-    pointer-events: none;
-}
-
-.toast {
-    display:       flex;
-    align-items:   flex-start;
-    gap:           var(--space-sm);
-    padding:       var(--space-md-) var(--space-md);
-    border-radius: var(--radius-md);
-    border-left:   4px solid;
-    box-shadow:    var(--skygge-3);
-    font-size:     0.9375rem;
-    pointer-events: auto;
-    animation:     toast-inn var(--tid-normal) ease-out;
-}
-
-.toast.forsvinner {
-    animation: toast-ut var(--tid-normal) ease-in forwards;
-}
-
-.toast-suksess {
-    background:   var(--suksess-lys);
-    border-color: var(--suksess);
-    color:        #0F4D2B;
-}
-.toast-feil {
-    background:   var(--fare-lys);
-    border-color: var(--fare);
-    color:        #7F1D1D;
-}
-.toast-info {
-    background:   var(--info-lys);
-    border-color: var(--info);
-    color:        #0C4A6E;
-}
-.toast-advarsel {
-    background:   var(--advarsel-lys);
-    border-color: var(--advarsel);
-    color:        #78350F;
-}
-
-.toast-tekst { flex: 1; line-height: 1.4; }
-
-.toast-lukk {
-    background:   none;
-    border:       none;
-    cursor:       pointer;
-    font-size:    1.125rem;
-    color:        inherit;
-    opacity:      0.6;
-    padding:      0 var(--space-xs);
-    line-height:  1;
-    flex-shrink:  0;
-}
-.toast-lukk:hover { opacity: 1; }
-
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 15. LASTESTATUS OG SKJELETT                                                 */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-/* Skjelett-blokker */
-.skjelett {
-    background:    var(--graa-200);
-    border-radius: var(--radius-sm);
-    animation:     skjelett-shimmer 1.5s ease-in-out infinite;
-}
-
-.skjelett-tekst {
-    height:        1em;
-    margin-bottom: var(--space-sm);
-    border-radius: var(--radius-sm);
-}
-
-.skjelett-tekst:last-child { width: 70%; }
-
-.skjelett-kortmal {
-    padding:       var(--space-md+);
-    border:        1px solid var(--kant);
-    border-radius: var(--radius-lg);
-    margin-bottom: var(--space-md);
-}
-
-/* Spinner */
-.spinner {
-    width:             24px;
-    height:            24px;
-    border:            2.5px solid var(--graa-300);
-    border-top-color:  var(--primary);
-    border-radius:     var(--radius-full);
-    animation:         rotasjon 0.8s linear infinite;
-    display:           inline-block;
-}
-
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 16. TOMT TILSTAND (EMPTY STATE)                                             */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-.tomt-tilstand {
-    display:         flex;
-    flex-direction:  column;
-    align-items:     center;
-    text-align:      center;
-    padding:         var(--space-2xl) var(--space-lg);
-    gap:             var(--space-md);
-}
-
-.tomt-tilstand-illustrasjon {
-    width:  120px;
-    height: 120px;
-    color:  var(--primary-pale);
-}
-
-.tomt-tilstand h3 {
-    color: var(--tekst-primer);
-}
-
-.tomt-tilstand p {
-    color:     var(--tekst-sekundaer);
-    font-size: 0.9375rem;
-    max-width: 300px;
-    line-height: 1.6;
-}
-
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 17. VARSEL-BANNER                                                           */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-.varsel-banner {
-    position:      fixed;
-    top:           calc(env(safe-area-inset-top, 0px) + 8px);
-    left:          50%;
-    transform:     translateX(-50%);
-    background:    var(--primary);
-    color:         var(--hvit);
-    padding:       var(--space-md-) var(--space-md);
-    border-radius: var(--radius-md);
-    font-size:     0.9375rem;
-    box-shadow:    var(--skygge-3);
-    z-index:       9999;
-    animation:     toast-inn var(--tid-normal) ease-out;
-    max-width:     calc(100% - var(--space-xl));
-}
-
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 18. OPPDRAG-KORT                                                            */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-.oppdrag-kort {
-    display:       flex;
-    flex-direction: column;
-    gap:           var(--space-sm);
-    padding:       var(--space-md+);
-    background:    var(--overflate-primer);
-    border:        1px solid var(--kant);
-    border-radius: var(--radius-lg);
-    box-shadow:    var(--skygge-1);
-    margin-bottom: var(--space-md);
-    cursor:        pointer;
-    transition:    box-shadow var(--tid-normal), transform var(--tid-normal);
-}
-
-.oppdrag-kort:hover {
-    box-shadow: var(--skygge-2);
-    transform:  translateY(-2px);
-}
-
-.oppdrag-kort-header {
-    display:         flex;
-    justify-content: space-between;
-    align-items:     flex-start;
-}
-
-.oppdrag-pris {
-    font-family: var(--font-mono);
-    font-size:   1.125rem;
-    font-weight: 700;
-    color:       var(--primary);
-}
-
-.oppdrag-lokasjon {
-    display:     flex;
-    align-items: center;
-    gap:         var(--space-xs);
+    color:       var(--gold-l);
     font-size:   0.875rem;
-    color:       var(--tekst-tersiaer);
+    font-weight: 600;
+    cursor:      pointer;
+    padding:     var(--s2) 0;
+    display:     flex;
+    align-items: center;
+    gap:         4px;
+    min-width:   72px;
+    transition:  color var(--fast);
+}
+.tilbake-knapp:hover,
+.avbryt-knapp:hover { color: var(--t1); }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   5. COMMON: BUTTONS
+────────────────────────────────────────────────────────────────────────── */
+.knapp-primer {
+    display:         block;
+    width:           100%;
+    background:      var(--gold);
+    color:           #07090C;
+    border:          none;
+    border-radius:   var(--r2);
+    padding:         var(--s4) var(--s6);
+    font-family:     var(--sans);
+    font-size:       0.875rem;
+    font-weight:     700;
+    letter-spacing:  0.06em;
+    text-transform:  uppercase;
+    cursor:          pointer;
+    min-height:      50px;
+    text-align:      center;
+    text-decoration: none;
+    transition:      background var(--fast), transform var(--fast);
+}
+.knapp-primer:hover  { background: var(--gold-l); text-decoration: none; }
+.knapp-primer:active { transform: scale(0.98); }
+
+.knapp-sekunder {
+    display:         block;
+    width:           100%;
+    background:      transparent;
+    color:           var(--t1);
+    border:          1px solid var(--bd2);
+    border-radius:   var(--r2);
+    padding:         var(--s4) var(--s6);
+    font-family:     var(--sans);
+    font-size:       0.875rem;
+    font-weight:     600;
+    cursor:          pointer;
+    min-height:      50px;
+    text-align:      center;
+    text-decoration: none;
+    transition:      border-color var(--fast), background var(--fast);
+}
+.knapp-sekunder:hover { border-color: var(--gold); background: var(--gold-bg); text-decoration: none; }
+
+.knapp-tekst-lenke {
+    background: none;
+    border:     none;
+    color:      var(--t3);
+    font-size:  0.875rem;
+    font-weight: 500;
+    cursor:     pointer;
+    padding:    var(--s4);
+    width:      100%;
+    text-align: center;
+    transition: color var(--fast);
+}
+.knapp-tekst-lenke:hover { color: var(--t1); }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   6. COMMON: FORM INPUTS
+────────────────────────────────────────────────────────────────────────── */
+.skjema-gruppe  { margin-bottom: var(--s5); }
+
+.skjema-etikett {
+    display:        block;
+    font-size:      0.6875rem;
+    font-weight:    700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color:          var(--t3);
+    margin-bottom:  var(--s2);
 }
 
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 19. ANIMASJONER                                                             */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-@keyframes puls-ring {
-    0%   { transform: scale(1);   opacity: 0.8; }
-    100% { transform: scale(2.5); opacity: 0;   }
+.tekst-input,
+.select-input {
+    width:       100%;
+    background:  var(--sf);
+    border:      1px solid var(--bd);
+    border-radius: var(--r2);
+    padding:     var(--s3) var(--s4);
+    font-family: var(--sans);
+    font-size:   0.9375rem;
+    color:       var(--t1);
+    min-height:  48px;
+    transition:  border-color var(--fast);
+    appearance:          none;
+    -webkit-appearance:  none;
+}
+.tekst-input::placeholder { color: var(--t3); }
+.tekst-input:focus,
+.select-input:focus {
+    outline:       none;
+    border-color:  var(--gold);
+    box-shadow:    0 0 0 2px var(--gold-bg);
+}
+.select-input {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23C9960C' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat:   no-repeat;
+    background-position: right 14px center;
+    padding-right:       36px;
+    color-scheme:        dark;
 }
 
-@keyframes shimmer {
-    0%   { transform: translateX(-100%); }
-    100% { transform: translateX(100%);  }
+/* Radio group (legacy style for any remaining radios) */
+.radio-gruppe {
+    background:    var(--sf);
+    border:        1px solid var(--bd);
+    border-radius: var(--r3);
+    overflow:      hidden;
+}
+.radio-valg {
+    display:     flex;
+    align-items: center;
+    padding:     var(--s4);
+    gap:         var(--s4);
+    border-bottom: 1px solid var(--bd);
+    cursor:      pointer;
+    transition:  background var(--fast);
+}
+.radio-valg:last-child { border-bottom: none; }
+.radio-valg:hover      { background: var(--sf2); }
+.radio-valg input[type=radio] { accent-color: var(--gold); width: 18px; height: 18px; }
+.radio-valg span { font-size: 0.9375rem; color: var(--t1); }
+
+/* sr-only */
+.sr-only {
+    position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0,0,0,0); white-space: nowrap; border: 0;
 }
 
-@keyframes skjelett-shimmer {
-    0%   { background-color: var(--graa-200); }
-    50%  { background-color: var(--graa-100); }
-    100% { background-color: var(--graa-200); }
-}
-
-@keyframes rotasjon {
-    to { transform: rotate(360deg); }
-}
-
-@keyframes toast-inn {
-    from { opacity: 0; transform: translateY(-12px); }
-    to   { opacity: 1; transform: translateY(0);      }
-}
-
-@keyframes toast-ut {
-    from { opacity: 1; transform: translateY(0);        }
-    to   { opacity: 0; transform: translateY(-8px);     }
-}
-
-@keyframes slide-inn-hoyre {
-    from { opacity: 0; transform: translateX(20px); }
-    to   { opacity: 1; transform: translateX(0);    }
-}
-
-@keyframes helse-ring-tegn {
-    from { stroke-dashoffset: 340; }
-}
-
-/* prefers-reduced-motion: Erstatt animasjoner med enkle fades */
-@media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
-        animation-duration:   150ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration:  150ms !important;
-    }
-
-    .puls-ring { display: none; }
-
-    .fremdrift-fylt.aktiv::after { display: none; }
-}
-
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 20. HJEMSKJERM                                                              */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-.hjem-header {
-    display:         flex;
-    justify-content: space-between;
-    align-items:     center;
-    margin-bottom:   var(--space-lg);
-    padding-top:     var(--space-sm);
-}
-
-.hjem-header h1 {
-    font-size:   1.375rem;
-    font-weight: 700;
-}
-
-.hjem-velkomst {
-    font-size:  0.9375rem;
-    color:      var(--tekst-sekundaer);
-    margin-top: 2px;
-}
-
-.avatar {
-    width:           40px;
-    height:          40px;
-    border-radius:   var(--radius-full);
-    background:      var(--primary-pale);
-    display:         flex;
+/* ══════════════════════════════════════════════════════════════════════════
+   SCREEN 1 — WELCOME (skjerm-velkomst)
+══════════════════════════════════════════════════════════════════════════ */
+#skjerm-velkomst {
+    background:      var(--bg);
     align-items:     center;
     justify-content: center;
-    font-weight:     700;
-    font-size:       1rem;
-    color:           var(--primary);
-    flex-shrink:     0;
+    text-align:      center;
+    padding:         var(--s12) var(--pad);
+    position:        relative;
     overflow:        hidden;
 }
 
-.seksjon-tittel {
-    font-size:     0.875rem;
-    font-weight:   600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color:          var(--tekst-tersiaer);
-    margin-bottom:  var(--space-sm);
-    display:        flex;
-    align-items:    center;
-    justify-content: space-between;
+/* Thin gold bar at very top */
+#skjerm-velkomst::before {
+    content:  '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height:     3px;
+    background: var(--gold);
+    opacity:    0.6;
 }
 
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 21. RESULTATER-SKJERM                                                       */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-.resultater-sammendrag {
-    display:        flex;
-    align-items:    center;
-    gap:            var(--space-lg);
-    padding:        var(--space-md+);
-    background:     var(--overflate-hevet);
-    border:         1px solid var(--kant);
-    border-radius:  var(--radius-lg);
-    margin-bottom:  var(--space-lg);
+/* Piano-key strip behind content */
+.velkomst-keys-strip {
+    position: absolute;
+    bottom:   0; left: 0; right: 0;
+    height:   80px;
+    overflow: hidden;
+    opacity:  0.06;
+    pointer-events: none;
 }
 
-.resultater-tekst {
-    flex: 1;
+.velkomst-innhold {
+    position:  relative;
+    z-index:   1;
+    max-width: 340px;
 }
 
-.resultater-tekst h2 {
-    margin-bottom: var(--space-xs);
+.velkomst-logo-wrapper { margin-bottom: var(--s8); }
+
+.velkomst-logo {
+    width:  64px;
+    height: 64px;
+    margin: 0 auto;
+    opacity: 0;
+    animation: fade-up 0.6s ease 0.15s forwards;
 }
 
-.detalj-liste {
-    list-style:     none;
-    display:        flex;
-    flex-direction: column;
-    gap:            var(--space-sm);
-    margin:         var(--space-md) 0;
+.velkomst-tittel {
+    font-family:    var(--serif);
+    font-size:      3.75rem;
+    font-weight:    700;
+    letter-spacing: -0.02em;
+    color:          var(--t1);
+    margin-bottom:  var(--s2);
+    line-height:    1;
+    opacity: 0;
+    animation: fade-up 0.65s ease 0.3s forwards;
 }
 
-.detalj-rad {
-    display:         flex;
-    justify-content: space-between;
-    align-items:     center;
-    padding:         var(--space-sm) 0;
-    border-bottom:   1px solid var(--kant);
-    font-size:       0.9375rem;
+.velkomst-rule {
+    width:      48px;
+    height:     1px;
+    background: var(--gold);
+    opacity:    0.6;
+    margin:     var(--s3) auto var(--s5);
+    opacity: 0;
+    animation: fade-in 0.5s ease 0.5s forwards;
 }
 
-.detalj-rad:last-child { border-bottom: none; }
-
-.detalj-rad .verdi {
-    font-family: var(--font-mono);
-    font-weight: 500;
-    color:       var(--tekst-primer);
+.velkomst-undertekst {
+    font-size:     0.9375rem;
+    color:         var(--t2);
+    margin-bottom: var(--s10);
+    letter-spacing: 0.02em;
+    opacity: 0;
+    animation: fade-up 0.55s ease 0.55s forwards;
 }
 
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 22. LAST OPP FREMGANG                                                       */
-/* ─────────────────────────────────────────────────────────────────────────── */
+#start-diagnose-knapp {
+    max-width:     280px;
+    margin:        0 auto;
+    opacity: 0;
+    animation: fade-up 0.55s ease 0.7s forwards;
 
-.opplasting-container {
-    padding:       var(--space-md);
-    background:    var(--overflate-sekundaer);
-    border-radius: var(--radius-md);
-    border:        1px solid var(--kant);
+    display:         block;
+    width:           100%;
+    background:      var(--gold);
+    color:           #07090C;
+    border:          none;
+    border-radius:   var(--r2);
+    padding:         var(--s4) var(--s8);
+    font-family:     var(--sans);
+    font-size:       0.875rem;
+    font-weight:     700;
+    letter-spacing:  0.1em;
+    text-transform:  uppercase;
+    cursor:          pointer;
+    min-height:      50px;
+    transition:      background var(--fast), transform var(--fast);
+}
+#start-diagnose-knapp:hover  { background: var(--gold-l); }
+#start-diagnose-knapp:active { transform: scale(0.97); }
+
+/* Hidden loading bar — kept for JS compat but invisible */
+.velkomst-lastebaar { display: none; }
+.velkomst-lastebaar-fylt {}
+
+@keyframes fade-up {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+    from { opacity: 0; }
+    to   { opacity: 0.6; }
 }
 
-.opplasting-header {
-    display:         flex;
-    justify-content: space-between;
-    align-items:     center;
-    margin-bottom:   var(--space-sm);
-    font-size:       0.9rem;
+/* ══════════════════════════════════════════════════════════════════════════
+   SCREEN 2 — PIANO INFO (skjerm-piano-info)
+══════════════════════════════════════════════════════════════════════════ */
+
+/* Piano type: 2×2 tap-card grid */
+.piano-type-grid {
+    display:               grid;
+    grid-template-columns: 1fr 1fr;
+    gap:                   var(--s2);
+    margin-bottom:         var(--s5);
 }
 
-.opplasting-prosent {
-    font-family: var(--font-mono);
-    font-weight: 600;
-    color:       var(--primary);
+.piano-type-kaart { position: relative; }
+.piano-type-kaart input[type="radio"] {
+    position: absolute; opacity: 0; width: 0; height: 0;
 }
-
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 23. SPLASH-SKJERM                                                           */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-.splash-skjerm {
+.piano-type-kaart label {
     display:         flex;
     flex-direction:  column;
     align-items:     center;
+    gap:             var(--s2);
+    padding:         var(--s4) var(--s3);
+    background:      var(--sf);
+    border:          1px solid var(--bd);
+    border-radius:   var(--r3);
+    cursor:          pointer;
+    text-align:      center;
+    font-size:       0.875rem;
+    font-weight:     500;
+    color:           var(--t2);
+    min-height:      80px;
     justify-content: center;
-    min-height:      100dvh;
-    background:      var(--primary);
-    color:           var(--hvit);
-    text-align:      center;
-    padding:         var(--space-xl);
-    gap:             var(--space-md);
+    transition:      border-color var(--fast), background var(--fast), color var(--fast);
+    user-select:     none;
+}
+.piano-type-kaart label .tipo-ikon { font-size: 1.625rem; }
+.piano-type-kaart input:checked + label {
+    border-color: var(--gold);
+    background:   var(--gold-bg);
+    color:        var(--t1);
+}
+.piano-type-kaart label:active { background: var(--sf2); }
+
+/* Compact 2-col form row */
+.skjema-rad {
+    display:               grid;
+    grid-template-columns: 1fr 1fr;
+    gap:                   var(--s3);
+    margin-bottom:         var(--s5);
 }
 
-.splash-logo {
-    width:  80px;
-    height: 80px;
-    margin-bottom: var(--space-sm);
+/* Privacy note */
+.privacy-note {
+    font-size:     0.75rem;
+    color:         var(--t3);
+    margin-bottom: var(--s5);
+    line-height:   1.5;
 }
 
-.splash-tittel {
-    font-family:     var(--font-display);
-    font-size:       2.25rem;
-    font-weight:     700;
-    letter-spacing:  -0.02em;
-    color:           var(--hvit);
+/* ══════════════════════════════════════════════════════════════════════════
+   SCREEN 3 — PREP (skjerm-forberedelse)
+══════════════════════════════════════════════════════════════════════════ */
+
+/* Segmented key-selection control */
+.segmented-control {
+    display:       flex;
+    background:    var(--sf);
+    border:        1px solid var(--bd);
+    border-radius: var(--r3);
+    overflow:      hidden;
+    margin-bottom: var(--s5);
+}
+.segmented-control input[type="radio"] { display: none; }
+.segmented-control label {
+    flex:        1;
+    padding:     var(--s3) var(--s4);
+    text-align:  center;
+    font-size:   0.875rem;
+    font-weight: 600;
+    color:       var(--t2);
+    cursor:      pointer;
+    line-height: 1.35;
+    transition:  color var(--fast), background var(--fast);
+}
+.segmented-control label small {
+    display:     block;
+    font-size:   0.75rem;
+    font-weight: 400;
+    color:       var(--t3);
+    margin-top:  2px;
+}
+.segmented-control label:first-of-type { border-right: 1px solid var(--bd); }
+.segmented-control input:checked + label {
+    background: var(--gold-bg);
+    color:      var(--t1);
 }
 
-.splash-undertittel {
-    font-size: 1.0625rem;
-    opacity:   0.8;
-    color:     var(--hvit);
+/* Compact checklist */
+.sjekkliste {
+    list-style:    none;
+    margin-bottom: var(--s5);
+}
+.sjekkliste li {
+    display:     flex;
+    align-items: flex-start;
+    gap:         var(--s3);
+    padding:     var(--s2) 0;
+    font-size:   0.875rem;
+    color:       var(--t2);
+    border-top:  1px solid var(--bd);
+}
+.sjekkliste li:last-child { border-bottom: 1px solid var(--bd); }
+
+.sjekk-ikon {
+    color:      var(--ok);
+    font-size:  0.8125rem;
+    flex-shrink: 0;
+    margin-top:  3px;
+    font-style:  normal;
 }
 
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 24. HJELPE-KLASSER                                                          */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-.sr-only {
-    position:   absolute;
-    width:      1px;
-    height:     1px;
-    padding:    0;
-    margin:     -1px;
-    overflow:   hidden;
-    clip:       rect(0,0,0,0);
-    white-space: nowrap;
-    border:     0;
+/* Info pill */
+.info-pill {
+    display:      inline-flex;
+    align-items:  center;
+    gap:          var(--s2);
+    background:   var(--info-bg);
+    border:       1px solid rgba(59,130,246,0.22);
+    border-radius: 999px;
+    padding:      var(--s1) var(--s3);
+    font-size:    0.8rem;
+    color:        var(--t2);
+    margin-bottom: var(--s5);
 }
 
-.text-center { text-align: center; }
-.text-right  { text-align: right; }
+/* Prep keyboard illustration */
+.forberedelse-illustrasjon {
+    background:    var(--sf);
+    border:        1px solid var(--bd);
+    border-radius: var(--r3);
+    padding:       var(--s4);
+    margin-bottom: var(--s5);
+    text-align:    center;
+}
+.illustrasjon-pil  { font-size: 1.25rem; color: var(--t3); margin: var(--s3) 0; }
+.illustrasjon-tekst { font-size: 0.8rem; color: var(--t2); }
 
-.mt-sm  { margin-top: var(--space-sm); }
-.mt-md  { margin-top: var(--space-md); }
-.mt-lg  { margin-top: var(--space-lg); }
-.mt-xl  { margin-top: var(--space-xl); }
-.mb-sm  { margin-bottom: var(--space-sm); }
-.mb-md  { margin-bottom: var(--space-md); }
-.mb-lg  { margin-bottom: var(--space-lg); }
-
-.flex          { display: flex; }
-.flex-kolonne  { display: flex; flex-direction: column; }
-.flex-sentr    { display: flex; align-items: center; justify-content: center; }
-.gap-sm        { gap: var(--space-sm); }
-.gap-md        { gap: var(--space-md); }
-
-.skjul         { display: none !important; }
-
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 25. SCROLLBAR-STYLING                                                       */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-::-webkit-scrollbar          { width: 4px; height: 4px; }
-::-webkit-scrollbar-track     { background: transparent; }
-::-webkit-scrollbar-thumb     { background: var(--graa-300); border-radius: var(--radius-full); }
-::-webkit-scrollbar-thumb:hover { background: var(--graa-400); }
-
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 26. SCORE-SIRKEL: 5 NIVÅER                                                 */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-/* Nye CSS-tokens for de to mellomfargene */
-:root {
-    --score-bra:      #2E7D5E;   /* Nivå 2: lyse grønn/turkis */
-    --score-alvorlig: #D4650A;   /* Nivå 4: oransje-rød */
+/* Digital piano warning */
+#digitalt-piano-advarsel {
+    background:    var(--warn-bg);
+    border:        1px solid rgba(202,138,4,0.28);
+    border-left:   3px solid var(--warn);
+    border-radius: var(--r3);
+    padding:       var(--s4);
+    margin-bottom: var(--s5);
+    font-size:     0.875rem;
+    color:         var(--warn);
+    line-height:   1.5;
 }
 
-/* Ringer — 5 nivåer */
-.score-nivaa-1 #score-ring-bue { stroke: var(--suksess-mork); }    /* 85–100 grønn */
-.score-nivaa-2 #score-ring-bue { stroke: var(--score-bra); }        /* 70–84 turkis */
-.score-nivaa-3 #score-ring-bue { stroke: var(--advarsel-mork); }    /* 50–69 amber */
-.score-nivaa-4 #score-ring-bue { stroke: var(--score-alvorlig); }   /* 30–49 oransje-rød */
-.score-nivaa-5 #score-ring-bue { stroke: var(--fare-mork); }        /* <30 rød */
+/* Time estimate + start info */
+#forberedelse-tidsestimat {
+    font-family: var(--mono);
+    font-size:   0.8125rem;
+    color:       var(--t3);
+}
 
-/* Bakoverkompatible klasser (brukes evt. av badges o.l.) */
-.score-god     #score-ring-bue { stroke: var(--suksess-mork); }
-.score-tilsyn  #score-ring-bue { stroke: var(--advarsel-mork); }
-.score-kritisk #score-ring-bue { stroke: var(--fare-mork); }
+/* ══════════════════════════════════════════════════════════════════════════
+   SCREEN 4 — SCANNING (skjerm-skanning)
+══════════════════════════════════════════════════════════════════════════ */
+#skjerm-skanning .side-innhold { padding-top: var(--s4); }
 
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 27. NESTE STEMMING CHIP                                                     */
-/* ─────────────────────────────────────────────────────────────────────────── */
+/* Thin progress line at the very top of the screen */
+.skanning-progress-line {
+    width:      100%;
+    height:     2px;
+    background: var(--sf2);
+}
+#fremdrift-bar-fylt {
+    height:     100%;
+    width:      0%;
+    background: linear-gradient(90deg, var(--gold-d), var(--gold));
+    transition: width 0.5s ease;
+}
 
-.neste-stemming-chip {
-    display:         inline-flex;
+/* Top bar during scan */
+.skanning-topplinje {
+    display:         flex;
     align-items:     center;
-    gap:             var(--space-xs);
-    margin-top:      var(--space-md);
-    padding:         6px 16px;
-    background:      rgba(255, 255, 255, 0.15);
-    border:          1px solid rgba(255, 255, 255, 0.25);
-    border-radius:   var(--radius-full);
-    font-size:       0.8125rem;
-    color:           rgba(245, 240, 232, 0.9);
-    text-align:      center;
+    justify-content: space-between;
+    padding:         0 var(--pad);
+    height:          var(--nav-h);
+    border-bottom:   1px solid var(--bd);
+}
+.skanning-fremdrift-info {
+    font-family: var(--mono);
+    font-size:   0.8rem;
+    color:       var(--t3);
 }
 
-.neste-stemming-chip strong {
-    color:       var(--accent);
+#stopp-skanning-knapp {
+    display:     none;
+    background:  none;
+    border:      none;
+    color:       var(--crit);
+    font-size:   0.8125rem;
     font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    cursor:      pointer;
+    padding:     var(--s2) 0;
 }
 
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 28. SKANNING: GJELDENDE OG NESTE TAST                                      */
-/* ─────────────────────────────────────────────────────────────────────────── */
+/* Start scan button */
+#start-skanning-knapp { margin-bottom: var(--s5); }
+
+/* ── Current key display — the visual hero ── */
+.spill-tast-visning {
+    text-align:    center;
+    margin-bottom: var(--s5);
+}
 
 .tast-info-rad {
     display:         flex;
     justify-content: center;
-    gap:             var(--space-xl);
-    margin-bottom:   var(--space-xs);
+    align-items:     baseline;
+    gap:             var(--s10);
+    margin-bottom:   var(--s2);
 }
 
 .gjeldende-tast,
-.neste-tast {
-    display:        flex;
-    flex-direction: column;
-    align-items:    center;
-    gap:            2px;
-}
+.neste-tast      { text-align: center; }
 
 .tast-etikett {
-    font-size:      0.7rem;
-    font-weight:    600;
+    display:        block;
+    font-size:      0.625rem;
+    font-weight:    700;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color:          var(--tekst-tersiaer);
+    letter-spacing: 0.12em;
+    color:          var(--t3);
+    margin-bottom:  var(--s1);
 }
 
 .gjeldende-tast #spill-tast-label {
-    font-size:   1.75rem;
+    font-family: var(--serif);
+    font-size:   5.5rem;
     font-weight: 700;
-    color:       var(--tekst-primer);
-    font-family: var(--font-mono);
+    color:       var(--t1);
+    line-height: 0.95;
+    display:     block;
+    letter-spacing: -0.02em;
 }
 
 .neste-tast #neste-tast-label {
-    font-size:   1.25rem;
+    font-family: var(--serif);
+    font-size:   2.25rem;
     font-weight: 600;
-    color:       var(--tekst-tersiaer);
-    font-family: var(--font-mono);
+    color:       var(--t3);
+    line-height: 1;
+    display:     block;
 }
 
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 29. FORBEREDELSE: TASTATUR-ILLUSTRASJON                                     */
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-.forberedelse-illustrasjon {
-    background:    var(--overflate-sekundaer);
-    border:        1px solid var(--kant);
-    border-radius: var(--radius-lg);
-    padding:       var(--space-md);
-    margin-bottom: var(--space-lg);
-    text-align:    center;
+.spill-tast-hint {
+    font-size:   0.8rem;
+    color:       var(--t3);
+    margin-top:  var(--s2);
+    letter-spacing: 0.02em;
 }
 
-.illustrasjon-tastatur {
-    margin-bottom: var(--space-sm);
+/* Mic pulse — minimal, atmospheric */
+.skanning-puls-wrapper {
+    display:         flex;
+    justify-content: center;
+    margin-bottom:   var(--s3);
 }
 
-.illustrasjon-pil {
-    font-size:     1.5rem;
-    color:         var(--primary);
-    margin-bottom: var(--space-xs);
-    display:       block;
+.mikrofon-puls {
+    position: relative;
+    width:    52px;
+    height:   52px;
+    display:  flex;
+    align-items:     center;
+    justify-content: center;
 }
 
-.illustrasjon-tekst {
+.puls-ring {
+    position:      absolute;
+    border-radius: 50%;
+    border:        1px solid var(--bd);
+    animation:     puls-ring 2.2s ease-out infinite;
+    opacity:       0;
+}
+.puls-ring:nth-child(1) { width: 52px; height: 52px; animation-delay: 0s; }
+.puls-ring:nth-child(2) { width: 40px; height: 40px; animation-delay: 0.55s; }
+
+.puls-ikon {
+    width:    32px;
+    height:   32px;
+    background: var(--sf2);
+    border:   1px solid var(--bd2);
+    border-radius: 50%;
+    display:  flex;
+    align-items:     center;
+    justify-content: center;
+    font-size: 0.875rem;
+    position: relative;
+    z-index:  1;
+    transition: background var(--mid), border-color var(--mid);
+}
+
+@keyframes puls-ring {
+    0%   { transform: scale(0.85); opacity: 0.4; }
+    100% { transform: scale(1.75); opacity: 0;   }
+}
+
+.puls-aktiv   .puls-ring { border-color: rgba(201,150,12,0.5); }
+.puls-aktiv   .puls-ikon { border-color: var(--gold); }
+.puls-bekreftet .puls-ikon { background: var(--ok-bg); border-color: var(--ok); }
+
+/* Scan status */
+.skanning-status {
+    text-align: center;
     font-size:  0.875rem;
-    color:      var(--tekst-sekundaer);
-    font-weight: 500;
+    color:      var(--t3);
+    min-height: 1.4em;
+    margin-bottom: var(--s3);
+    letter-spacing: 0.02em;
+}
+.status-bekreftet { color: var(--ok);     font-weight: 600; }
+.status-lytter    { color: var(--gold-l); }
+.status-advarsel  { color: var(--warn);   }
+.status-feil      { color: var(--crit);   }
+
+/* Frequency readout */
+.skanning-frekvens-info {
+    display:         flex;
+    justify-content: center;
+    gap:             var(--s8);
+    font-family:     var(--mono);
+    font-size:       1rem;
+    margin-bottom:   var(--s4);
+}
+.skanning-cents { font-weight: 500; color: var(--t2); }
+.cents-ok       { color: var(--ok);   }
+.cents-advarsel { color: var(--warn); }
+.cents-kritisk  { color: var(--crit); }
+#skanning-hz    { color: var(--t3);   }
+
+/* Keyboard canvas */
+.tastatur-container {
+    overflow-x: auto;
+    margin:     0 calc(-1 * var(--pad));
+    padding:    var(--s2) 0;
+    background: var(--sf);
+    border-top:    1px solid var(--bd);
+    border-bottom: 1px solid var(--bd);
+    -webkit-overflow-scrolling: touch;
+}
+#tastatur-canvas {
+    display:   block;
+    width:     100%;
+    min-width: 320px;
 }
 
-/* ─────────────────────────────────────────────────────────────────────────── */
-/* 30. FINN STEMMER: STEMMER-KORT                                              */
-/* ─────────────────────────────────────────────────────────────────────────── */
+/* Progress text */
+.fremdrift-wrapper { margin-bottom: var(--s3); }
+.fremdrift-tekst-rad {
+    display:         flex;
+    justify-content: space-between;
+    font-size:       0.75rem;
+    color:           var(--t3);
+    font-family:     var(--mono);
+    margin-bottom:   var(--s1);
+}
+/* Hidden progress bar — bar is the thin top line now */
+.fremdrift-bar { display: none; }
 
+/* Scan action buttons */
+.skanning-knapper {
+    display:        flex;
+    flex-direction: column;
+    gap:            var(--s2);
+    margin-top:     var(--s4);
+}
+
+/* Error box */
+.skanning-feil {
+    background:    var(--crit-bg);
+    border:        1px solid rgba(220,38,38,0.28);
+    border-left:   3px solid var(--crit);
+    border-radius: var(--r3);
+    color:         var(--crit);
+    padding:       var(--s4);
+    font-size:     0.875rem;
+    margin-top:    var(--s4);
+}
+
+/* Bass warning */
+.bass-advarsel-boks {
+    background:    var(--warn-bg);
+    border:        1px solid rgba(202,138,4,0.22);
+    border-left:   3px solid var(--warn);
+    border-radius: var(--r3);
+    padding:       var(--s3) var(--s4);
+    margin-bottom: var(--s3);
+    font-size:     0.8125rem;
+    color:         var(--warn);
+    line-height:   1.5;
+}
+.bass-advarsel-boks strong { display: block; margin-bottom: 2px; font-size: 0.875rem; }
+#bass-mikrofon-advarsel { display: none; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SCREEN 5 — ANALYSE (skjerm-analyse)
+══════════════════════════════════════════════════════════════════════════ */
+#skjerm-analyse {
+    background:      var(--bg);
+    align-items:     center;
+    justify-content: center;
+    text-align:      center;
+}
+#skjerm-analyse > div {
+    padding: var(--s12) var(--pad);
+}
+
+.analyse-spinner {
+    width:    42px;
+    height:   42px;
+    border:   2px solid var(--sf3);
+    border-top-color: var(--gold);
+    border-radius: 50%;
+    animation: spinner 0.75s linear infinite;
+    margin:   0 auto var(--s8);
+}
+@keyframes spinner { to { transform: rotate(360deg); } }
+
+#skjerm-analyse h2 {
+    font-family:    var(--serif);
+    font-size:      1.75rem;
+    font-weight:    600;
+    color:          var(--t1);
+    margin-bottom:  var(--s2);
+}
+
+.analyse-fremdrift {
+    width:          200px;
+    height:         2px;
+    background:     var(--sf2);
+    border-radius:  1px;
+    overflow:       hidden;
+    margin:         var(--s6) auto 0;
+}
+.analyse-fremdrift-fylt {
+    height:     100%;
+    background: linear-gradient(90deg, var(--gold-d), var(--gold));
+    border-radius: 1px;
+    animation:  analyse-fyll 2.5s ease-in-out forwards;
+}
+@keyframes analyse-fyll {
+    0%   { width:  5%; }
+    70%  { width: 85%; }
+    100% { width: 98%; }
+}
+.analyse-hjelpetekst { font-size: 0.8rem; color: var(--t3); margin-top: var(--s3); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SCREEN 6 — RAPPORT (skjerm-rapport)
+══════════════════════════════════════════════════════════════════════════ */
+
+/* Report header */
+.rapport-hode {
+    background:  var(--sf);
+    border-bottom: 1px solid var(--bd);
+    padding:     var(--s8) var(--pad);
+    text-align:  center;
+}
+
+/* Score ring */
+.score-sirkel-wrapper {
+    display:        flex;
+    flex-direction: column;
+    align-items:    center;
+    margin-bottom:  var(--s5);
+}
+
+.score-sirkel {
+    position: relative;
+    width:    148px;
+    height:   148px;
+}
+.score-sirkel svg {
+    width:     148px;
+    height:    148px;
+    transform: rotate(-90deg);
+}
+.score-ring-bakgrunn {
+    fill:         none;
+    stroke:       var(--sf3);
+    stroke-width: 6;
+}
+#score-ring-bue {
+    fill:              none;
+    stroke:            var(--gold);
+    stroke-width:      6;
+    stroke-linecap:    butt;
+    stroke-dasharray:  0 339.3;
+    transition:        stroke-dasharray 1.2s cubic-bezier(0.4,0,0.2,1);
+}
+.score-sirkel-tekst {
+    position:  absolute;
+    top:       50%;
+    left:      50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+}
+#score-ikon    { font-size: 1.25rem; margin-bottom: 2px; color: var(--t3); }
+#score-tall    { display: block; font-family: var(--mono); font-size: 2.5rem;
+                 font-weight: 500; color: var(--t1); line-height: 1; }
+.score-av-100  { font-size: 0.75rem; color: var(--t3); }
+
+/* Score ring color levels */
+.score-nivaa-1 #score-ring-bue { stroke: var(--ok);   }
+.score-nivaa-2 #score-ring-bue { stroke: #2E7D5E;     }
+.score-nivaa-3 #score-ring-bue { stroke: var(--warn); }
+.score-nivaa-4 #score-ring-bue { stroke: #D4650A;     }
+.score-nivaa-5 #score-ring-bue { stroke: var(--crit); }
+/* Backwards compat */
+.score-god     #score-ring-bue { stroke: var(--ok);   }
+.score-tilsyn  #score-ring-bue { stroke: var(--warn); }
+.score-kritisk #score-ring-bue { stroke: var(--crit); }
+
+#score-status-tekst {
+    font-size:  0.9375rem;
+    color:      var(--t2);
+    margin-top: var(--s3);
+}
+
+/* Health badge */
+.helse-badge {
+    display:     inline-flex;
+    align-items: center;
+    gap:         var(--s2);
+    padding:     5px 14px;
+    border-radius: 999px;
+    font-size:   0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-top:  var(--s3);
+}
+.badge-god     { background: var(--ok-bg);   color: var(--ok);   border: 1px solid rgba(22,163,74,0.28); }
+.badge-tilsyn  { background: var(--warn-bg); color: var(--warn); border: 1px solid rgba(202,138,4,0.28); }
+.badge-kritisk { background: var(--crit-bg); color: var(--crit); border: 1px solid rgba(220,38,38,0.28); }
+
+/* Next tuning chip */
+.neste-stemming-chip {
+    display:       inline-block;
+    margin-top:    var(--s3);
+    background:    var(--sf2);
+    border:        1px solid var(--bd);
+    border-radius: 999px;
+    padding:       4px 14px;
+    font-size:     0.8rem;
+    color:         var(--t2);
+}
+.neste-stemming-chip strong { color: var(--t1); }
+
+/* Report body */
+#skjerm-rapport > .rapport-innhold-bg {
+    flex:       1;
+    background: var(--bg);
+}
+
+.rapport-innhold { padding: var(--pad); max-width: var(--max-w); margin: 0 auto; }
+
+.rapport-seksjon {
+    background:    var(--sf);
+    border:        1px solid var(--bd);
+    border-radius: var(--r3);
+    padding:       var(--s5);
+    margin-bottom: var(--s3);
+}
+
+/* Details grid */
+.detaljer-grid {
+    display:               grid;
+    grid-template-columns: 1fr 1fr;
+    gap:                   var(--s4);
+}
+.detalj-celle      { text-align: center; }
+.detalj-verdi-stor {
+    display:     block;
+    font-family: var(--mono);
+    font-size:   1.75rem;
+    font-weight: 500;
+    color:       var(--t1);
+    line-height: 1;
+}
+.detalj-etikett-stor {
+    display:        block;
+    font-size:      0.6875rem;
+    color:          var(--t3);
+    margin-top:     4px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+#rapport-beskrivelse { font-size: 0.9rem; color: var(--t2); line-height: 1.6; }
+
+/* Tuning curve container */
+.kurve-container {
+    position:   relative;
+    min-height: 320px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    border:        1px solid var(--bd);
+    border-radius: var(--r3);
+    padding:       var(--s2);
+}
+
+/* Octave table */
+.oktav-tabell {
+    width:           100%;
+    border-collapse: collapse;
+    font-size:       0.875rem;
+}
+.oktav-tabell th {
+    text-align:     left;
+    padding:        var(--s2) var(--s3);
+    color:          var(--t3);
+    font-size:      0.6875rem;
+    font-weight:    700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    border-bottom:  1px solid var(--bd);
+}
+.oktav-tabell td {
+    padding:       var(--s2) var(--s3);
+    border-bottom: 1px solid var(--bd);
+    color:         var(--t1);
+}
+.rad-god      td:nth-child(3) { color: var(--ok);   font-family: var(--mono); font-weight: 600; }
+.rad-advarsel td:nth-child(3) { color: var(--warn); font-family: var(--mono); font-weight: 600; }
+.rad-kritisk  td:nth-child(3) { color: var(--crit); font-family: var(--mono); font-weight: 600; }
+
+/* Pitch-raise alert */
+#opptrekk-advarsel {
+    background:    var(--crit-bg);
+    border:        1px solid rgba(220,38,38,0.24);
+    border-left:   3px solid var(--crit);
+    border-radius: var(--r3);
+    padding:       var(--s4);
+    margin-bottom: var(--s3);
+}
+#opptrekk-advarsel p              { font-size: 0.875rem; color: var(--crit); }
+#opptrekk-advarsel p:first-child  { font-weight: 700; margin-bottom: 4px; }
+
+/* Report action buttons */
+.rapport-knapper {
+    display:        flex;
+    flex-direction: column;
+    gap:            var(--s2);
+    padding:        var(--s4) var(--pad);
+    border-top:     1px solid var(--bd);
+}
+
+/* Toneinfo panel */
+#toneinfo-panel {
+    margin-top:    var(--s4);
+    padding:       var(--s4) var(--s5);
+    background:    var(--sf2);
+    border:        1px solid var(--bd2);
+    border-radius: var(--r3);
+}
+
+.toneinfo-rad {
+    display:        flex;
+    flex-direction: column;
+    gap:            var(--s2);
+}
+.toneinfo-notenavn {
+    font-family: var(--serif);
+    font-size:   2rem;
+    font-weight: 700;
+    color:       var(--t1);
+    line-height: 1;
+}
+.toneinfo-hz       { font-family: var(--mono); font-size: 0.875rem; color: var(--t2); }
+.toneinfo-cents    { font-family: var(--mono); font-size: 1.25rem; font-weight: 600; }
+.toneinfo-ok       { color: var(--ok);   }
+.toneinfo-advarsel { color: var(--warn); }
+.toneinfo-kritisk  { color: var(--crit); }
+.toneinfo-railsback { font-size: 0.8rem; color: var(--t3); font-family: var(--mono); }
+.toneinfo-live     { font-size: 0.875rem; color: var(--t2); }
+.toneinfo-knapp    { margin-top: var(--s3); }
+
+/* Disclaimer footer */
+.ansvarsfraskrivelse {
+    padding:    var(--s5) var(--pad);
+    border-top: 1px solid var(--bd);
+}
+.ansvarsfraskrivelse p {
+    font-size:  0.6875rem;
+    color:      var(--t3);
+    line-height: 1.5;
+    text-align: center;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SCREEN 7 — FINN STEMMER (skjerm-finn-stemmer)
+══════════════════════════════════════════════════════════════════════════ */
 .stemmer-liste {
     display:        flex;
     flex-direction: column;
-    gap:            var(--space-md);
+    gap:            var(--s3);
 }
 
 .stemmer-kort {
-    background:    var(--overflate-primer);
-    border:        1px solid var(--kant);
-    border-radius: var(--radius-lg);
-    padding:       var(--space-lg);
-    box-shadow:    var(--skygge-1);
+    background:    var(--sf);
+    border:        1px solid var(--bd);
+    border-radius: var(--r3);
+    padding:       var(--s5);
+    transition:    border-color var(--fast);
 }
+.stemmer-kort:hover { border-color: var(--bd2); }
 
 .stemmer-hode {
-    display:        flex;
-    align-items:    center;
-    gap:            var(--space-md);
-    margin-bottom:  var(--space-md);
+    display:       flex;
+    gap:           var(--s4);
+    margin-bottom: var(--s4);
 }
 
 .stemmer-avatar {
-    width:           48px;
-    height:          48px;
-    min-width:       48px;
-    background:      var(--primary);
-    color:           var(--primary-text);
-    border-radius:   var(--radius-full);
+    width:           44px;
+    height:          44px;
+    border-radius:   var(--r2);
+    background:      var(--gold-bg);
+    border:          1px solid rgba(201,150,12,0.3);
+    color:           var(--gold-l);
     display:         flex;
     align-items:     center;
     justify-content: center;
+    font-family:     var(--mono);
     font-weight:     700;
-    font-size:       1rem;
-    letter-spacing:  0.02em;
+    font-size:       0.875rem;
+    letter-spacing:  0.05em;
+    flex-shrink:     0;
 }
 
-.stemmer-info {
-    flex: 1;
-}
-
-.stemmer-navn {
-    font-size:   1rem;
-    font-weight: 600;
-    color:       var(--tekst-primer);
-    margin-bottom: 2px;
-}
-
-.stemmer-by {
-    font-size: 0.8125rem;
-    color:     var(--tekst-tersiaer);
-    margin-bottom: 4px;
-}
-
-.stemmer-stjerner {
-    font-size:  0.875rem;
-    color:      var(--accent-dark);
-    display:    flex;
-    align-items: center;
-    gap:         4px;
-}
-
-.stemmer-antall {
-    font-size: 0.75rem;
-    color:     var(--tekst-tersiaer);
-}
+.stemmer-info    { flex: 1; }
+.stemmer-navn    { font-size: 1rem; font-weight: 700; color: var(--t1); margin-bottom: 2px; }
+.stemmer-by      { font-size: 0.8125rem; color: var(--t3); margin-bottom: 4px; }
+.stemmer-stjerner { font-size: 0.9rem; color: var(--gold); }
+.stemmer-antall  { color: var(--t3); font-size: 0.8rem; margin-left: 3px; }
 
 .stemmer-detaljer {
-    display:               grid;
-    grid-template-columns: 1fr 1fr;
-    gap:                   var(--space-sm);
-    margin-bottom:         var(--space-md);
-    padding:               var(--space-sm) 0;
-    border-top:            1px solid var(--kant);
-    border-bottom:         1px solid var(--kant);
+    display:       flex;
+    gap:           var(--s8);
+    margin-bottom: var(--s4);
+    padding:       var(--s3) 0;
+    border-top:    1px solid var(--bd);
 }
-
-.stemmer-detalj {
-    display:        flex;
-    flex-direction: column;
-    gap:            2px;
-}
-
-.stemmer-detalj .detalj-etikett {
-    font-size:      0.7rem;
+.stemmer-detalj  { display: flex; flex-direction: column; gap: 2px; }
+.detalj-etikett  {
+    font-size:      0.6875rem;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color:          var(--tekst-tersiaer);
+    letter-spacing: 0.07em;
+    color:          var(--t3);
     font-weight:    600;
 }
+.detalj-verdi    { font-size: 0.9rem; font-weight: 600; color: var(--t1); }
 
-.stemmer-detalj .detalj-verdi {
-    font-size:   0.9rem;
-    color:       var(--tekst-primer);
-    font-weight: 500;
+.stemmer-ring-knapp { display: block; text-align: center; }
+
+.tuner-disclaimer {
+    background:    var(--warn-bg);
+    border:        1px solid rgba(202,138,4,0.2);
+    border-radius: var(--r3);
+    padding:       var(--s4);
+    margin-top:    var(--s8);
 }
+.tuner-disclaimer p { font-size: 0.8rem; color: var(--warn); }
 
-.stemmer-ring-knapp {
-    display:         block;
-    width:           100%;
-    text-align:      center;
-    text-decoration: none;
-    margin-top:      var(--space-md);
+/* ══════════════════════════════════════════════════════════════════════════
+   iOS INSTALL BANNER
+══════════════════════════════════════════════════════════════════════════ */
+#ios-installer-banner {
+    display:    none;
+    position:   fixed;
+    bottom:     0; left: 0; right: 0;
+    background: var(--sf2);
+    border-top: 1px solid var(--bd2);
+    padding:    var(--s4) var(--pad);
+    box-shadow: 0 -8px 32px rgba(0,0,0,0.6);
+    z-index:    100;
+    align-items: center;
+    gap:        var(--s4);
+}
+#ios-installer-banner p { font-size: 0.875rem; color: var(--t2); flex: 1; }
+#ios-installer-lukk {
+    background: none;
+    border:     none;
+    font-size:  1.25rem;
+    cursor:     pointer;
+    color:      var(--t3);
+    padding:    var(--s2);
 }

@@ -26,7 +26,7 @@ class TuningCurve {
 
         const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
         const BLACK_SEMI = new Set([1, 3, 6, 8, 10]);
-        const darkMode   = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const darkMode   = true; // App is always dark (Obsidian Grand theme)
 
         const chartLabels = [];
         const chartData   = [];
