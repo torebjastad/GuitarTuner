@@ -34,7 +34,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
 import numpy as np
 import soundfile as sf
 import matplotlib
-matplotlib.use('TkAgg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
@@ -570,41 +570,39 @@ def plot_physics(note='C', octave=1, velocity=16):
 def plot_reproducibility():
     """Show velocity-dependent pitch spread for all bass notes.
 
-    Three strategies compared:
-    - EARLY  (red):  measure 60ms–400ms after onset  — catches attack
-    - LATE   (blue): measure 400ms–1200ms after onset — settled sustain
-    - STABLE (green): measure 400ms–1200ms AND only keep readings where
-                      pitch is within 2 cents of the window median
-                      (stability filter mimics requiring consistent readings)
+    Four strategies compared:
+    - EARLY  (red):    NSDF on 60-400ms window — catches attack transient
+    - LATE   (blue):   NSDF on 400-1200ms window — settled sustain
+    - STABLE (green):  Late window + stability filter (within 3 ct of median)
+    - HARM   (orange): Harmonic partial fitting on the late window —
+                       derive f0 = f_n/n for each detected partial, take median.
+                       Robust to velocity-dependent harmonic energy changes.
 
-    Why early vs late?
-    Salamander studio recordings have high NSDF clarity (0.83-0.96) even
-    during the attack, so a clarity gate does not separate them.  However,
-    the pitch glide effect IS visible in the timing: ff notes start sharp
-    then settle; pp notes are stable throughout.  Measuring early catches
-    the transient-biased pitch; measuring late catches the settled pitch.
-    On a real piano + phone mic the clarity gate would additionally filter
-    out the noisy attack frames.
+    The harmonic fit is the algorithmic solution that actually solves the
+    velocity-dependent bias for notes above ~55 Hz.
     """
+    from key_specific_detector import KeySpecificDetector
+    ksd = KeySpecificDetector()
+
     print("\n=== Reproducibility across velocities (all bass notes) ===")
-    fig, axes = plt.subplots(1, len(BASS_NOTES), figsize=(18, 5), sharey=True)
+    fig, axes = plt.subplots(1, len(BASS_NOTES), figsize=(20, 5), sharey=True)
     fig.suptitle(
         "Pitch reproducibility pp -> ff  (v1 - v16)\n"
-        "Red = early sustain (60-400ms)  |  Blue = late sustain (400-1200ms)  |"
-        "  Green = late + stability filter\n"
-        "Each bar = one velocity layer.  Ideal: all bars equal.",
+        "Red = NSDF early (60-400ms)  |  Blue = NSDF late (400-1200ms)  |"
+        "  Green = NSDF late+stable  |  Orange = Harmonic fit (solution)\n"
+        "Each bar = one velocity layer.  Ideal: all bars the same height.",
         fontsize=11, fontweight='bold')
 
     # Time windows
     EARLY_START_MS, EARLY_END_MS   = 60,  400
     LATE_START_MS,  LATE_END_MS    = 400, 1200
-    STABILITY_CENTS = 3.0   # keep readings within this many cents of local median
+    STABILITY_CENTS = 3.0
 
     for ax, (note, octave) in zip(axes, BASS_NOTES):
         expected_hz = note_hz(note, octave)
         print(f"  {note}{octave} ({expected_hz:.1f} Hz) ...", flush=True)
 
-        early_list, late_list, stable_list = [], [], []
+        early_list, late_list, stable_list, harm_list = [], [], [], []
         vel_list = []
 
         for vel in ALL_VELOCITIES:
@@ -631,11 +629,25 @@ def plot_reproducibility():
                             bucket.append(c)
                     pos += hop
 
+            # Harmonic fit: use a larger chunk of the late window
+            harm_start = onset + int(sr * LATE_START_MS / 1000)
+            harm_end   = onset + int(sr * LATE_END_MS   / 1000)
+            harm_buf   = data[harm_start : min(harm_end, len(data))]
+            if len(harm_buf) > sr * 0.1:   # need at least 100ms
+                f0, n_h = ksd.detect_harmonic_fit(harm_buf, sr, expected_hz,
+                                                  fft_size=131072)
+                if f0 > 0 and n_h >= 3:
+                    harm_c = 1200 * math.log2(f0 / expected_hz)
+                    harm_list.append(harm_c if abs(harm_c) < 100 else np.nan)
+                else:
+                    harm_list.append(np.nan)
+            else:
+                harm_list.append(np.nan)
+
             vel_list.append(vel)
             early_list.append(float(np.median(early_c)) if early_c else np.nan)
             late_list.append (float(np.median(late_c))  if late_c  else np.nan)
 
-            # Stability filter on late window: keep readings near the median
             if late_c:
                 med = float(np.median(late_c))
                 stable_c = [c for c in late_c if abs(c - med) <= STABILITY_CENTS]
@@ -647,10 +659,11 @@ def plot_reproducibility():
             ax.set_title(f"{note}{octave}\n(no data)"); continue
 
         x  = np.arange(len(vel_list))
-        w  = 0.26
-        ax.bar(x - w,   early_list,  w, color='#EF5350', alpha=0.80, label='Early (60-400ms)')
-        ax.bar(x,       late_list,   w, color='#42A5F5', alpha=0.80, label='Late (400-1200ms)')
-        ax.bar(x + w,   stable_list, w, color='#66BB6A', alpha=0.80, label='Late+stable')
+        w  = 0.20
+        ax.bar(x - 1.5*w, early_list,  w, color='#EF5350', alpha=0.80, label='NSDF early')
+        ax.bar(x - 0.5*w, late_list,   w, color='#42A5F5', alpha=0.80, label='NSDF late')
+        ax.bar(x + 0.5*w, stable_list, w, color='#66BB6A', alpha=0.80, label='NSDF late+stable')
+        ax.bar(x + 1.5*w, harm_list,   w, color='#FFA726', alpha=0.90, label='Harmonic fit')
         ax.axhline(0, color='k', ls='--', lw=0.8, alpha=0.45)
         ax.set_xticks(x)
         ax.set_xticklabels([str(v) for v in vel_list], fontsize=5, rotation=45)
@@ -665,15 +678,17 @@ def plot_reproducibility():
         rng_e = spread(early_list)
         rng_l = spread(late_list)
         rng_s = spread(stable_list)
+        rng_h = spread(harm_list)
         ax.text(0.03, 0.97,
-                f"Early  spread: {rng_e:.1f}c\n"
-                f"Late   spread: {rng_l:.1f}c\n"
-                f"Stable spread: {rng_s:.1f}c",
+                f"NSDF early:  {rng_e:.1f}c\n"
+                f"NSDF late:   {rng_l:.1f}c\n"
+                f"NSDF stable: {rng_s:.1f}c\n"
+                f"Harm fit:    {rng_h:.1f}c",
                 transform=ax.transAxes, fontsize=7, va='top', fontweight='bold',
                 bbox=dict(facecolor='lightyellow', alpha=0.88, edgecolor='#ccc', pad=3))
 
     axes[0].set_ylabel('Cents from equal temperament', fontsize=9)
-    axes[0].legend(loc='lower left', fontsize=8)
+    axes[0].legend(loc='lower left', fontsize=7, ncol=2)
     plt.tight_layout()
     plt.savefig(os.path.join(BASE_DIR, 'velocity_reproducibility.png'),
                 dpi=130, bbox_inches='tight')
