@@ -568,21 +568,45 @@ def plot_physics(note='C', octave=1, velocity=16):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def plot_reproducibility():
-    """Show how much the naive vs gated result varies pp→ff for each note."""
+    """Show velocity-dependent pitch spread for all bass notes.
+
+    Three strategies compared:
+    - EARLY  (red):  measure 60ms–400ms after onset  — catches attack
+    - LATE   (blue): measure 400ms–1200ms after onset — settled sustain
+    - STABLE (green): measure 400ms–1200ms AND only keep readings where
+                      pitch is within 2 cents of the window median
+                      (stability filter mimics requiring consistent readings)
+
+    Why early vs late?
+    Salamander studio recordings have high NSDF clarity (0.83-0.96) even
+    during the attack, so a clarity gate does not separate them.  However,
+    the pitch glide effect IS visible in the timing: ff notes start sharp
+    then settle; pp notes are stable throughout.  Measuring early catches
+    the transient-biased pitch; measuring late catches the settled pitch.
+    On a real piano + phone mic the clarity gate would additionally filter
+    out the noisy attack frames.
+    """
     print("\n=== Reproducibility across velocities (all bass notes) ===")
     fig, axes = plt.subplots(1, len(BASS_NOTES), figsize=(18, 5), sharey=True)
     fig.suptitle(
-        "Pitch reproducibility pp → ff  (v1 – v16)\n"
-        "Red = naive (60 ms skip)  ·  Blue = clarity-gated\n"
-        "Each bar = one velocity layer.  All should be equal.",
-        fontsize=13, fontweight='bold')
+        "Pitch reproducibility pp -> ff  (v1 - v16)\n"
+        "Red = early sustain (60-400ms)  |  Blue = late sustain (400-1200ms)  |"
+        "  Green = late + stability filter\n"
+        "Each bar = one velocity layer.  Ideal: all bars equal.",
+        fontsize=11, fontweight='bold')
+
+    # Time windows
+    EARLY_START_MS, EARLY_END_MS   = 60,  400
+    LATE_START_MS,  LATE_END_MS    = 400, 1200
+    STABILITY_CENTS = 3.0   # keep readings within this many cents of local median
 
     for ax, (note, octave) in zip(axes, BASS_NOTES):
         expected_hz = note_hz(note, octave)
         print(f"  {note}{octave} ({expected_hz:.1f} Hz) ...", flush=True)
 
-        naive_list, gated_list = [], []
+        early_list, late_list, stable_list = [], [], []
         vel_list = []
+
         for vel in ALL_VELOCITIES:
             data, sr = load_salamander(note, octave, vel)
             if data is None:
@@ -590,47 +614,62 @@ def plot_reproducibility():
             onset = find_onset(data, sr)
             win = int(sr * WINDOW_MS / 1000)
             hop = int(sr * HOP_MS  / 1000)
-            end = onset + int(sr * 1.5)
 
-            n_cents, g_cents = [], []
-            pos = onset + int(sr * 0.06)   # naive 60 ms skip
-            while pos + win <= min(end, len(data)):
-                buf = data[pos : pos + win]
-                nsdf, max_tau = compute_nsdf(buf, sr)
-                freq, clarity, _ = nsdf_peak_info(nsdf, sr, max_tau)
-                if freq > 0:
-                    c = 1200 * math.log2(freq / expected_hz)
-                    if abs(c) < 100:
-                        n_cents.append(c)
-                        if clarity >= CLARITY_GATE:
-                            g_cents.append(c)
-                pos += hop
+            early_c, late_c = [], []
+            for start_ms, end_ms, bucket in [
+                    (EARLY_START_MS, EARLY_END_MS, early_c),
+                    (LATE_START_MS,  LATE_END_MS,  late_c)]:
+                pos = onset + int(sr * start_ms / 1000)
+                end = onset + int(sr * end_ms   / 1000)
+                while pos + win <= min(end, len(data)):
+                    buf = data[pos : pos + win]
+                    nsdf, max_tau = compute_nsdf(buf, sr)
+                    freq, _, _ = nsdf_peak_info(nsdf, sr, max_tau)
+                    if freq > 0:
+                        c = 1200 * math.log2(freq / expected_hz)
+                        if abs(c) < 100:
+                            bucket.append(c)
+                    pos += hop
 
             vel_list.append(vel)
-            naive_list.append(float(np.median(n_cents)) if n_cents else np.nan)
-            gated_list.append(float(np.median(g_cents)) if g_cents else np.nan)
+            early_list.append(float(np.median(early_c)) if early_c else np.nan)
+            late_list.append (float(np.median(late_c))  if late_c  else np.nan)
+
+            # Stability filter on late window: keep readings near the median
+            if late_c:
+                med = float(np.median(late_c))
+                stable_c = [c for c in late_c if abs(c - med) <= STABILITY_CENTS]
+                stable_list.append(float(np.median(stable_c)) if stable_c else np.nan)
+            else:
+                stable_list.append(np.nan)
 
         if not vel_list:
             ax.set_title(f"{note}{octave}\n(no data)"); continue
 
-        x = np.arange(len(vel_list))
-        ax.bar(x - 0.22, naive_list, 0.42, color='#EF5350', alpha=0.78,
-               label='Naive')
-        ax.bar(x + 0.22, gated_list, 0.42, color='#42A5F5', alpha=0.78,
-               label='Gated')
+        x  = np.arange(len(vel_list))
+        w  = 0.26
+        ax.bar(x - w,   early_list,  w, color='#EF5350', alpha=0.80, label='Early (60-400ms)')
+        ax.bar(x,       late_list,   w, color='#42A5F5', alpha=0.80, label='Late (400-1200ms)')
+        ax.bar(x + w,   stable_list, w, color='#66BB6A', alpha=0.80, label='Late+stable')
         ax.axhline(0, color='k', ls='--', lw=0.8, alpha=0.45)
         ax.set_xticks(x)
         ax.set_xticklabels([str(v) for v in vel_list], fontsize=5, rotation=45)
-        ax.set_xlabel('Velocity (1=pp … 16=ff)', fontsize=8)
+        ax.set_xlabel('Velocity (1=pp ... 16=ff)', fontsize=8)
         ax.set_title(f"{note}{octave}  ({expected_hz:.1f} Hz)", fontsize=10)
         ax.grid(True, alpha=0.2, axis='y')
 
-        valid_n = [v for v in naive_list if not np.isnan(v)]
-        valid_g = [v for v in gated_list if not np.isnan(v)]
-        rng_n = max(valid_n)-min(valid_n) if valid_n else float('nan')
-        rng_g = max(valid_g)-min(valid_g) if valid_g else float('nan')
-        ax.text(0.03, 0.97, f"Naive  Δ={rng_n:.1f}¢\nGated  Δ={rng_g:.1f}¢",
-                transform=ax.transAxes, fontsize=8, va='top', fontweight='bold',
+        def spread(lst):
+            v = [x for x in lst if not np.isnan(x)]
+            return max(v)-min(v) if len(v) > 1 else float('nan')
+
+        rng_e = spread(early_list)
+        rng_l = spread(late_list)
+        rng_s = spread(stable_list)
+        ax.text(0.03, 0.97,
+                f"Early  spread: {rng_e:.1f}c\n"
+                f"Late   spread: {rng_l:.1f}c\n"
+                f"Stable spread: {rng_s:.1f}c",
+                transform=ax.transAxes, fontsize=7, va='top', fontweight='bold',
                 bbox=dict(facecolor='lightyellow', alpha=0.88, edgecolor='#ccc', pad=3))
 
     axes[0].set_ylabel('Cents from equal temperament', fontsize=9)
