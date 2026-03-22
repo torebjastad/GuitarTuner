@@ -194,3 +194,4 @@ Important knowledge — algorithms, architecture decisions, debugging insights �
 |-----------|--------------|
 | `pitch-detection-algorithms.md` | Guitar tuner pitch detection algorithms |
 | `PianoHealthAndTuningWebApp/piano-scanning-algorithm.md` | Piano scanning onset detection and pitch detection pipeline |
+| `PianoTunerPython/key_specific_detector.py` | `PianoTunerPython/piano-pitch-variation-analysis.md` — velocity-dependent pitch bias, attack transients, harmonic fit algorithm |
